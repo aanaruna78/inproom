@@ -1,0 +1,43 @@
+"Issue Type","External Epic ID","Summary","Description","Labels","Priority"
+"Epic","E01","[E01] Tenant Identity and Project Workspace","Goal: Create secure workspaces and projects, including new-project and migration flows.
+Delivery: Scoped APIs/services/UI, documented contracts, secure failure handling and automated verification.
+Definition of done: child stories completed; role/security tests pass; docs and architecture decisions updated; epic walkthrough accepted.","inproom,epic-e01,design-backlog","High"
+"Epic","E02","[E02] Source Connectors and Synchronization","Goal: Authorize and continuously synchronize Git, Jira and Confluence without leaking credentials.
+Delivery: Scoped APIs/services/UI, documented contracts, secure failure handling and automated verification.
+Definition of done: child stories completed; role/security tests pass; docs and architecture decisions updated; epic walkthrough accepted.","inproom,epic-e02,design-backlog","High"
+"Epic","E03","[E03] Document Ingestion and Canonical Knowledge","Goal: Create trustworthy, versioned project evidence from documents, code and issue records.
+Delivery: Scoped APIs/services/UI, documented contracts, secure failure handling and automated verification.
+Definition of done: child stories completed; role/security tests pass; docs and architecture decisions updated; epic walkthrough accepted.","inproom,epic-e03,design-backlog","High"
+"Epic","E04","[E04] Hybrid Retrieval, Graph and Markdown Memory","Goal: Build source-cited vector, graph and Markdown memory projections.
+Delivery: Scoped APIs/services/UI, documented contracts, secure failure handling and automated verification.
+Definition of done: child stories completed; role/security tests pass; docs and architecture decisions updated; epic walkthrough accepted.","inproom,epic-e04,design-backlog","High"
+"Epic","E05","[E05] Model Gateway and Provider Security","Goal: Support internal, customer cloud and local AI models with encryption and policy controls.
+Delivery: Scoped APIs/services/UI, documented contracts, secure failure handling and automated verification.
+Definition of done: child stories completed; role/security tests pass; docs and architecture decisions updated; epic walkthrough accepted.","inproom,epic-e05,design-backlog","High"
+"Epic","E06","[E06] Generic Process Engine, Governance and Audit","Goal: Build durable versioned workflows with human approvals and safe tool execution.
+Delivery: Scoped APIs/services/UI, documented contracts, secure failure handling and automated verification.
+Definition of done: child stories completed; role/security tests pass; docs and architecture decisions updated; epic walkthrough accepted.","inproom,epic-e06,design-backlog","High"
+"Epic","E07","[E07] Requirements to Jira Epics and Stories","Goal: Draft complete scoped Jira work from user-provided requirements and approved knowledge.
+Delivery: Scoped APIs/services/UI, documented contracts, secure failure handling and automated verification.
+Definition of done: child stories completed; role/security tests pass; docs and architecture decisions updated; epic walkthrough accepted.","inproom,epic-e07,design-backlog","High"
+"Epic","E08","[E08] Sprint Intelligence and Architecture Planning","Goal: Generate evidence-backed sprint readiness, implementation plans and diagrams.
+Delivery: Scoped APIs/services/UI, documented contracts, secure failure handling and automated verification.
+Definition of done: child stories completed; role/security tests pass; docs and architecture decisions updated; epic walkthrough accepted.","inproom,epic-e08,design-backlog","High"
+"Epic","E09","[E09] Development Harness and PR Verification","Goal: Verify human/AI development evidence using real Git and CI results.
+Delivery: Scoped APIs/services/UI, documented contracts, secure failure handling and automated verification.
+Definition of done: child stories completed; role/security tests pass; docs and architecture decisions updated; epic walkthrough accepted.","inproom,epic-e09,design-backlog","High"
+"Epic","E10","[E10] Release Candidate and Quality Gates","Goal: Assemble traceable releases with explicit approval and rollback planning.
+Delivery: Scoped APIs/services/UI, documented contracts, secure failure handling and automated verification.
+Definition of done: child stories completed; role/security tests pass; docs and architecture decisions updated; epic walkthrough accepted.","inproom,epic-e10,design-backlog","High"
+"Epic","E11","[E11] STLC QA Planning and Jira Work","Goal: Translate release candidates into approved QA backlog with coverage traceability.
+Delivery: Scoped APIs/services/UI, documented contracts, secure failure handling and automated verification.
+Definition of done: child stories completed; role/security tests pass; docs and architecture decisions updated; epic walkthrough accepted.","inproom,epic-e11,design-backlog","High"
+"Epic","E12","[E12] QA Harness, Evidence and Defect Loop","Goal: Support manual tests, automation runners and AI-assisted QA with real execution outcomes.
+Delivery: Scoped APIs/services/UI, documented contracts, secure failure handling and automated verification.
+Definition of done: child stories completed; role/security tests pass; docs and architecture decisions updated; epic walkthrough accepted.","inproom,epic-e12,design-backlog","High"
+"Epic","E13","[E13] Security, Reliability and Observability","Goal: Operate the product safely as enterprise SaaS with recovery and transparent governance.
+Delivery: Scoped APIs/services/UI, documented contracts, secure failure handling and automated verification.
+Definition of done: child stories completed; role/security tests pass; docs and architecture decisions updated; epic walkthrough accepted.","inproom,epic-e13,design-backlog","High"
+"Epic","E14","[E14] UX, Accessibility and Developer Experience","Goal: Deliver a coherent experience and repeatable engineering environment.
+Delivery: Scoped APIs/services/UI, documented contracts, secure failure handling and automated verification.
+Definition of done: child stories completed; role/security tests pass; docs and architecture decisions updated; epic walkthrough accepted.","inproom,epic-e14,design-backlog","High"
