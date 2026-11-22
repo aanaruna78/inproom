@@ -170,6 +170,16 @@ The immediate MVP proof is **one real project** whose source documents and repos
 
 See the [delivery roadmap and acceptance gates](docs/development/roadmap.md). There is no committed release schedule until the implementation plan is reviewed.
 
+## Development backlog and Jira planning
+
+The [INPROOM Jira planning package](docs/planning/README.md) defines **14 epics and 65 developer-ready stories**, with implementation steps, expected outcomes, acceptance criteria, functional verification and negative/security/recovery tests.
+
+- [Full implementation backlog](docs/planning/implementation-backlog.md)
+- [Epic CSV](docs/planning/jira-import-epics.csv) · [Story CSV](docs/planning/jira-import-stories.csv)
+- [Jira import and Epic → Story mapping guide](docs/planning/jira-import-guide.md)
+
+**Important:** These are proposed issue definitions in GitHub, **not yet Jira tickets**. Issue creation needs the INPROOM Jira project's confirmed schema and duplicate check.
+
 ## UI / UX design concepts
 
 INPROOM now has an early **experience design package** for product review, with role-based user journeys, approval patterns, screen requirements and visual concepts. These are **proposed interfaces**, not implemented application screens.
