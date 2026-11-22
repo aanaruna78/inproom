@@ -19,3 +19,11 @@ build/
 .DS_Store
 Thumbs.db
 ~$*
+
+# Web build output
+.next/
+*.tsbuildinfo
+out/
+# Python tooling
+.ruff_cache/
+.pytest_cache/

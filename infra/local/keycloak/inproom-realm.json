@@ -1,0 +1,24 @@
+{
+  "realm": "inproom",
+  "enabled": true,
+  "displayName": "INPROOM (local)",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "clients": [
+    {
+      "clientId": "inproom-web",
+      "name": "INPROOM Control Center",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:3000/*"],
+      "webOrigins": ["http://localhost:3000"],
+      "attributes": { "pkce.code.challenge.method": "S256" }
+    },
+    {
+      "clientId": "inproom-api",
+      "name": "INPROOM API (resource server)",
+      "bearerOnly": true
+    }
+  ]
+}
