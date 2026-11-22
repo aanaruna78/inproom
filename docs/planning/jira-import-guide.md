@@ -1,3 +1,5 @@
+> **Publication update (22 November 2026):** All 14 epics and 65 stories were created in Jira and verified. This guide is retained solely as historical import guidance. **Do not re-import** its CSV files. See [live Jira key mapping](jira-key-map.md).
+
 # INPROOM Jira Project — Import and Execution Guide
 
 **Target:** https://aanaruna78.atlassian.net/jira/software/projects/INPROOM/boards/2

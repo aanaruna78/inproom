@@ -178,7 +178,7 @@ The [INPROOM Jira planning package](docs/planning/README.md) defines **14 epics 
 - [Epic CSV](docs/planning/jira-import-epics.csv) · [Story CSV](docs/planning/jira-import-stories.csv)
 - [Jira import and Epic → Story mapping guide](docs/planning/jira-import-guide.md)
 
-**Important:** These are proposed issue definitions in GitHub, **not yet Jira tickets**. Issue creation needs the INPROOM Jira project's confirmed schema and duplicate check.
+**Important:** **Published to the INPROOM Jira project:** 14 epics and 65 stories, with verified Epic → Story relationships. [Browse the Jira project](https://aanaruna78.atlassian.net/jira/software/projects/INPROOM/boards/2) · [Issue key mapping](docs/planning/jira-key-map.md). Do not reimport the CSVs.
 
 ## UI / UX design concepts
 
