@@ -170,6 +170,20 @@ The immediate MVP proof is **one real project** whose source documents and repos
 
 See the [delivery roadmap and acceptance gates](docs/development/roadmap.md). There is no committed release schedule until the implementation plan is reviewed.
 
+## UI / UX design concepts
+
+INPROOM now has an early **experience design package** for product review, with role-based user journeys, approval patterns, screen requirements and visual concepts. These are **proposed interfaces**, not implemented application screens.
+
+| Review artifact | Open |
+|---|---|
+| UX blueprint and screen requirements | [UX / Product Experience Blueprint](docs/ux/README.md) |
+| Visual concepts | [Four screen mockups](docs/ux/visuals/README.md) |
+| Click-through review | [Self-contained HTML prototype](docs/ux/prototype/index.html) — download/open locally to switch screens |
+| Information architecture | [Screen map and milestone plan](docs/ux/screen-map.md) |
+| Design tokens | [Editable color / typography / layout tokens](docs/ux/tokens.json) |
+
+The SVG visuals can be imported into Figma as editable vector artwork. A native Figma design file has **not** been created yet.
+
 ## Documentation
 
 | Start here | Description |
