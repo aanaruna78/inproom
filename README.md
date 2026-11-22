@@ -208,7 +208,9 @@ The SVG visuals can be imported into Figma as editable vector artwork. A native 
 
 ## Repository and contributor guidance
 
-This repository currently holds the **INPROOM design baseline**. Application code, setup scripts, container manifests and runnable development instructions will be documented once they exist. Please do not assume that an app is already installable from this README.
+This repository holds the **INPROOM design baseline** and the start of the implementation. The development skeleton (FastAPI API, Next.js web, local Docker stack, CI) is runnable; product features are being delivered story by story from Jira.
+
+**Run it locally:** `make doctor && make setup && make up && make migrate && make test` — see [local setup](docs/development/local-setup.md) and [contributing](CONTRIBUTING.md).
 
 For any engineering contribution:
 
