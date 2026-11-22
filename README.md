@@ -1,52 +1,206 @@
+<div align="center">
+
 # INPROOM
 
-**Intelligent Process Orchestration & Management**  
+### Intelligent Process Orchestration & Management
+
+**AI-native lifecycle intelligence · Human-governed execution · Model-independent architecture**
+
 **by ThinkHiveLabs**
 
-> From Knowledge to Intelligent Execution.
+*From Knowledge to Intelligent Execution.*
 
-INPROOM is an AI-native, human-governed process lifecycle platform. Its first package supports software development lifecycle (SDLC), followed by software testing lifecycle (STLC), with a common runtime that can later orchestrate other enterprise processes.
+[Architecture](#platform-architecture) · [Lifecycle](#end-to-end-lifecycle) · [Capabilities](#platform-capabilities) · [Documentation](#documentation) · [Roadmap](#delivery-roadmap)
 
-**Status:** Product and architecture design baseline. This repository does not yet contain an implemented application.
+</div>
 
-## Core product lifecycle
+---
 
-1. Create a project (new or existing/migration).
-2. Connect authorized Git, Jira, Confluence and document sources.
-3. Build a project knowledge fabric: versioned original sources, hybrid vector retrieval, a relationship graph, and Markdown memory snapshots.
-4. Analyze requirements and **draft** proposed epics, stories, acceptance criteria and dependencies.
-5. After user approval, publish approved work items to Jira.
-6. Analyze sprint allocation and prepare evidence-backed implementation plans and Mermaid architecture diagrams. Publish Jira/Confluence updates under policy gates.
-7. Allow human development or controlled AI-assisted development; inspect commits, pull requests, CI and tests against acceptance criteria.
-8. Assemble a governed release candidate. Generate QA stories, test plans and regression scope for approval.
-9. Execute manual, automated or AI-assisted testing. Attach evidence, create defects, obtain QA sign-off and close eligible work items.
-10. Trace results back to requirements, code, test evidence, release and incident history, then refresh the knowledge fabric.
+> [!IMPORTANT]
+> **Project status: Design and documentation phase.** INPROOM is a proposed enterprise platform, not yet a production-ready application. The diagrams, technical stack, workflows and modules below describe the intended architecture; they are not claims of implemented features.
 
-## Architecture
+## Why INPROOM?
 
-INPROOM comprises a shared **Process Definition & Workflow Engine**, **Knowledge Fabric**, **Model Gateway**, **Agent & Tool Runtime**, **Approval/Policy Engine**, and **Audit/Evidence Ledger**. SDLC and STLC are versioned process packages, not separate platforms.
+Enterprise delivery information is fragmented across requirements, project trackers, architecture documents, repositories, testing systems and release tools. INPROOM is designed to make that context available as a continuously synchronized, source-backed **project knowledge fabric**—and use it to orchestrate the complete process under configurable human approvals.
 
-Model access may use approved cloud frontier models, customer-supplied API credentials (BYOK), or private/local LLMs. A model subscription does **not** necessarily grant API access. Private credentials must be encrypted and injected only through a broker, never included in prompts, Markdown memory or logs.
+**Start with SDLC. Extend into STLC. Scale to any enterprise process.**
 
-## Documentation
+| **Understand** | **Plan** | **Execute** | **Verify** | **Learn** |
+|:---:|:---:|:---:|:---:|:---:|
+| Ingest project knowledge | Draft requirements and work items | Coordinate people and approved AI tools | Review code, testing and release evidence | Feed outcomes back into project memory |
 
-- [Architecture and technology choices](docs/architecture/overview.md)
-- [Full SDLC → STLC lifecycle](docs/lifecycle/complete-lifecycle.md)
-- [SDLC use cases](docs/use-cases/sdlc.md)
-- [STLC use cases](docs/use-cases/stlc.md)
-- [Implementation roadmap](docs/development/roadmap.md)
-- [Editable Mermaid architecture diagrams](docs/architecture/diagrams.md)
-- [Architecture decisions](docs/development/decisions.md)
+## End-to-end lifecycle
 
-## Repository conventions
+A project can be **new** or **migrated from existing tools**. INPROOM is intended to retain evidence and traceability from the first requirement through QA sign-off and release outcomes.
 
-Documentation changes should be reviewed in pull requests, preserving Mermaid sources, evidence and version history. Keep production secrets, API keys, private certificates and customer project data **out of Git**. No automated production changes are permitted by default.
+```mermaid
+flowchart TD
+    A["Create or migrate project"] --> B["Connect Git · Jira · Confluence · Documents"]
+    B --> C["Build and synchronize knowledge fabric"]
+    C --> D["Requirement intake and clarification"]
+    D --> E["AI drafts epics, stories and acceptance criteria"]
+    E --> F{"Product owner approval"}
+    F -->|Revise| E
+    F -->|Approved| G["Publish approved Jira items"]
+    G --> H["Sprint readiness and implementation planning"]
+    H --> I["Mermaid architecture + Confluence documentation"]
+    I --> J["Human or approved AI-assisted development"]
+    J --> K["Commits · Pull request · CI evidence"]
+    K --> L{"PR and acceptance-criteria review"}
+    L -->|Gaps found| J
+    L -->|Approved| M["Build release candidate"]
+    M --> N["AI drafts QA stories and regression plan"]
+    N --> O{"QA lead approval"}
+    O -->|Revise| N
+    O -->|Approved| P["Manual · Automated · AI-assisted testing"]
+    P --> Q{"Verified against acceptance criteria?"}
+    Q -->|Defect| R["Create linked defect and retest"]
+    R --> H
+    Q -->|Pass| S["QA sign-off and governed release"]
+    S --> T["Operational evidence and updated project memory"]
+    T -.-> C
+```
+
+**Approval-first by default:** draft stories, plans, page updates, PR-related changes, QA items and release actions are governed by project policies. AI suggestions do not become external system writes merely because a model generated them.
+
+## Platform architecture
+
+```mermaid
+flowchart TB
+    U["INPROOM Control Center<br/>Projects · Sprints · Approvals · Evidence"] --> API["API Gateway + Identity / Tenant Context"]
+    API --> W["Versioned Process & Durable Workflow Engine"]
+    W --> POLICY["Policy Engine<br/>Human Gates · RBAC · Audit"]
+    W --> AG["Agent Orchestration & Execution Runtime"]
+    W --> TOOL["Restricted Tool / Credential Broker"]
+    AG --> KB["Project Knowledge Fabric"]
+    AG --> MODEL["Model Gateway"]
+    KB --> SOURCES["Versioned Documents / Object Store"]
+    KB --> VECTOR["Hybrid Search + Vector Index"]
+    KB --> GRAPH["Knowledge Graph + Code Relationships"]
+    KB --> MEMORY["Source-linked Markdown Memory"]
+    MODEL --> F["Approved Frontier Model APIs"]
+    MODEL --> L["Private / Local LLM"]
+    TOOL --> CONN["Git · Jira · Confluence · CI/CD"]
+    TOOL --> TEST["Development / QA Harnesses"]
+    W --> AUDIT["Evidence Ledger + Observability"]
+    P["Versioned Process Packages"] --> W
+    P --> DEV["INPROOM Dev / SDLC"]
+    P --> QA["INPROOM Test / STLC"]
+    P --> FLOW["INPROOM Flow / Future Processes"]
+```
+
+*Conceptual architecture; components and service boundaries may evolve during implementation. See the [detailed architecture and technology choices](docs/architecture/overview.md) and [editable diagram collection](docs/architecture/diagrams.md).*
+
+## Platform capabilities
+
+| Area | Intended behavior |
+|---|---|
+| **Project workspace** | Create new or migration projects; connect authorized source systems and define project-specific governance. |
+| **Knowledge fabric** | Version originals, index code and documents, build graph relationships and vector/lexical retrieval, and generate source-linked Markdown memory snapshots. |
+| **Requirements intelligence** | Convert requirements into proposed epics, Jira stories, acceptance criteria and dependencies; publish only after approval. |
+| **Sprint intelligence** | Identify ambiguous items, impacted components, missing evidence, risks and implementation readiness. |
+| **Architecture documentation** | Produce editable Mermaid diagrams and rendered visuals for reviewed Jira/Confluence updates. |
+| **Development & PR verification** | Support developers or sandboxed AI assistance; compare actual PR diffs, checks and tests to approved expectations. |
+| **Release & STLC** | Compose governed release candidates, propose QA work, select regression scope, capture real test results, defects and QA sign-off. |
+| **Model gateway** | Route tasks to approved frontier models, customer-supplied API credentials or private/local LLMs through consistent contracts. |
+| **Security & audit** | Tenant/source permissions, encrypted credentials, restricted tools, explicit approvals, append-only activity evidence and recovery. |
+
+### Knowledge is more than a chatbot
+
+```mermaid
+flowchart LR
+    IN["Git · Jira · Confluence · Files"] --> SOURCE["Canonical versioned sources"]
+    SOURCE --> INDEX["Parse · Chunk · Index"]
+    INDEX --> V["Hybrid vector retrieval"]
+    INDEX --> G["Knowledge relationships"]
+    SOURCE --> M["Markdown memory snapshots"]
+    V --> R["ACL-aware, cited retrieval"]
+    G --> R
+    M --> R
+    R --> AGENT["Grounded planning and verification agents"]
+```
+
+The **canonical source and its provenance remain authoritative**. Embeddings, graph edges and Markdown memory are reconstructable projections—not an independent source of truth. For existing-project migration, inferred history must be distinguished from verified links.
+
+## Model choice and execution safety
+
+INPROOM is designed for customer-configurable model routing: approved cloud frontier APIs, **bring your own API key (BYOK)**, or private/local endpoints. A consumer chat subscription does not necessarily include API usage. Customer secrets must be encrypted, brokered at execution time and excluded from prompts, source indexes and logs.
+
+The development and QA **harnesses are controlled tool-execution frameworks**, not inherently separate foundation models. AI may propose code changes or tests, but verification requires actual repository diffs, CI signals, executed checks and traceable evidence. No autonomous production deployment is enabled by default.
 
 ## Product family
 
-- **INPROOM Core:** configurable process orchestration and knowledge services.
-- **INPROOM Dev:** SDLC process package (first delivery).
-- **INPROOM Test:** STLC and QA automation (second delivery).
-- **INPROOM Flow:** future general business processes.
+| Package | Focus | Sequence |
+|---|---|---|
+| **INPROOM Core** | Process definitions, orchestration, knowledge, models, governance and integrations | Foundation |
+| **INPROOM Dev** | Requirements → planning → implementation → PR → release candidate | First use case: SDLC |
+| **INPROOM Test** | QA plans, tests, automation, defect loops and sign-off | Second use case: STLC |
+| **INPROOM Flow** | Configurable enterprise workflows beyond software engineering | Future expansion |
 
-All proposed tools, vendor choices and features remain subject to architectural validation, security review and implementation.
+## Reference technology stack
+
+This is a **proposed stack**, not a declaration that these services are deployed.
+
+| Layer | Reference options |
+|---|---|
+| Web control center | React · TypeScript · Next.js |
+| API and service contracts | Python · FastAPI · Pydantic |
+| Workflow orchestration | Temporal (to evaluate) |
+| Relational metadata and retrieval | PostgreSQL · pgvector; graph projection as needed |
+| Canonical documents and evidence | S3-compatible object store / MinIO |
+| Model access | Provider-neutral gateway · frontier API adapters · vLLM/Ollama |
+| Identity and secrets | OIDC/Keycloak or managed IdP · KMS-backed credential broker |
+| Execution | Restricted workers / isolated code and test sandboxes |
+| Monitoring | OpenTelemetry · Prometheus · Grafana |
+| Deployment | Containers; SaaS, dedicated cloud, hybrid or on-prem options |
+
+Technical decisions and trade-offs are tracked in the [architecture decision register](docs/development/decisions.md).
+
+## Delivery roadmap
+
+```mermaid
+flowchart LR
+    A["A · Foundation<br/>Projects + connectors + knowledge"] --> B["B · SDLC MVP<br/>Approved Jira work + sprint plans"]
+    B --> C["C · Development evidence<br/>PR review + release candidate"]
+    C --> D["D · STLC<br/>QA planning + test harness + sign-off"]
+    D --> E["E · Process expansion<br/>Reusable business workflow packs"]
+```
+
+The immediate MVP proof is **one real project** whose source documents and repositories can be indexed, whose requirements become **approved** Jira work items, and whose sprint plans are grounded in retrievable evidence.
+
+See the [delivery roadmap and acceptance gates](docs/development/roadmap.md). There is no committed release schedule until the implementation plan is reviewed.
+
+## Documentation
+
+| Start here | Description |
+|---|---|
+| [High-level architecture](docs/architecture/overview.md) | Services, reference technology stack, deployment choices and data boundaries |
+| [Complete lifecycle specification](docs/lifecycle/complete-lifecycle.md) | Fourteen controlled stages from onboarding through QA sign-off and feedback |
+| [SDLC use cases](docs/use-cases/sdlc.md) | Project migration, requirements, sprint intelligence, code and PR verification |
+| [STLC use cases](docs/use-cases/stlc.md) | QA stories, test plans, manual/automated testing, defects and sign-off |
+| [Mermaid architecture diagrams](docs/architecture/diagrams.md) | Editable architecture, knowledge and execution flowcharts |
+| [Development roadmap](docs/development/roadmap.md) | Epics, milestones and MVP exit criteria |
+| [Architecture decisions](docs/development/decisions.md) | Proposed decisions and items requiring validation |
+
+## Repository and contributor guidance
+
+This repository currently holds the **INPROOM design baseline**. Application code, setup scripts, container manifests and runnable development instructions will be documented once they exist. Please do not assume that an app is already installable from this README.
+
+For any engineering contribution:
+
+1. Keep requirements, architecture, diagrams and implementation contracts synchronized.
+2. Propose changes with source links, expected behavior and test evidence.
+3. Prefer pull requests and reviewer approval even when the repository permits direct pushes.
+4. Never commit customer documents without authorization, private keys, tokens, `.env` credentials or sensitive data.
+5. Preserve tenant boundaries, source-level ACLs, approval records and auditable external writes.
+
+## Vision
+
+**INPROOM is not intended to replace Git, Jira, Confluence or existing test tools.** It is the intelligent, human-governed layer that connects them—understands the project, proposes the next action, verifies the evidence and continuously improves process context.
+
+<div align="center">
+
+**INPROOM · Intelligent Process Orchestration & Management**  
+*by ThinkHiveLabs*
+
+</div>
