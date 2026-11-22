@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>INPROOM UX Concept — Review Prototype</title>
+<style>
+:root{--navy:#142940;--blue:#3169e6;--canvas:#f6f8fc;--text:#243448;--muted:#66758b;--border:#e4eaf2}*{box-sizing:border-box}
+body{margin:0;background:var(--canvas);font:14px/1.55 Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:var(--text)}
+header{display:flex;gap:18px;align-items:center;justify-content:space-between;padding:16px 22px;background:var(--navy);color:white;flex-wrap:wrap}
+header strong{font-size:22px;letter-spacing:.06em}header small{color:#b6c5d9}main{max-width:1480px;margin:auto;padding:26px}
+nav{display:flex;gap:9px;flex-wrap:wrap;margin:20px 0}button{font:inherit;cursor:pointer;border:1px solid var(--border);background:white;padding:11px 16px;border-radius:9px;color:var(--text)}button[aria-selected=true]{background:var(--blue);border-color:var(--blue);color:white;font-weight:700}
+h1{font-size:27px;margin:0 0 7px}p{color:var(--muted);margin:0 0 18px}.panel{background:white;padding:12px;border:1px solid var(--border);border-radius:14px;box-shadow:0 6px 25px rgba(20,41,64,.04)}
+.panel img{display:block;width:100%;height:auto;border-radius:7px}.note{padding:14px 18px;margin:16px 0;background:#e9f2ff;border-radius:10px;color:#183354}
+footer{color:var(--muted);padding:10px 0 25px}a{color:var(--blue)}button:focus-visible,a:focus-visible{outline:3px solid #0d9488;outline-offset:3px}
+@media(max-width:650px){main{padding:14px}header{padding:12px 16px}}
+</style></head>
+<body><header><div><strong>INPROOM</strong> <small>by ThinkHiveLabs</small></div><div>Product UX concept · Static demo</div></header>
+<main><h1>Experience concepts</h1><p>Review the information hierarchy for the SDLC-first, STLC-second product. These are illustrative screens, not a connected application.</p>
+<nav role="tablist" aria-label="Concept screens">
+<button type="button" role="tab" id="tab-0" aria-controls="panel" aria-selected="true" data-i="0">Project overview</button>
+<button type="button" role="tab" id="tab-1" aria-controls="panel" aria-selected="false" data-i="1">Requirements studio</button>
+<button type="button" role="tab" id="tab-2" aria-controls="panel" aria-selected="false" data-i="2">Sprint / PR review</button>
+<button type="button" role="tab" id="tab-3" aria-controls="panel" aria-selected="false" data-i="3">QA Center</button>
+</nav>
+<div id="panel" class="panel" role="tabpanel" aria-labelledby="tab-0">
+<img id="screen" alt="INPROOM project overview visual mockup" src="../visuals/01-project-overview.svg">
+</div>
+<div class="note" id="description">Overview: project health, source freshness, approvals, and pending decisions.</div>
+<footer>No backend, accounts, GitHub, Jira, Confluence, live data or working approval actions are connected in this prototype. See <a href="../README.md">UX specification</a> for actual interaction requirements.</footer></main>
+<script>
+const screens=[
+["01-project-overview.svg","Project Overview","Overview: project health, source freshness, approvals, and pending decisions."],
+["02-requirements-studio.svg","Requirements Studio","Review source-backed AI drafts, edit epics and stories, and preview approved Jira publication."],
+["03-sprint-pr-review.svg","Sprint and PR Review","Inspect sprint readiness, linked acceptance criteria, actual code/CI evidence and unresolved gaps."],
+["04-qa-center.svg","QA Center","Review release-scoped QA work, evidence coverage, defects and sign-off blockers."]];
+const buttons=[...document.querySelectorAll('[role=tab]')],screen=document.getElementById('screen'),p=document.getElementById('panel'),description=document.getElementById('description');
+function select(i){buttons.forEach((b,n)=>b.setAttribute('aria-selected',n===i?'true':'false'));screen.src='../visuals/'+screens[i][0];screen.alt='INPROOM '+screens[i][1]+' concept mockup';description.textContent=screens[i][2];p.setAttribute('aria-labelledby','tab-'+i);}
+buttons.forEach((b,i)=>b.addEventListener('click',()=>select(i)));
+document.querySelector('nav').addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight'].includes(e.key))return;e.preventDefault();let n=buttons.findIndex(b=>b.getAttribute('aria-selected')==='true');n=(n+(e.key==='ArrowRight'?1:buttons.length-1))%buttons.length;select(n);buttons[n].focus();});
+</script></body></html>
