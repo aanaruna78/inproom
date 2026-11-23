@@ -62,6 +62,16 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/v1/me
 
 The realm is imported only when Keycloak starts without existing data. After changing `infra/local/keycloak/inproom-realm.json` run `docker compose --env-file .env -f infra/local/docker-compose.yml up -d --force-recreate keycloak`.
 
+### Web sign-in and end-to-end tests
+
+`make api` + `make web`, then open http://localhost:3000/workspaces — you are redirected to Keycloak (Authorization Code + PKCE, client `inproom-web`). Sign in as one of the demo users above. The web server keeps the API access token in its encrypted session cookie and never exposes it to browser JavaScript.
+
+```bash
+make e2e      # Playwright, headless Google Chrome; starts the API and a production web build if not running
+```
+
+Web settings (in `.env`): `AUTH_SECRET` (local value only — generate one with `npx auth secret` for any shared environment), `AUTH_KEYCLOAK_ISSUER`, `AUTH_KEYCLOAK_ID`, `INPROOM_API_URL`. After changing the API, run `make contracts` and `cd apps/web && npm run gen:api` so the typed client matches (CI checks both).
+
 ### Tenant isolation model
 
 The API connects as the database owner but runs every request transaction as the restricted role `inproom_app` with `app.tenant_id` set from the verified token (`app.db.tenant_session`). Row-level security is **forced** on every tenant table, so a query without a tenant returns no rows. `audit_events` is insert-only for the app role.
