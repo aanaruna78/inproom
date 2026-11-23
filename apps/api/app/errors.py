@@ -46,7 +46,14 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Forbidden)
     async def forbidden(request: Request, exc: Forbidden) -> JSONResponse:
-        return problem(request, 403, "Forbidden", "FORBIDDEN", detail=f"Missing permission: {exc.permission}")
+        return problem(
+            request,
+            403,
+            "Forbidden",
+            exc.code,
+            detail=f"Missing permission: {exc.permission}" if exc.code == "FORBIDDEN" else exc.reason,
+            required_permission=exc.permission,
+        )
 
     @app.exception_handler(NotFound)
     async def not_found(request: Request, exc: NotFound) -> JSONResponse:

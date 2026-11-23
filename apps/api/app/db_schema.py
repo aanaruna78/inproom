@@ -35,6 +35,20 @@ TENANT_SCOPED_TABLES = (
     "audit_events",
     "outbox_events",
     "idempotency_keys",
+    "tenant_users",
+)
+
+# Project roles allowed in project_members (mirrors app.authz.policy.PROJECT_ROLES; checked by a unit test).
+PROJECT_ROLE_VALUES = (
+    "project_admin",
+    "product_owner",
+    "tech_lead",
+    "developer",
+    "reviewer",
+    "qa_lead",
+    "tester",
+    "release_manager",
+    "viewer",
 )
 
 
@@ -108,6 +122,9 @@ project_members = Table(
     Column("added_by", Text, nullable=False),
     Column("added_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     PrimaryKeyConstraint("project_id", "user_id", "role", name="pk_project_members"),
+    CheckConstraint(
+        "role IN (" + ",".join(f"'{r}'" for r in PROJECT_ROLE_VALUES) + ")", name="ck_project_members_role"
+    ),
     ForeignKeyConstraint(
         ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_members_project"
     ),
@@ -173,7 +190,21 @@ idempotency_keys = Table(
     CheckConstraint("char_length(key) BETWEEN 1 AND 128", name="ck_idempotency_key_len"),
 )
 
+# Tenant user directory (INPROOM-20): users are registered on GET /v1/me; members can only be added from here.
+tenant_users = Table(
+    "tenant_users",
+    metadata,
+    Column("tenant_id", UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False),
+    Column("user_id", Text, nullable=False),
+    Column("email", Text),
+    Column("display_name", Text),
+    Column("first_seen_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("last_seen_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("tenant_id", "user_id", name="pk_tenant_users"),
+)
+
 
 Index("ix_audit_events_tenant_time", audit_events.c.tenant_id, audit_events.c.occurred_at)
 Index("ix_outbox_unpublished", outbox_events.c.created_at, postgresql_where=text("published_at IS NULL"))
 Index("ix_idempotency_created", idempotency_keys.c.created_at)
+Index("ix_tenant_users_email", tenant_users.c.tenant_id, tenant_users.c.email)

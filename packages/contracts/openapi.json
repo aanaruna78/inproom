@@ -46,6 +46,7 @@
             "title": "Email"
           },
           "roles": {
+            "description": "Tenant-level roles honoured from the token (tenant_admin, auditor)",
             "items": {
               "type": "string"
             },

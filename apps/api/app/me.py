@@ -1,9 +1,10 @@
 import uuid
 
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.auth import CurrentPrincipal
+from app.authz import policy
 
 router = APIRouter(prefix="/v1", tags=["identity"])
 
@@ -12,7 +13,7 @@ class Me(BaseModel):
     user_id: str
     tenant_id: uuid.UUID
     email: str | None
-    roles: list[str]
+    roles: list[str] = Field(description="Tenant-level roles honoured from the token (tenant_admin, auditor)")
 
 
 @router.get(
@@ -26,5 +27,5 @@ def me(principal: CurrentPrincipal) -> Me:
         user_id=principal.user_id,
         tenant_id=principal.tenant_id,
         email=principal.email,
-        roles=sorted(principal.roles),
+        roles=sorted(policy.tenant_roles(principal.roles)),
     )

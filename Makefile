@@ -9,7 +9,7 @@ include .env
 export
 endif
 
-.PHONY: help doctor setup up down reset migrate api web test test-api test-security e2e lint format contracts contracts-check
+.PHONY: help doctor setup up down reset migrate api web test test-api test-security e2e lint format contracts contracts-check rbac-matrix rbac-matrix-check
 
 help: ## List available commands
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  \033[36m%-16s\033[0m %s\n",$$1,$$2}'
@@ -40,7 +40,7 @@ api: ## Run the API with auto-reload on :8000
 web: ## Run the web app on :3000
 	$(WEB) INPROOM_API_URL=http://localhost:$${API_PORT:-8000} npm run dev -- --port $${WEB_PORT:-3000}
 
-test: test-api contracts-check ## Run all tests and checks (stack must be up and migrated)
+test: test-api contracts-check rbac-matrix-check ## Run all tests and checks (stack must be up and migrated)
 	$(WEB) npm run typecheck
 
 test-api: ## API unit + integration tests
@@ -64,3 +64,9 @@ contracts: ## Regenerate packages/contracts/openapi.json
 
 contracts-check: ## Fail if the committed OpenAPI contract is out of date
 	$(API) uv run python scripts/export_openapi.py --check
+
+rbac-matrix: ## Regenerate docs/security/rbac-matrix.md from the authorization policy
+	$(API) uv run python scripts/export_rbac_matrix.py
+
+rbac-matrix-check: ## Fail if the committed role matrix doc is out of date
+	$(API) uv run python scripts/export_rbac_matrix.py --check

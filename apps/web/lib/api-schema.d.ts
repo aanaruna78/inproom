@@ -146,7 +146,10 @@ export interface components {
         Me: {
             /** Email */
             email: string | null;
-            /** Roles */
+            /**
+             * Roles
+             * @description Tenant-level roles honoured from the token (tenant_admin, auditor)
+             */
             roles: string[];
             /**
              * Tenant Id

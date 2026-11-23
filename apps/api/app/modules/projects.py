@@ -14,8 +14,8 @@ from sqlalchemy.exc import IntegrityError
 
 from app import audit
 from app.api_errors import conflict, precondition_failed, precondition_required, unprocessable
-from app.auth import CurrentPrincipal, Principal
-from app.authz import ALL, ROLE_PERMISSIONS, deny_not_found, require
+from app.auth import CurrentPrincipal
+from app.authz import authorize, deny_not_found, policy, require_tenant
 from app.config import get_settings
 from app.db import tenant_session
 from app.db_schema import outbox_events, project_members, project_settings_versions, projects, workspaces
@@ -26,7 +26,7 @@ from app.pagination import MAX_LIMIT, Page, apply_keyset, next_cursor
 router = APIRouter(tags=["projects"])
 
 PROBLEM = {"description": "problem+json"}
-PROJECT_ADMIN_ROLE = "project_admin"
+PROJECT_ADMIN_ROLE = policy.PROJECT_ADMIN
 
 
 class ProjectCreate(BaseModel):
@@ -76,10 +76,6 @@ def settings_hash(settings: dict[str, Any]) -> str:
     return "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def is_tenant_admin(principal: Principal) -> bool:
-    return any(ALL in ROLE_PERMISSIONS.get(role, frozenset()) for role in principal.roles)
-
-
 def etag(version: int) -> str:
     return f'"{version}"'
 
@@ -93,47 +89,7 @@ def parse_if_match(value: str | None) -> int:
     return int(match.group(1))
 
 
-def _member_roles(conn: Connection, principal: Principal, project_id: uuid.UUID) -> list[str]:
-    stmt = select(project_members.c.role).where(
-        project_members.c.tenant_id == principal.tenant_id,
-        project_members.c.project_id == project_id,
-        project_members.c.user_id == principal.user_id,
-    )
-    return sorted(conn.execute(stmt).scalars())
-
-
-def _load_visible_project(
-    conn: Connection, principal: Principal, project_id: uuid.UUID, request: Request, action: str
-) -> tuple[dict, list[str]]:
-    """Return the project if the caller may see it: tenant admins see all, others need membership.
-    Anything else (missing, other tenant, not a member) is the same 404 and is audited as DENIED."""
-    stmt = select(projects).where(projects.c.tenant_id == principal.tenant_id, projects.c.id == project_id)
-    row = conn.execute(stmt).mappings().first()
-    roles = _member_roles(conn, principal, project_id) if row is not None else []
-    if row is None or (not roles and not is_tenant_admin(principal)):
-        raise deny_not_found(
-            principal,
-            request,
-            action=action,
-            resource="Project",
-            target_type="project",
-            target_id=str(project_id),
-        )
-    return dict(row), roles
-
-
-def _require_project_admin(
-    request: Request, principal: Principal, roles: list[str], project_id: uuid.UUID
-) -> None:
-    if is_tenant_admin(principal) or PROJECT_ADMIN_ROLE in roles:
-        return
-    # Re-use the guard so the denial is audited consistently.
-    require(
-        principal, f"project.admin:{project_id}", request, target_type="project", target_id=str(project_id)
-    )
-
-
-def _detail(conn: Connection, row: dict, roles: list[str]) -> dict[str, Any]:
+def _detail(conn: Connection, row: dict, roles: list[str] | frozenset[str]) -> dict[str, Any]:
     settings = conn.execute(
         select(project_settings_versions.c.settings).where(
             project_settings_versions.c.tenant_id == row["tenant_id"],
@@ -141,7 +97,7 @@ def _detail(conn: Connection, row: dict, roles: list[str]) -> dict[str, Any]:
             project_settings_versions.c.version == row["settings_version"],
         )
     ).scalar_one()
-    return ProjectDetail.model_validate(row | {"settings": settings, "my_roles": roles}).model_dump(
+    return ProjectDetail.model_validate(row | {"settings": settings, "my_roles": sorted(roles)}).model_dump(
         mode="json"
     )
 
@@ -160,7 +116,7 @@ def create_project(
     payload: Annotated[ProjectCreate, Body()],
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ):
-    require(
+    require_tenant(
         principal, "workspace.project.create", request, target_type="workspace", target_id=str(workspace_id)
     )
     body = payload.model_dump()
@@ -279,11 +235,11 @@ def list_projects(
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 50,
     cursor: str | None = None,
 ) -> Page[Project]:
-    require(principal, "project.read", request, target_type="workspace", target_id=str(workspace_id))
+    require_tenant(principal, "tenant.read", request, target_type="workspace", target_id=str(workspace_id))
     stmt = select(projects).where(
         projects.c.tenant_id == principal.tenant_id, projects.c.workspace_id == workspace_id
     )
-    if not is_tenant_admin(principal):
+    if not policy.sees_every_project(principal.roles):
         stmt = stmt.where(
             exists().where(
                 project_members.c.tenant_id == principal.tenant_id,
@@ -318,11 +274,10 @@ def list_projects(
     responses={404: PROBLEM},
 )
 def get_project(request: Request, response: Response, principal: CurrentPrincipal, project_id: uuid.UUID):
-    require(principal, "project.read", request, target_type="project", target_id=str(project_id))
     with tenant_session(principal.tenant_id) as conn:
-        row, roles = _load_visible_project(conn, principal, project_id, request, "project.read")
-        result = _detail(conn, row, roles)
-    response.headers["ETag"] = etag(row["version"])
+        access = authorize(conn, principal, request, "project.read", project_id)
+        result = _detail(conn, access.project, access.member_roles)
+    response.headers["ETag"] = etag(access.project["version"])
     return result
 
 
@@ -347,8 +302,8 @@ def update_project(
         raise unprocessable("NAME_REQUIRED", "name cannot be null")
     expected = parse_if_match(if_match)
     with tenant_session(principal.tenant_id) as conn:
-        row, roles = _load_visible_project(conn, principal, project_id, request, "project.update")
-        _require_project_admin(request, principal, roles, project_id)
+        access = authorize(conn, principal, request, "project.update", project_id)
+        row, roles = access.project, access.member_roles
         if row["status"] == "ARCHIVED":
             raise conflict("PROJECT_ARCHIVED", "Archived projects cannot be modified")
         updated = (
@@ -390,8 +345,8 @@ def update_project(
 )
 def archive_project(request: Request, response: Response, principal: CurrentPrincipal, project_id: uuid.UUID):
     with tenant_session(principal.tenant_id) as conn:
-        row, roles = _load_visible_project(conn, principal, project_id, request, "project.archive")
-        _require_project_admin(request, principal, roles, project_id)
+        access = authorize(conn, principal, request, "project.archive", project_id)
+        row, roles = access.project, access.member_roles
         if row["status"] != "ARCHIVED":
             row = dict(
                 conn.execute(

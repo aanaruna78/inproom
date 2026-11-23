@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from app.api_errors import conflict
 from app.audit import record
 from app.auth import CurrentPrincipal, Principal
-from app.authz import require
+from app.authz import require_tenant
 from app.db import tenant_session
 from app.db_schema import outbox_events, tenants, workspaces
 from app.idempotency import request_fingerprint, run_idempotent
@@ -65,7 +65,7 @@ def create_workspace(
     payload: Annotated[WorkspaceCreate, Body()],
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ):
-    require(principal, "tenant.workspace.create", request, target_type="workspace")
+    require_tenant(principal, "tenant.workspace.create", request, target_type="workspace")
     body = payload.model_dump()
 
     def handler(conn: Connection) -> tuple[int, dict]:
@@ -114,7 +114,7 @@ def list_workspaces(
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 50,
     cursor: str | None = None,
 ) -> Page[Workspace]:
-    require(principal, "tenant.read", request, target_type="workspace")
+    require_tenant(principal, "tenant.read", request, target_type="workspace")
     # Explicit tenant filter in addition to row-level security (defence in depth).
     base = select(workspaces).where(workspaces.c.tenant_id == principal.tenant_id)
     stmt = apply_keyset(base, workspaces.c.created_at, workspaces.c.id, cursor, limit)
