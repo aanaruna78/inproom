@@ -147,3 +147,30 @@ test("adding someone who never signed in explains what to do", async ({ browser,
   await expect(add.getByLabel("Email")).toHaveAttribute("aria-invalid", "true");
   await shot(admin, "rbac-10-unknown-user");
 });
+
+test("a failed removal replaces an earlier save confirmation in the same row (INPROOM-101)", async ({
+  browser,
+  request,
+}) => {
+  const run = Date.now().toString(36).slice(-5);
+  const alice = { Authorization: `Bearer ${await token(request, "alice")}` };
+  const ws = await (
+    await request.post(`${API}/v1/workspaces`, { headers: alice, data: { slug: `fb-${run}`, name: `FB ${run}` } })
+  ).json();
+  const project = await (
+    await request.post(`${API}/v1/workspaces/${ws.id}/projects`, {
+      headers: alice,
+      data: { key: `FB${run.toUpperCase().replace(/[^A-Z0-9]/g, "")}`.slice(0, 10), name: `Feedback ${run}` },
+    })
+  ).json();
+  const admin = await signedInPage(browser, `/projects/${project.id}/members`, "alice");
+  const row = memberRow(admin, "alice@tenant-a.local");
+  await row.getByLabel("reviewer", { exact: true }).check();
+  await row.getByRole("button", { name: "Save roles" }).click();
+  await expect(row.getByTestId("member-success")).toContainText("Roles saved: project_admin, reviewer");
+  await row.getByRole("button", { name: "Remove" }).click();
+  await row.getByRole("button", { name: "Confirm remove" }).click();
+  await expect(row.getByTestId("member-error")).toContainText("at least one project_admin");
+  await expect(row.getByTestId("member-success")).toHaveCount(0);
+  await shot(admin, "rbac-11-latest-result-wins");
+});

@@ -2,7 +2,6 @@ import { expect, test } from "@playwright/test";
 
 // INPROOM-20 independent QA (author: QA). Defect INPROOM-101 (QA-20-03).
 test("successful role save replaces a previous failed removal message", async ({ page, request }) => {
-  test.fail(true, "INPROOM-101 open");
   const tokenUrl = "http://localhost:18080/realms/inproom/protocol/openid-connect/token";
   async function auth(user: string) {
     const response = await request.post(tokenUrl, {
