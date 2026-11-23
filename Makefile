@@ -46,8 +46,9 @@ test: test-api contracts-check rbac-matrix-check ## Run all tests and checks (st
 test-api: ## API unit + integration tests
 	$(API) uv run pytest -v
 
-test-security: ## Tenant isolation suite; writes apps/api/build/isolation-matrix.md
-	$(API) INPROOM_ISOLATION_REPORT=build/isolation-matrix.md uv run pytest tests/security -v
+test-security: ## Tenant isolation + RBAC suites; writes apps/api/build/{isolation-matrix,rbac-matrix-results}.md
+	$(API) INPROOM_ISOLATION_REPORT=build/isolation-matrix.md INPROOM_RBAC_REPORT=build/rbac-matrix-results.md \
+		uv run pytest tests/security -v
 
 e2e: ## Playwright end-to-end tests (stack up + migrated; starts API and web if not running)
 	$(WEB) npx playwright test
