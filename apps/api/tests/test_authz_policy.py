@@ -139,3 +139,29 @@ def test_db_role_constraint_matches_policy():
 
 def test_published_matrix_doc_is_current():
     assert DOC.exists() and DOC.read_text() == render(), "run `make rbac-matrix` and commit the result"
+
+
+# ---- INPROOM-99 (QA-20-01): auditor is a read-only cap, tenant_admin overrides it
+
+
+@pytest.mark.parametrize("role", policy.PROJECT_ROLES)
+def test_auditor_stays_read_only_whatever_project_role_they_hold(role):
+    auditor = frozenset({policy.AUDITOR})
+    assert policy.project_permissions(auditor, frozenset({role})) == {"project.read", "audit.read"}
+    assert policy.approval_scopes(auditor, frozenset({role})) == NONE
+    for permission in (
+        "project.update",
+        "project.archive",
+        "project.member.manage",
+        "artifact.propose",
+        "process.execute",
+    ):
+        assert policy.decide(auditor, frozenset({role}), permission).code == policy.FORBIDDEN
+    for scope in policy.APPROVER_SCOPES:
+        assert not policy.decide(auditor, frozenset({role}), "approval.decide", scope=scope).allowed
+
+
+def test_tenant_admin_overrides_the_auditor_cap():
+    both = frozenset({policy.TENANT_ADMIN, policy.AUDITOR})
+    assert policy.project_permissions(both, NONE) == set(policy.PROJECT_PERMISSIONS)
+    assert policy.decide(both, NONE, "project.update").allowed

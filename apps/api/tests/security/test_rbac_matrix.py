@@ -26,6 +26,7 @@ TENANT_EXPECTED = {
     "tenant.workspace.create": {"tenant_admin"},
     "workspace.project.create": {"tenant_admin"},
 }
+AUDITOR_CAP = {"project.read", "audit.read"}
 # Agreed project rules for tenant roles without membership.
 TENANT_ROLE_IN_PROJECT = {
     "tenant_admin": set(EXPECTED),  # acts as project_admin
@@ -66,6 +67,8 @@ ACTORS: dict[str, tuple[tuple[str, ...], str | None, bool]] = {
     "tenant member, not in project": ((), None, True),
     "token claims developer, not in project": (("developer", "project_admin"), None, True),
     "other tenant's tenant_admin": (("tenant_admin",), None, False),
+    # INPROOM-99: an auditor who is also a project member stays read-only, whatever the project role.
+    **{f"auditor + member:{r}": (("auditor",), r, True) for r in policy.PROJECT_ROLES},
 }
 
 
@@ -118,6 +121,8 @@ def _project_permissions(roles: tuple[str, ...], member: str | None) -> set[str]
         if role in TENANT_ROLE_IN_PROJECT:  # project role names in the token grant nothing
             visible = True
             granted |= TENANT_ROLE_IN_PROJECT[role]
+    if "auditor" in roles and "tenant_admin" not in roles:
+        granted &= AUDITOR_CAP  # agreed rule: auditors are read-only everywhere
     return granted if visible else None
 
 

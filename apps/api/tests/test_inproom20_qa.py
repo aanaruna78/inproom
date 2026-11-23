@@ -11,7 +11,6 @@ env = helpers.env
 pytestmark = pytest.mark.integration
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-99 open")
 def test_auditor_with_project_admin_membership_remains_read_only(env):
     assert env.put("dave", "project_admin").status_code == 200
     response = env.client.patch(
@@ -23,7 +22,6 @@ def test_auditor_with_project_admin_membership_remains_read_only(env):
     assert response.json()["required_permission"] == "project.update"
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-99 open")
 def test_auditor_permissions_do_not_inherit_project_membership_writes(env):
     assert env.put("dave", "project_admin").status_code == 200
     response = env.client.get(f"/v1/projects/{env.pid}/permissions/me", headers=env.h("dave", ("auditor",)))
