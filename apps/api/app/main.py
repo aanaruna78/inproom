@@ -8,6 +8,8 @@ from app.config import get_settings
 from app.errors import install_error_handlers
 from app.health import router as health_router
 from app.me import router as me_router
+from app.modules.projects import router as projects_router
+from app.modules.workspaces import router as workspaces_router
 
 TRACE_HEADER = "X-Trace-Id"
 _SAFE_TRACE = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
@@ -32,6 +34,8 @@ def create_app() -> FastAPI:
     install_error_handlers(app)
     app.include_router(health_router)
     app.include_router(me_router)
+    app.include_router(workspaces_router)
+    app.include_router(projects_router)
     return app
 
 
