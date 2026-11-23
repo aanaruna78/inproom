@@ -33,24 +33,23 @@ def build_probe_app(fail_after_write: dict[str, bool]):
     ):
         require(principal, "probe.create", request, target_type="probe")
 
-        def handler():
-            with tenant_session(principal.tenant_id) as conn:
-                event_id = conn.execute(
-                    insert(outbox_events)
-                    .values(tenant_id=principal.tenant_id, type="probe.created", payload=body)
-                    .returning(outbox_events.c.id)
-                ).scalar_one()
-                record(
-                    conn,
-                    principal,
-                    "probe.create",
-                    "probe",
-                    str(event_id),
-                    trace_id=request.state.trace_id,
-                    payload=body,
-                )
-                if fail_after_write.get("fail"):
-                    raise RuntimeError("forced failure after write")
+        def handler(conn):
+            event_id = conn.execute(
+                insert(outbox_events)
+                .values(tenant_id=principal.tenant_id, type="probe.created", payload=body)
+                .returning(outbox_events.c.id)
+            ).scalar_one()
+            record(
+                conn,
+                principal,
+                "probe.create",
+                "probe",
+                str(event_id),
+                trace_id=request.state.trace_id,
+                payload=body,
+            )
+            if fail_after_write.get("fail"):
+                raise RuntimeError("forced failure after write")
             return 201, {"id": str(event_id), "name": body.get("name")}
 
         fp = request_fingerprint("POST", "/test/probe", body)
@@ -124,7 +123,7 @@ def test_concurrent_duplicate_gets_409(make_tenant, test_database_url, monkeypat
     entered, release = threading.Event(), threading.Event()
     results: dict[str, object] = {}
 
-    def slow_handler():
+    def slow_handler(conn):
         entered.set()
         release.wait(5)
         return 201, {"ok": True}
@@ -136,7 +135,7 @@ def test_concurrent_duplicate_gets_409(make_tenant, test_database_url, monkeypat
     t.start()
     assert entered.wait(5)
     with pytest.raises(IdempotencyError) as exc:
-        run_idempotent(tid, "race", "fp", lambda: (201, {"ok": True}))
+        run_idempotent(tid, "race", "fp", lambda conn: (201, {"ok": True}))
     release.set()
     t.join(5)
     assert exc.value.status == 409 and exc.value.code == "IDEMPOTENCY_IN_PROGRESS"
