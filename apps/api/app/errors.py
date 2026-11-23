@@ -28,7 +28,13 @@ def problem(
 
 def install_error_handlers(app: FastAPI) -> None:
     # Imported here to avoid import cycles (these modules use `problem`-free exceptions only).
+    from app.api_errors import ApiError
     from app.auth import AuthError
+
+    @app.exception_handler(ApiError)
+    async def api_error(request: Request, exc: ApiError) -> JSONResponse:
+        return problem(request, exc.status, exc.title, exc.code, detail=exc.detail)
+
     from app.authz import Forbidden, NotFound
     from app.idempotency import IdempotencyError
 

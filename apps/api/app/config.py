@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     version: str = "0.1.0"
     database_url: str = "postgresql+psycopg://inproom:inproom@localhost:55432/inproom"
     db_connect_timeout_s: int = 2
+    workspace_project_limit: int = 50
 
     # OIDC resource-server settings (defaults target the local Keycloak realm).
     oidc_issuer: str = "http://localhost:18080/realms/inproom"
