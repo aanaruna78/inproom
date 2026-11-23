@@ -1,11 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { archiveProject, updateProject } from "@/app/actions";
+import { changeLifecycle, updateProject } from "@/app/actions";
 import { ActionForm } from "@/components/ActionForm";
 import { apiClient } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
+
+// Mirrors the API's transition table (INPROOM-103) to decide which buttons to show; the API decides.
+const LIFECYCLE: Record<string, ("activate" | "archive" | "restore")[]> = {
+  PENDING_SOURCES: ["activate", "archive"],
+  ACTIVE: ["archive"],
+  ARCHIVED: ["restore"],
+};
 
 export default async function ProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
@@ -53,14 +60,17 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
         </section>
         <section className="card" aria-labelledby="settings">
           <h2 id="settings">Settings v{p.settings_version}</h2>
-          <dl className="facts">
-            {Object.entries(p.settings).map(([k, v]) => (
-              <div key={k} style={{ display: "contents" }}>
-                <dt>{k.replaceAll("_", " ")}</dt>
-                <dd><code>{String(v)}</code></dd>
-              </div>
-            ))}
+          <dl className="facts" data-testid="settings-summary">
+            <dt>Process</dt><dd><code>{p.settings.process_package}</code></dd>
+            <dt>Write mode</dt><dd><code>{p.settings.write_mode}</code></dd>
+            <dt>Approvals</dt><dd>{p.settings.approvals?.required_scopes?.join(", ") || "none"}</dd>
+            <dt>Production</dt><dd>{p.settings.production?.actions_enabled ? "on" : "off"}</dd>
           </dl>
+          <p>
+            <Link href={`/projects/${p.id}/settings`} data-testid="settings-link">
+              {can("project.settings.update") && !archived ? "Edit settings and history" : "View settings and history"}
+            </Link>
+          </p>
         </section>
         {can("project.update") && !archived && (
           <section className="card" aria-labelledby="edit">
@@ -77,17 +87,23 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
             />
           </section>
         )}
-        {can("project.archive") && !archived && (
-          <section className="card" aria-labelledby="archive">
-            <h2 id="archive">Archive</h2>
-            <p className="hint">Archived projects are read-only and stop counting toward the workspace limit.</p>
-            <ActionForm
-              action={archiveProject}
-              testId="archive-project"
-              submitLabel="Archive project"
-              hidden={{ project_id: p.id }}
-              fields={[]}
-            />
+        {can("project.archive") && LIFECYCLE[p.status]?.length > 0 && (
+          <section className="card" aria-labelledby="lifecycle">
+            <h2 id="lifecycle">Lifecycle</h2>
+            <p className="hint">
+              Archived projects are read-only and don&apos;t count toward the workspace limit. Restoring makes the
+              project editable again.
+            </p>
+            {LIFECYCLE[p.status].map((action) => (
+              <ActionForm
+                key={action}
+                action={changeLifecycle}
+                testId={`lifecycle-${action}`}
+                submitLabel={`${action[0].toUpperCase()}${action.slice(1)} project`}
+                hidden={{ project_id: p.id, action }}
+                fields={[{ name: "reason", label: "Reason (optional)", maxLength: 500 }]}
+              />
+            ))}
           </section>
         )}
         {!can("project.update") && (

@@ -88,3 +88,11 @@ form.inline { display: flex; gap: 6px; }
 td button, form.roles button { background: #fff; border: 1px solid #c8d3e1; border-radius: 8px; padding: 6px 10px; cursor: pointer; font: inherit; }
 button.danger { background: var(--red); color: #fff; border-color: var(--red); }
 td { vertical-align: top; }
+
+/* INPROOM-105: settings */
+fieldset.group { border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 10px; margin: 0; }
+fieldset.group legend { font-weight: 700; color: var(--navy); padding: 0 4px; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+input:disabled { background: #eef1f5; color: var(--muted); }
+h3 { font-size: 14px; color: var(--navy); margin: 16px 0 8px; }
+tr[aria-current="true"] td { background: #f0f5ff; }

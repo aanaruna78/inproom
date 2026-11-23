@@ -10,6 +10,11 @@ export type Project = components["schemas"]["Project"];
 export type ProjectDetail = components["schemas"]["ProjectDetail"];
 export type Member = components["schemas"]["Member"];
 export type MyPermissions = components["schemas"]["MyPermissions"];
+export type ProjectSettings = components["schemas"]["ProjectSettings"];
+export type SettingsVersion = components["schemas"]["SettingsVersion"];
+
+export const APPROVAL_SCOPES = ["requirement", "plan", "impact", "test", "release"] as const;
+export const SOURCE_KINDS = ["git", "jira", "confluence", "upload"] as const;
 
 export const PROJECT_ROLES = [
   "project_admin",

@@ -525,10 +525,7 @@ export interface components {
             name: string;
             /** Owner Id */
             owner_id: string;
-            /** Settings */
-            settings: {
-                [key: string]: unknown;
-            };
+            settings: components["schemas"]["ProjectSettings"];
             /** Settings Version */
             settings_version: number;
             /** Status */

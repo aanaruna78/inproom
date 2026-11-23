@@ -666,9 +666,7 @@
             "type": "string"
           },
           "settings": {
-            "additionalProperties": true,
-            "title": "Settings",
-            "type": "object"
+            "$ref": "#/components/schemas/ProjectSettings"
           },
           "settings_version": {
             "title": "Settings Version",

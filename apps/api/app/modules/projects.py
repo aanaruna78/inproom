@@ -58,7 +58,7 @@ class Project(BaseModel):
 
 
 class ProjectDetail(Project):
-    settings: dict[str, Any]
+    settings: settings_module.ProjectSettings
     my_roles: list[str]
 
 

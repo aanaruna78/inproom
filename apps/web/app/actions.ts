@@ -80,15 +80,82 @@ export async function updateProject(_prev: FormState, form: FormData): Promise<F
   return { status: "success", message: `Project renamed to "${data.name}".` };
 }
 
-export async function archiveProject(_prev: FormState, form: FormData): Promise<FormState> {
+const LIFECYCLE_DONE: Record<string, string> = {
+  activate: "Project activated.",
+  archive: "Project archived. It is now read-only.",
+  restore: "Project restored.",
+};
+
+export async function changeLifecycle(_prev: FormState, form: FormData): Promise<FormState> {
   const projectId = String(form.get("project_id"));
+  const action = String(form.get("action")) as "activate" | "archive" | "restore";
+  const submitted = values(form, ["reason"]);
   const api = await apiClient(`/projects/${projectId}`);
-  const { data, error, response } = await api.POST("/v1/projects/{project_id}/archive", {
+  const { data, error, response } = await api.POST("/v1/projects/{project_id}/lifecycle", {
     params: { path: { project_id: projectId } },
+    body: { action, reason: submitted.reason || null },
   });
-  if (error || !data) return problemState(error, response.status);
+  if (error || !data) return problemState(error, response.status, submitted);
   revalidatePath(`/projects/${projectId}`);
-  return { status: "success", message: "Project archived." };
+  revalidatePath(`/projects/${projectId}/settings`);
+  return { status: "success", message: LIFECYCLE_DONE[action] };
+}
+
+// ---------------------------------------------------------------- settings (INPROOM-105)
+
+type FieldError = { loc?: (string | number)[]; msg?: string };
+
+function settingsFromForm(form: FormData) {
+  const list = (name: string) => form.getAll(name).map(String);
+  const num = (name: string) => Number(form.get(name));
+  return {
+    process_package: String(form.get("process_package")),
+    write_mode: String(form.get("write_mode")),
+    model_policy: String(form.get("model_policy")),
+    approvals: {
+      required_scopes: list("approvals.required_scopes"),
+      min_approvers: num("approvals.min_approvers"),
+      expiry_hours: num("approvals.expiry_hours"),
+    },
+    sources: {
+      allowed_kinds: list("sources.allowed_kinds"),
+      max_classification: String(form.get("sources.max_classification")),
+      approve_new_sources: form.get("sources.approve_new_sources") === "on",
+    },
+    production: {
+      actions_enabled: form.get("production.actions_enabled") === "on",
+      environments: String(form.get("production.environments") ?? "")
+        .split(",")
+        .map((e) => e.trim())
+        .filter(Boolean),
+    },
+  };
+}
+
+export async function saveSettings(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const api = await apiClient(`/projects/${projectId}/settings`);
+  const { data, error, response } = await api.PUT("/v1/projects/{project_id}/settings", {
+    params: { path: { project_id: projectId }, header: { "If-Match": `"${form.get("version")}"` } },
+    // The API validates every field; the form only shapes the request.
+    body: { settings: settingsFromForm(form) as never, change_note: String(form.get("change_note") ?? "") || null },
+  });
+  if (error || !data) {
+    const state = problemState(error, response.status);
+    if (state.code === "PRECONDITION_FAILED") {
+      state.message = "Someone else saved these settings while you were editing. Reload to see the latest version.";
+    }
+    const errors = (error as { errors?: FieldError[] } | undefined)?.errors;
+    if (errors?.length) {
+      const where = (e: FieldError) => (e.loc ?? []).filter((l) => l !== "body" && l !== "settings").join(".");
+      state.message = `${state.message}: ${errors.map((e) => `${where(e)} - ${e.msg}`).join("; ")}`;
+    }
+    return state;
+  }
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/projects/${projectId}/settings`);
+  const changed = data.changed_paths.length ? ` Changed: ${data.changed_paths.join(", ")}.` : " Nothing changed.";
+  return { status: "success", message: `Saved settings version ${data.version}.${changed}` };
 }
 
 // ---------------------------------------------------------------- members (INPROOM-96)
