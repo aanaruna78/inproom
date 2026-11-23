@@ -8,9 +8,11 @@ from app.config import get_settings
 from app.errors import install_error_handlers
 from app.health import router as health_router
 from app.me import router as me_router
+from app.modules.connections import router as connections_router
 from app.modules.members import router as members_router
 from app.modules.projects import router as projects_router
 from app.modules.settings import router as settings_router
+from app.modules.sources import router as sources_router
 from app.modules.workspaces import router as workspaces_router
 
 TRACE_HEADER = "X-Trace-Id"
@@ -40,6 +42,8 @@ def create_app() -> FastAPI:
     app.include_router(projects_router)
     app.include_router(members_router)
     app.include_router(settings_router)
+    app.include_router(connections_router)
+    app.include_router(sources_router)
     return app
 
 

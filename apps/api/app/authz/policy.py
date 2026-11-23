@@ -58,6 +58,7 @@ PROJECT_PERMISSIONS: dict[str, Kind] = {
     "project.archive": Kind.ADMIN,
     "project.member.manage": Kind.ADMIN,
     "project.settings.update": Kind.ADMIN,
+    "project.source.manage": Kind.ADMIN,
     "audit.read": Kind.READ,
     "artifact.propose": Kind.PROPOSE,
     "artifact.review": Kind.PROPOSE,
@@ -72,6 +73,7 @@ PROJECT_MATRIX: dict[str, frozenset[str]] = {
     "project.archive": frozenset({PROJECT_ADMIN}),
     "project.member.manage": frozenset({PROJECT_ADMIN}),
     "project.settings.update": frozenset({PROJECT_ADMIN}),
+    "project.source.manage": frozenset({PROJECT_ADMIN}),
     "audit.read": frozenset({PROJECT_ADMIN}),
     "artifact.propose": frozenset(
         {PROJECT_ADMIN, "product_owner", "tech_lead", "developer", "qa_lead", "tester"}

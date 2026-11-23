@@ -33,7 +33,9 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ApiError)
     async def api_error(request: Request, exc: ApiError) -> JSONResponse:
-        return problem(request, exc.status, exc.title, exc.code, detail=exc.detail, **exc.extra)
+        response = problem(request, exc.status, exc.title, exc.code, detail=exc.detail, **exc.extra)
+        response.headers.update(exc.headers)
+        return response
 
     from app.authz import Forbidden, NotFound
     from app.idempotency import IdempotencyError
@@ -69,4 +71,7 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
-        return problem(request, 422, "Request validation failed", "VALIDATION_ERROR", errors=exc.errors())
+        # Only type/loc/msg: `input` would echo submitted values (e.g. a token) back to the caller, and
+        # `ctx` can hold exception objects that are not JSON-serialisable.
+        errors = [{k: e[k] for k in ("type", "loc", "msg") if k in e} for e in exc.errors()]
+        return problem(request, 422, "Request validation failed", "VALIDATION_ERROR", errors=errors)
