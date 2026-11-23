@@ -4,6 +4,44 @@
   "displayName": "INPROOM (local)",
   "sslRequired": "none",
   "registrationAllowed": false,
+  "accessTokenLifespan": 900,
+  "roles": {
+    "realm": [
+      {
+        "name": "tenant_admin"
+      },
+      {
+        "name": "project_admin"
+      },
+      {
+        "name": "product_owner"
+      },
+      {
+        "name": "tech_lead"
+      },
+      {
+        "name": "developer"
+      },
+      {
+        "name": "reviewer"
+      },
+      {
+        "name": "qa_lead"
+      },
+      {
+        "name": "tester"
+      },
+      {
+        "name": "release_manager"
+      },
+      {
+        "name": "auditor"
+      },
+      {
+        "name": "viewer"
+      }
+    ]
+  },
   "clients": [
     {
       "clientId": "inproom-web",
@@ -11,14 +49,161 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
-      "redirectUris": ["http://localhost:3000/*"],
-      "webOrigins": ["http://localhost:3000"],
-      "attributes": { "pkce.code.challenge.method": "S256" }
+      "redirectUris": [
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "tid",
+            "claim.name": "tid",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "inproom-api audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "inproom-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "inproom-dev-cli",
+      "name": "INPROOM local developer CLI (password grant, LOCAL ONLY)",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "tenant id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "tid",
+            "claim.name": "tid",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "inproom-api audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "inproom-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
     },
     {
       "clientId": "inproom-api",
       "name": "INPROOM API (resource server)",
       "bearerOnly": true
+    }
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"unmanagedAttributePolicy\":\"ADMIN_EDIT\",\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{},\"up-username-not-idn-homograph\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"email\",\"displayName\":\"${email}\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false}],\"groups\":[]}"
+          ]
+        }
+      }
+    ]
+  },
+  "users": [
+    {
+      "username": "alice",
+      "email": "alice@tenant-a.local",
+      "firstName": "Alice",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "tid": [
+          "a0000000-0000-4000-8000-00000000000a"
+        ]
+      },
+      "realmRoles": [
+        "tenant_admin"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "alice-local",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "dave",
+      "email": "dave@tenant-a.local",
+      "firstName": "Dave",
+      "lastName": "Developer",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "tid": [
+          "a0000000-0000-4000-8000-00000000000a"
+        ]
+      },
+      "realmRoles": [
+        "developer"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dave-local",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "bob",
+      "email": "bob@tenant-b.local",
+      "firstName": "Bob",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "tid": [
+          "b0000000-0000-4000-8000-00000000000b"
+        ]
+      },
+      "realmRoles": [
+        "tenant_admin"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "bob-local",
+          "temporary": false
+        }
+      ]
     }
   ]
 }

@@ -13,6 +13,17 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://inproom:inproom@localhost:55432/inproom"
     db_connect_timeout_s: int = 2
 
+    # OIDC resource-server settings (defaults target the local Keycloak realm).
+    oidc_issuer: str = "http://localhost:18080/realms/inproom"
+    oidc_audience: str = "inproom-api"
+    oidc_jwks_url: str | None = None
+    oidc_leeway_s: int = 30
+    oidc_jwks_timeout_s: int = 3
+
+    @property
+    def jwks_url(self) -> str:
+        return self.oidc_jwks_url or f"{self.oidc_issuer}/protocol/openid-connect/certs"
+
 
 @lru_cache
 def get_settings() -> Settings:

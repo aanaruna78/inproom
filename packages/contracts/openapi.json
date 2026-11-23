@@ -19,6 +19,45 @@
         "title": "Health",
         "type": "object"
       },
+      "Me": {
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "tenant_id",
+          "email",
+          "roles"
+        ],
+        "title": "Me",
+        "type": "object"
+      },
       "Readiness": {
         "properties": {
           "checks": {
@@ -39,6 +78,13 @@
         ],
         "title": "Readiness",
         "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "description": "OIDC access token issued for audience inproom-api",
+        "scheme": "bearer",
+        "type": "http"
       }
     }
   },
@@ -91,6 +137,35 @@
         "summary": "Dependency readiness",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "operationId": "me_v1_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token (problem+json)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The verified caller identity and tenant",
+        "tags": [
+          "identity"
         ]
       }
     }
