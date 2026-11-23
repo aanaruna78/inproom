@@ -1,0 +1,680 @@
+[
+  {
+    "n": 1,
+    "slug": "project-command-center",
+    "title": "Project Command Center",
+    "parent": "INPROOM-78",
+    "section": "Foundation",
+    "subtitle": "Decisions, risks, source freshness and current execution",
+    "layout": "overview",
+    "primary": "Review decisions",
+    "cards": [
+      "Approvals awaiting review",
+      "Blocked delivery items",
+      "Knowledge freshness",
+      "Active agent runs"
+    ],
+    "left": [
+      "Priority decisions",
+      "Approve 4 requirement proposals",
+      "Resolve 2 migrated Jira conflicts",
+      "Review 1 PR with missing tests",
+      "Confirm source connection scopes"
+    ],
+    "middle": [
+      "Execution stages",
+      "Requirements — review",
+      "Implementation — in progress",
+      "Verification — needs evidence",
+      "QA — not started",
+      "Release — gated"
+    ],
+    "right": [
+      "Activity and evidence",
+      "Draft revised by product owner",
+      "Source revision reconciled",
+      "Build evidence attached",
+      "Approval action recorded"
+    ]
+  },
+  {
+    "n": 2,
+    "slug": "project-onboarding",
+    "title": "Create or Migrate Project",
+    "parent": "INPROOM-78",
+    "section": "Foundation",
+    "subtitle": "Guided setup with explicit connector and permissions scope",
+    "layout": "wizard",
+    "primary": "Review project setup",
+    "cards": [
+      "Project identity",
+      "NEW / MIGRATION",
+      "Source connections",
+      "Permissions"
+    ],
+    "left": [
+      "Setup steps",
+      "1. Project identity",
+      "2. Project mode",
+      "3. Connect approved sources",
+      "4. Review scope",
+      "5. Start safe ingestion"
+    ],
+    "middle": [
+      "Project configuration",
+      "Project name: Customer Platform",
+      "Mode: New project",
+      "Git repo: Select repository",
+      "Jira: Select target project",
+      "Confluence: Select space"
+    ],
+    "right": [
+      "Safety and scope",
+      "Read-only by default",
+      "Jira writes require approval",
+      "Show imported issue counts",
+      "Verify credentials and scopes"
+    ]
+  },
+  {
+    "n": 3,
+    "slug": "integrations-hub",
+    "title": "Integration Hub",
+    "parent": "INPROOM-79",
+    "section": "Knowledge",
+    "subtitle": "Connection status, sync diagnostics, grants and source policies",
+    "layout": "services",
+    "primary": "Add integration",
+    "cards": [
+      "3 connectors",
+      "2 current",
+      "1 needs reauth",
+      "Zero assumed permissions"
+    ],
+    "left": [
+      "Connected services",
+      "GitHub — repositories",
+      "Jira — project mapping",
+      "Confluence — spaces",
+      "Document upload source"
+    ],
+    "middle": [
+      "Connector health",
+      "GitHub — in sync",
+      "Jira — permissions review",
+      "Confluence — sync pending",
+      "Webhook replay and retries",
+      "Source visibility policy"
+    ],
+    "right": [
+      "Connection inspector",
+      "Last successful sync",
+      "Allowed source scopes",
+      "Webhook status",
+      "Reauthorize access",
+      "Run safe reconciliation"
+    ]
+  },
+  {
+    "n": 4,
+    "slug": "knowledge-explorer",
+    "title": "Knowledge Explorer",
+    "parent": "INPROOM-79",
+    "section": "Knowledge",
+    "subtitle": "Search, inspect authoritative sources and understand relationships",
+    "layout": "knowledge",
+    "primary": "Search knowledge",
+    "cards": [
+      "Cited retrieval",
+      "Graph relationships",
+      "Version history",
+      "ACL-aware access"
+    ],
+    "left": [
+      "Browse sources",
+      "Documents",
+      "Code repositories",
+      "Jira issues",
+      "Confluence pages",
+      "Saved memory snapshots"
+    ],
+    "middle": [
+      "Knowledge search results",
+      "Requirement source — page 12",
+      "Architecture decision — ADR-005",
+      "Jira issue INPROOM-47",
+      "Code symbol — projects/router.py",
+      "Relationship graph focus"
+    ],
+    "right": [
+      "Source evidence",
+      "Canonical source revision",
+      "Last indexed timestamp",
+      "Access scope",
+      "Linked entities",
+      "Open original source"
+    ]
+  },
+  {
+    "n": 5,
+    "slug": "requirements-studio",
+    "title": "Requirements Studio",
+    "parent": "INPROOM-80",
+    "section": "Requirements",
+    "subtitle": "Turn documents and simple descriptions into approved implementation work",
+    "layout": "tree",
+    "primary": "Review & publish",
+    "cards": [
+      "Upload documents",
+      "NEW / MIGRATION",
+      "Editable tree",
+      "Approval preview"
+    ],
+    "left": [
+      "Requirements sources",
+      "Business_Requirements.pdf",
+      "Architecture_Notes.docx",
+      "Migration_Scope.md",
+      "Add simple requirement",
+      "Parse and review sources"
+    ],
+    "middle": [
+      "Epic → Story → Subtask tree",
+      "▾ EPIC-01  Project onboarding",
+      "    ▾ STORY-01  Workspace API",
+      "        SUB-01  Validation",
+      "        SUB-02  Functional tests",
+      "    STORY-02  Source permissions",
+      "▾ EPIC-02  AI breakdown",
+      "    STORY-03  User-created work"
+    ],
+    "right": [
+      "Selected Story inspector",
+      "Overview | Plan | Tests | Sources",
+      "Implementation steps",
+      "Expected results and criteria",
+      "AI changes vs user edits",
+      "Approve exact Jira diff"
+    ]
+  },
+  {
+    "n": 6,
+    "slug": "approval-inbox",
+    "title": "Approval Inbox",
+    "parent": "INPROOM-80",
+    "section": "Requirements",
+    "subtitle": "Compare evidence and approve the exact external change",
+    "layout": "review",
+    "primary": "Approve selected",
+    "cards": [
+      "Pending approvals",
+      "High-risk changes",
+      "Stale proposals",
+      "Recent decisions"
+    ],
+    "left": [
+      "Approval queues",
+      "Requirements and Jira",
+      "Architecture and Confluence",
+      "Release and QA",
+      "Agent tool actions",
+      "Previously resolved"
+    ],
+    "middle": [
+      "Selected proposal diff",
+      "Create 1 Epic / 4 Stories",
+      "Reuse 2 existing Jira issues",
+      "Change user-authored field? No",
+      "Source version: snapshot 3",
+      "Approval scope: requirements"
+    ],
+    "right": [
+      "Reviewer context",
+      "Requested by product owner",
+      "Jira destination: INPROOM",
+      "Affected fields and children",
+      "Citations and risk level",
+      "Approve | Request changes"
+    ]
+  },
+  {
+    "n": 7,
+    "slug": "sprint-intelligence",
+    "title": "Sprint Intelligence",
+    "parent": "INPROOM-81",
+    "section": "Delivery",
+    "subtitle": "Readiness, dependencies and implementation planning",
+    "layout": "board",
+    "primary": "Generate plan",
+    "cards": [
+      "Story readiness",
+      "Blocked dependencies",
+      "Source confidence",
+      "Current sprint"
+    ],
+    "left": [
+      "Sprint selection",
+      "Current sprint",
+      "Backlog",
+      "Needs clarification",
+      "Ready to start",
+      "Blocked by external work"
+    ],
+    "middle": [
+      "Sprint work view",
+      "Story INPROOM-47 — AI breakdown",
+      "Story INPROOM-49 — publishing",
+      "Story INPROOM-80 — studio UI",
+      "Dependency matrix and risks",
+      "Workload and unsized items"
+    ],
+    "right": [
+      "Story readiness",
+      "Acceptance completeness",
+      "Impacted components",
+      "Missing architecture answers",
+      "Testing plan required",
+      "Review evidence"
+    ]
+  },
+  {
+    "n": 8,
+    "slug": "architecture-planning",
+    "title": "Architecture & Plan Editor",
+    "parent": "INPROOM-81",
+    "section": "Delivery",
+    "subtitle": "Versioned implementation plans with editable diagrams and review",
+    "layout": "editor",
+    "primary": "Submit design review",
+    "cards": [
+      "Plan revisions",
+      "Affected modules",
+      "Diagram source",
+      "Approval status"
+    ],
+    "left": [
+      "Plan outline",
+      "Goals and non-goals",
+      "Component impact",
+      "API / data changes",
+      "Delivery steps",
+      "Test and rollback plan"
+    ],
+    "middle": [
+      "Implementation plan canvas",
+      "Step 1 — Validate requirements",
+      "Step 2 — Update API contracts",
+      "Step 3 — Data migration review",
+      "Step 4 — Integrate UI flows",
+      "Mermaid diagram and preview"
+    ],
+    "right": [
+      "Review inspector",
+      "Source-backed assumptions",
+      "Architecture decision links",
+      "Plan diff vs current",
+      "Confluence target/version",
+      "Request design approval"
+    ]
+  },
+  {
+    "n": 9,
+    "slug": "pull-request-verification",
+    "title": "PR Verification",
+    "parent": "INPROOM-81",
+    "section": "Delivery",
+    "subtitle": "Acceptance criteria matched to actual Git changes and CI results",
+    "layout": "review",
+    "primary": "Request fixes",
+    "cards": [
+      "Changed files",
+      "Criteria verified",
+      "CI results",
+      "Unresolved findings"
+    ],
+    "left": [
+      "Pull request context",
+      "Issue INPROOM-47",
+      "PR #42 · sample",
+      "Commits and merge base",
+      "Changed paths",
+      "CI checks and build"
+    ],
+    "middle": [
+      "Criterion-by-criterion review",
+      "AC-01  Implementation complete",
+      "AC-02  Authorization enforced",
+      "AC-03  Idempotency test missing",
+      "AC-04  Audit receipts pending",
+      "Relevant diff and test references"
+    ],
+    "right": [
+      "Verification outcome",
+      "PASS — real CI evidence",
+      "INCONCLUSIVE — missing test",
+      "FAIL — policy requirement",
+      "Reviewer explanation",
+      "Open test/build artifact"
+    ]
+  },
+  {
+    "n": 10,
+    "slug": "release-center",
+    "title": "Release Center",
+    "parent": "INPROOM-81",
+    "section": "Delivery",
+    "subtitle": "Immutable candidates, readiness gates and deployment decisions",
+    "layout": "release",
+    "primary": "Submit release review",
+    "cards": [
+      "Candidate RC-004",
+      "Build provenance",
+      "Open quality gates",
+      "Rollback readiness"
+    ],
+    "left": [
+      "Release inventory",
+      "Candidates",
+      "Included PRs / commits",
+      "Dependent services",
+      "Environments",
+      "Deployment history"
+    ],
+    "middle": [
+      "Release candidate details",
+      "Build and artifact hashes",
+      "Included Jira work items",
+      "Security / migration checks",
+      "QA regression assignment",
+      "Rollback and incident plan"
+    ],
+    "right": [
+      "Promotion gates",
+      "Build reproducibility",
+      "Required CI green",
+      "QA sign-off pending",
+      "Environment permissions",
+      "Approval version binding"
+    ]
+  },
+  {
+    "n": 11,
+    "slug": "qa-center",
+    "title": "QA Center",
+    "parent": "INPROOM-81",
+    "section": "Quality",
+    "subtitle": "Release-scoped test coverage, defects, QA assignment and sign-off",
+    "layout": "qa",
+    "primary": "Review QA proposal",
+    "cards": [
+      "Coverage by criterion",
+      "Tests executed",
+      "Open defects",
+      "QA approvals"
+    ],
+    "left": [
+      "QA workspace",
+      "Release candidate RC-004",
+      "Test plans and suites",
+      "Manual / automated",
+      "Defect backlog",
+      "Regression scope"
+    ],
+    "middle": [
+      "Coverage matrix",
+      "AC-01 → TC-11 → Passed",
+      "AC-02 → TC-12 → Passed",
+      "AC-03 → TC-13 → Failed",
+      "AC-04 → no executed evidence",
+      "AI-suggested test cases"
+    ],
+    "right": [
+      "QA approval inspector",
+      "Required cases missing",
+      "Build and environment",
+      "Failed test evidence",
+      "Proposed Jira QA work",
+      "Sign-off blocked"
+    ]
+  },
+  {
+    "n": 12,
+    "slug": "test-execution",
+    "title": "Test Execution",
+    "parent": "INPROOM-81",
+    "section": "Quality",
+    "subtitle": "Observed expected/actual outcomes with reproducible evidence",
+    "layout": "test",
+    "primary": "Record test result",
+    "cards": [
+      "Test definition",
+      "Exact build",
+      "Runner evidence",
+      "Retest history"
+    ],
+    "left": [
+      "Test queue",
+      "Ready to run",
+      "Executing",
+      "Failed",
+      "Blocked by environment",
+      "Retest required"
+    ],
+    "middle": [
+      "Test case TC-013",
+      "Preconditions and test data",
+      "Steps and expected results",
+      "Actual runner output",
+      "Artifacts / console logs",
+      "Result: Failed"
+    ],
+    "right": [
+      "Execution evidence",
+      "Tester and run timestamp",
+      "Build/commit SHA",
+      "Environment and version",
+      "Reproduction steps",
+      "Create linked defect"
+    ]
+  },
+  {
+    "n": 13,
+    "slug": "agent-workbench",
+    "title": "Agent Workbench",
+    "parent": "INPROOM-106",
+    "section": "Agents",
+    "subtitle": "Observable AI runs with policy, provenance, budget and human controls",
+    "layout": "agent",
+    "primary": "Run approved task",
+    "cards": [
+      "Active runs",
+      "Awaiting approval",
+      "Model routing",
+      "Cost / tool policy"
+    ],
+    "left": [
+      "Available agents",
+      "Requirements analyst",
+      "Implementation planner",
+      "PR reviewer",
+      "QA designer",
+      "Release assessor"
+    ],
+    "middle": [
+      "Agent run timeline",
+      "1. Scope and permissions verified",
+      "2. Source retrieval completed",
+      "3. Typed proposal generated",
+      "4. Human approval pending",
+      "5. Tool action not yet executed"
+    ],
+    "right": [
+      "Run controls",
+      "Source evidence and prompt version",
+      "Model/region route",
+      "Tool allowlist and budget",
+      "Pause / review / retry",
+      "Audit trail and outcome"
+    ]
+  },
+  {
+    "n": 14,
+    "slug": "model-and-harness",
+    "title": "Model & Harness Settings",
+    "parent": "INPROOM-106",
+    "section": "Admin",
+    "subtitle": "Choose compliant model providers, data boundaries and agent execution budgets",
+    "layout": "settings",
+    "primary": "Test configuration",
+    "cards": [
+      "Model providers",
+      "Local/private routing",
+      "BYOK encrypted",
+      "Harness limits"
+    ],
+    "left": [
+      "Configuration sections",
+      "Cloud providers",
+      "On-prem and local LLM",
+      "Secret broker",
+      "Agent policies",
+      "Budget limits"
+    ],
+    "middle": [
+      "Model routing policy",
+      "Default model profile",
+      "Data residency rules",
+      "Structured-output capability",
+      "Fallback decision",
+      "Context and token limits"
+    ],
+    "right": [
+      "Safety checks",
+      "Masked API credentials",
+      "Approved execution locations",
+      "KMS and rotation status",
+      "Sandbox network policy",
+      "Test adapter contract"
+    ]
+  },
+  {
+    "n": 15,
+    "slug": "governance-and-audit",
+    "title": "Governance & Audit",
+    "parent": "INPROOM-106",
+    "section": "Admin",
+    "subtitle": "Explain exactly who approved what, where it ran and what changed",
+    "layout": "audit",
+    "primary": "Export authorized audit",
+    "cards": [
+      "Policy decisions",
+      "External writes",
+      "Denied actions",
+      "Export controls"
+    ],
+    "left": [
+      "Audit navigation",
+      "Approvals ledger",
+      "Connector operations",
+      "Agent/tool actions",
+      "Policy versions",
+      "Security incidents"
+    ],
+    "middle": [
+      "Immutable event timeline",
+      "09:40 — proposal created",
+      "09:42 — reviewer approved v3",
+      "09:42 — policy revalidated",
+      "09:43 — Jira create succeeded",
+      "09:44 — source index updated"
+    ],
+    "right": [
+      "Audit event details",
+      "Actor and target identifiers",
+      "Approved payload hash",
+      "Jira issue receipt",
+      "Correlation and trace IDs",
+      "Source revision evidence"
+    ]
+  },
+  {
+    "n": 16,
+    "slug": "team-and-permissions",
+    "title": "Team & Permissions",
+    "parent": "INPROOM-106",
+    "section": "Admin",
+    "subtitle": "Project memberships, effective access and scoped approvers",
+    "layout": "settings",
+    "primary": "Invite member",
+    "cards": [
+      "Members",
+      "Project roles",
+      "Approval scopes",
+      "Access reviews"
+    ],
+    "left": [
+      "People and access",
+      "Project members",
+      "Tenant directory",
+      "Role matrix",
+      "Approval policies",
+      "Access history"
+    ],
+    "middle": [
+      "Project membership table",
+      "Alice — Product owner",
+      "Devon — Developer",
+      "Reya — QA lead",
+      "Jordan — Viewer",
+      "Pending invitations"
+    ],
+    "right": [
+      "Effective permissions",
+      "Selected account roles",
+      "Read / propose / approve / execute",
+      "Source-level restrictions",
+      "No self-approval",
+      "Revocation effects immediately"
+    ]
+  },
+  {
+    "n": 17,
+    "slug": "empty-error-recovery",
+    "title": "First-run & Recovery States",
+    "parent": "INPROOM-107",
+    "section": "Quality",
+    "subtitle": "Useful first-run guidance, understandable failures and safe recovery",
+    "layout": "empty",
+    "primary": "Open setup checklist",
+    "cards": [
+      "First run",
+      "Missing permission",
+      "Stale sources",
+      "Partial publish"
+    ],
+    "left": [
+      "State preview selector",
+      "No project yet",
+      "No requirements yet",
+      "Connector auth expired",
+      "Jira partially published",
+      "Model service unavailable"
+    ],
+    "middle": [
+      "Build your first INPROOM project",
+      "1. Create a project workspace",
+      "2. Connect approved sources",
+      "3. Upload a requirement",
+      "4. Review AI proposals",
+      "5. Approve the exact Jira changes"
+    ],
+    "right": [
+      "Error and recovery design",
+      "What changed / did not change",
+      "Specific problem and trace ID",
+      "Safe retry or reauthorization",
+      "Preserve user drafts",
+      "Contact owner escalation"
+    ]
+  }
+]
