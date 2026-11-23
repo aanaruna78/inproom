@@ -212,3 +212,108 @@ export async function removeMember(_prev: FormState, form: FormData): Promise<Fo
   revalidatePath(`/projects/${projectId}/members`);
   return { status: "success", message: "Member removed." };
 }
+
+// ---------------------------------------------------------------- Git connections (INPROOM-111)
+// Tokens are passed straight to the API and never echoed back in form state.
+
+export async function createConnection(_prev: FormState, form: FormData): Promise<FormState> {
+  const submitted = values(form, ["display_name", "base_url"]);
+  const api = await apiClient("/integrations");
+  const { data, error, response } = await api.POST("/v1/connections", {
+    body: {
+      provider: "github",
+      display_name: submitted.display_name,
+      base_url: submitted.base_url || "https://api.github.com",
+      token: String(form.get("token") ?? ""),
+    },
+    params: { header: { "Idempotency-Key": String(form.get("idempotency_key")) } },
+  });
+  if (error || !data) {
+    const state = problemState(error, response.status, submitted);
+    state.field = state.code === "BASE_URL_NOT_ALLOWED" ? "base_url" : state.code === "CREDENTIAL_INVALID" ? "token" : undefined;
+    return state;
+  }
+  revalidatePath("/integrations");
+  return { status: "success", message: `Connected ${data.display_name} as ${data.account_login}.` };
+}
+
+export async function checkConnection(_prev: FormState, form: FormData): Promise<FormState> {
+  const id = String(form.get("connection_id"));
+  const api = await apiClient("/integrations");
+  const { data, error, response } = await api.POST("/v1/connections/{connection_id}/check", {
+    params: { path: { connection_id: id } },
+  });
+  if (error || !data) return problemState(error, response.status);
+  revalidatePath("/integrations");
+  return { status: "success", message: `Health: ${data.health?.status ?? data.status}.` };
+}
+
+export async function rotateConnection(_prev: FormState, form: FormData): Promise<FormState> {
+  const id = String(form.get("connection_id"));
+  const api = await apiClient("/integrations");
+  const { data, error, response } = await api.PUT("/v1/connections/{connection_id}/credential", {
+    params: { path: { connection_id: id } },
+    body: { token: String(form.get("token") ?? "") },
+  });
+  if (error || !data) return problemState(error, response.status);
+  revalidatePath("/integrations");
+  return { status: "success", message: `Token rotated (${data.credential_fingerprint}).` };
+}
+
+export async function revokeConnection(_prev: FormState, form: FormData): Promise<FormState> {
+  const id = String(form.get("connection_id"));
+  if (String(form.get("confirm")).trim() !== "REVOKE") {
+    return { status: "error", message: "Type REVOKE to confirm.", field: "confirm" };
+  }
+  const api = await apiClient("/integrations");
+  const { data, error, response } = await api.POST("/v1/connections/{connection_id}/revoke", {
+    params: { path: { connection_id: id } },
+  });
+  if (error || !data) return problemState(error, response.status);
+  revalidatePath("/integrations");
+  return { status: "success", message: "Connection revoked; its stored token was destroyed." };
+}
+
+// ---------------------------------------------------------------- project sources (INPROOM-111)
+
+export async function selectRepository(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const connectionId = String(form.get("connection_id"));
+  const repoId = String(form.get("repo_id"));
+  const submitted = values(form, ["branches"]);
+  const branches = submitted.branches
+    .split(",")
+    .map((b) => b.trim())
+    .filter(Boolean);
+  const api = await apiClient(`/projects/${projectId}/sources`);
+  const { data, error, response } = await api.PUT(
+    "/v1/projects/{project_id}/sources/repositories/{connection_id}/{repo_id}",
+    {
+      params: { path: { project_id: projectId, connection_id: connectionId, repo_id: repoId } },
+      body: { branches, register_webhook: form.get("register_webhook") === "on" },
+    },
+  );
+  if (error || !data) return { ...problemState(error, response.status, submitted), field: "branches" };
+  revalidatePath(`/projects/${projectId}/sources`);
+  return { status: "success", message: `${data.full_name} selected: ${data.branches.join(", ")}.` };
+}
+
+export async function removeRepository(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const api = await apiClient(`/projects/${projectId}/sources`);
+  const { error, response } = await api.DELETE(
+    "/v1/projects/{project_id}/sources/repositories/{connection_id}/{repo_id}",
+    {
+      params: {
+        path: {
+          project_id: projectId,
+          connection_id: String(form.get("connection_id")),
+          repo_id: String(form.get("repo_id")),
+        },
+      },
+    },
+  );
+  if (error || response.status !== 204) return problemState(error, response.status);
+  revalidatePath(`/projects/${projectId}/sources`);
+  return { status: "success", message: "Repository removed from the project." };
+}

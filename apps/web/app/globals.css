@@ -96,3 +96,18 @@ fieldset.group legend { font-weight: 700; color: var(--navy); padding: 0 4px; }
 input:disabled { background: #eef1f5; color: var(--muted); }
 h3 { font-size: 14px; color: var(--navy); margin: 16px 0 8px; }
 tr[aria-current="true"] td { background: #f0f5ff; }
+
+/* INPROOM-111: integrations and sources */
+.connection { border-top: 1px solid var(--border); padding: 12px 0; }
+.connection:first-of-type { border-top: 0; }
+.connection h3 { margin: 0 0 8px; }
+.connection .actions { display: grid; gap: 12px; margin-top: 12px; }
+.chip.DEGRADED { background: #fdf3e3; color: #7a4f0c; }
+.chip.INVALID, .chip.REVOKED, .chip.PAUSED { background: #fbeaea; color: #7d2323; }
+ul.issues { margin: 8px 0 0; padding-left: 18px; }
+ul.issues li.problem { color: #7d2323; }
+.warning, ul.issues li.warning { color: #7a4f0c; }
+code.branch { margin-right: 4px; }
+ul.options { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 12px; }
+ul.options > li { border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+li.excluded { color: var(--muted); }

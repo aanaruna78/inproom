@@ -14,6 +14,9 @@ export type Field = {
   minLength?: number;
   options?: { value: string; label: string }[];
   defaultValue?: string;
+  /** "password" fields are never re-filled after an error (secrets are not echoed back). */
+  type?: "text" | "password" | "checkbox" | "url";
+  placeholder?: string;
 };
 
 type Props = {
@@ -65,6 +68,15 @@ export function ActionForm({ action, fields, submitLabel, hidden, testId }: Prop
         const invalid = state.status === "error" && state.field === f.name;
         const value = state.status === "error" ? state.values?.[f.name] : undefined;
         const describedBy = f.hint ? `${testId}-${f.name}-hint` : undefined;
+        if (f.type === "checkbox") {
+          return (
+            <label key={f.name} className="check">
+              <input type="checkbox" name={f.name} defaultChecked={f.defaultValue === "on"} />
+              {f.label}
+              {f.hint && <span className="hint"> {f.hint}</span>}
+            </label>
+          );
+        }
         return (
           <label key={f.name}>
             {f.label}
@@ -79,11 +91,14 @@ export function ActionForm({ action, fields, submitLabel, hidden, testId }: Prop
             ) : (
               <input
                 name={f.name}
+                type={f.type ?? "text"}
+                placeholder={f.placeholder}
+                autoComplete={f.type === "password" ? "off" : undefined}
                 required={f.required}
                 pattern={f.pattern}
                 maxLength={f.maxLength}
                 minLength={f.minLength}
-                defaultValue={value ?? f.defaultValue}
+                defaultValue={f.type === "password" ? undefined : (value ?? f.defaultValue)}
                 aria-invalid={invalid || undefined}
                 aria-describedby={describedBy}
               />

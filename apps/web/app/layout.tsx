@@ -21,6 +21,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             INPROOM
           </Link>
           {session?.user && <Link href="/workspaces">Workspaces</Link>}
+          {session?.user && <Link href="/integrations">Integrations</Link>}
           <span className="spacer" />
           {session?.user ? (
             <>

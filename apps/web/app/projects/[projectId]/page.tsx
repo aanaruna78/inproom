@@ -53,6 +53,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
             <dt>Description</dt><dd>{p.description ?? "—"}</dd>
           </dl>
           <p>
+            <Link href={`/projects/${p.id}/sources`} data-testid="sources-link">
+              Sources
+            </Link>
+            {" · "}
             <Link href={`/projects/${p.id}/members`} data-testid="members-link">
               {can("project.member.manage") ? "Manage members" : "View members"}
             </Link>
