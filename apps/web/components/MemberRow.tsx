@@ -21,14 +21,21 @@ export function MemberRow({ projectId, userId, label, email, roles, allRoles, ca
   const [saveState, saveAction, saving] = useActionState(setMemberRoles, initialFormState);
   const [removeState, removeAction, removing] = useActionState(removeMember, initialFormState);
   const [confirming, setConfirming] = useState(false);
+  // The row shows the result of the most recent action only (INPROOM-101): a later successful save must
+  // replace an earlier failed removal, and vice versa. Nothing is shown while an action is in flight.
+  const [latest, setLatest] = useState<"save" | "remove" | null>(null);
   const alertRef = useRef<HTMLDivElement>(null);
-  const state = removeState.status !== "idle" ? removeState : saveState;
+  const pending = saving || removing;
+  const state = pending || latest === null ? initialFormState : latest === "remove" ? removeState : saveState;
   const testId = "member";
 
   useEffect(() => {
     if (state.status === "error") alertRef.current?.focus();
+  }, [state]);
+
+  useEffect(() => {
     if (removeState.status !== "idle") setConfirming(false);
-  }, [state, removeState]);
+  }, [removeState]);
 
   return (
     <tr data-testid={testId} data-user-id={userId}>
@@ -39,7 +46,12 @@ export function MemberRow({ projectId, userId, label, email, roles, allRoles, ca
       </td>
       <td>
         {canManage ? (
-          <form action={saveAction} className="roles" aria-label={`Roles for ${label}`}>
+          <form
+            action={saveAction}
+            onSubmit={() => setLatest("save")}
+            className="roles"
+            aria-label={`Roles for ${label}`}
+          >
             <input type="hidden" name="project_id" value={projectId} />
             <input type="hidden" name="user_id" value={userId} />
             <fieldset>
@@ -73,7 +85,7 @@ export function MemberRow({ projectId, userId, label, email, roles, allRoles, ca
       <td>
         {canManage &&
           (confirming ? (
-            <form action={removeAction} className="inline">
+            <form action={removeAction} onSubmit={() => setLatest("remove")} className="inline">
               <input type="hidden" name="project_id" value={projectId} />
               <input type="hidden" name="user_id" value={userId} />
               <button type="submit" className="danger" disabled={removing}>
