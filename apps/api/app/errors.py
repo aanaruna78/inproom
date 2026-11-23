@@ -27,6 +27,29 @@ def problem(
 
 
 def install_error_handlers(app: FastAPI) -> None:
+    # Imported here to avoid import cycles (these modules use `problem`-free exceptions only).
+    from app.auth import AuthError
+    from app.authz import Forbidden, NotFound
+    from app.idempotency import IdempotencyError
+
+    @app.exception_handler(AuthError)
+    async def auth_error(request: Request, exc: AuthError) -> JSONResponse:
+        response = problem(request, 401, "Authentication required", exc.code, detail=exc.detail)
+        response.headers["WWW-Authenticate"] = 'Bearer realm="inproom"'
+        return response
+
+    @app.exception_handler(Forbidden)
+    async def forbidden(request: Request, exc: Forbidden) -> JSONResponse:
+        return problem(request, 403, "Forbidden", "FORBIDDEN", detail=f"Missing permission: {exc.permission}")
+
+    @app.exception_handler(NotFound)
+    async def not_found(request: Request, exc: NotFound) -> JSONResponse:
+        return problem(request, 404, "Not found", "NOT_FOUND", detail=f"{exc.resource} not found")
+
+    @app.exception_handler(IdempotencyError)
+    async def idempotency_error(request: Request, exc: IdempotencyError) -> JSONResponse:
+        return problem(request, exc.status, "Idempotency conflict", exc.code, detail=exc.detail)
+
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         return problem(request, exc.status_code, str(exc.detail), f"HTTP_{exc.status_code}")
