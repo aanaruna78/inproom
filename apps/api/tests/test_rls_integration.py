@@ -102,12 +102,28 @@ SEED_SQL = [
     "INSERT INTO idempotency_keys (tenant_id, key, request_sha256, status) "
     "VALUES (:t, 'k', 'x', 'IN_PROGRESS')",
     "INSERT INTO tenant_users (tenant_id, user_id, email) VALUES (:t, 'seed', 'seed@example.test')",
+    "INSERT INTO source_connections (id, tenant_id, provider, kind, display_name, base_url, auth_type, "
+    "status, created_by) "
+    "VALUES (:c, :t, 'github', 'git', 'gh', 'https://api.github.com', 'token', 'ACTIVE', 'seed')",
+    "INSERT INTO connection_secrets (tenant_id, connection_id, purpose, key_id, nonce, ciphertext) "
+    "VALUES (:t, :c, 'credential', 'k1', '\\x00', '\\x00')",
+    "INSERT INTO project_repositories (tenant_id, project_id, connection_id, provider_repo_id, full_name, "
+    "private, default_branch, branches, status, selected_by) "
+    "VALUES (:t, :p, :c, '1', 'acme/api', true, 'main', ARRAY['main'], 'ACTIVE', 'seed')",
+    "INSERT INTO webhook_deliveries (tenant_id, connection_id, delivery_id, event, outcome) "
+    "VALUES (:t, :c, 'd-1', 'push', 'processed')",
 ]
 
 
 def _seed(owner_engine, tenant_id: uuid.UUID) -> dict[str, str]:
     """One row in every tenant-scoped table for tenant_id (inserted as owner, bypassing RLS)."""
-    params = {"t": tenant_id, "w": uuid.uuid4(), "p": uuid.uuid4(), "k": "P" + uuid.uuid4().hex[:6].upper()}
+    params = {
+        "t": tenant_id,
+        "w": uuid.uuid4(),
+        "p": uuid.uuid4(),
+        "c": uuid.uuid4(),
+        "k": "P" + uuid.uuid4().hex[:6].upper(),
+    }
     with owner_engine.begin() as c:
         for sql in SEED_SQL:
             c.execute(text(sql), params)
