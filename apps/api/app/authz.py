@@ -65,3 +65,33 @@ class NotFound(Exception):
     def __init__(self, resource: str):
         super().__init__(resource)
         self.resource = resource
+
+
+NOT_ACCESSIBLE_REASON = "resource not found or not accessible"
+
+
+def deny_not_found(
+    principal: Principal,
+    request: Request,
+    *,
+    action: str,
+    resource: str,
+    target_type: str,
+    target_id: str,
+) -> NotFound:
+    """Audit a denied access to a resource the caller cannot see, then return the masked 404 to raise.
+
+    The DENIED event is written in the caller's own tenant, in its own transaction (so it survives the
+    failing request), and records only what the caller sent (the requested id) - never anything about
+    the other tenant. Missing and foreign resources are audited identically, so the audit trail cannot
+    be used to probe for existence either.
+    """
+    record_denied(
+        principal,
+        action,
+        target_type,
+        target_id,
+        trace_id=getattr(request.state, "trace_id", None),
+        reason=NOT_ACCESSIBLE_REASON,
+    )
+    return NotFound(resource)
