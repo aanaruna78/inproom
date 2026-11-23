@@ -182,6 +182,10 @@ The [INPROOM Jira planning package](docs/planning/README.md) defines **14 epics 
 
 ## UI / UX design concepts
 
+> **UI/UX design update (November 2026):** [Premium Experience System V2](docs/ux/experience-system-v2.md) defines the current design direction, component behavior, accessibility, interaction quality gates and original [V2 SVG concepts](docs/ux/visuals-v2/README.md). The earlier design files remain for historical reference. [Confluence review page](https://aanaruna78.atlassian.net/wiki/spaces/INPROOM/pages/1441793).
+
+
+
 INPROOM now has an early **experience design package** for product review, with role-based user journeys, approval patterns, screen requirements and visual concepts. These are **proposed interfaces**, not implemented application screens.
 
 | Review artifact | Open |
