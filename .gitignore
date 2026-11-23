@@ -27,3 +27,5 @@ out/
 # Python tooling
 .ruff_cache/
 .pytest_cache/
+apps/web/playwright-report/
+apps/web/test-results/
