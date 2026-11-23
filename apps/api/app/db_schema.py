@@ -4,6 +4,7 @@ Every tenant-scoped table carries tenant_id and is protected by FORCE ROW LEVEL 
 """
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
@@ -11,6 +12,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     PrimaryKeyConstraint,
     SmallInteger,
@@ -36,6 +38,10 @@ TENANT_SCOPED_TABLES = (
     "outbox_events",
     "idempotency_keys",
     "tenant_users",
+    "source_connections",
+    "connection_secrets",
+    "project_repositories",
+    "webhook_deliveries",
 )
 
 # Project roles allowed in project_members (mirrors app.authz.policy.PROJECT_ROLES; checked by a unit test).
@@ -206,6 +212,114 @@ tenant_users = Table(
     Column("first_seen_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("last_seen_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     PrimaryKeyConstraint("tenant_id", "user_id", name="pk_tenant_users"),
+)
+
+# ---------------------------------------------------------------- source connectors (INPROOM-108)
+
+source_connections = Table(
+    "source_connections",
+    metadata,
+    _id(),
+    Column("tenant_id", UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False),
+    Column("provider", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("display_name", Text, nullable=False),
+    Column("base_url", Text, nullable=False),
+    Column("auth_type", Text, nullable=False),
+    Column("account_login", Text),
+    Column("granted_scopes", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
+    Column("credential_fingerprint", Text),
+    Column("status", Text, nullable=False),
+    Column("health", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("last_checked_at", DateTime(timezone=True)),
+    Column("created_by", Text, nullable=False),
+    _created(),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("version", Integer, nullable=False, server_default="1"),
+    UniqueConstraint("tenant_id", "id", name="uq_source_connections_tenant_id"),
+    UniqueConstraint("tenant_id", "display_name", name="uq_source_connections_name"),
+    CheckConstraint("provider IN ('github')", name="ck_source_connections_provider"),
+    CheckConstraint("kind IN ('git')", name="ck_source_connections_kind"),
+    CheckConstraint("auth_type IN ('token','github_app')", name="ck_source_connections_auth"),
+    CheckConstraint(
+        "status IN ('ACTIVE','DEGRADED','INVALID','REVOKED')", name="ck_source_connections_status"
+    ),
+)
+
+connection_secrets = Table(
+    "connection_secrets",
+    metadata,
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("connection_id", UUID(as_uuid=True), nullable=False),
+    Column("purpose", Text, nullable=False),
+    Column("key_id", Text, nullable=False),
+    Column("nonce", LargeBinary, nullable=False),
+    Column("ciphertext", LargeBinary, nullable=False),
+    _created(),
+    PrimaryKeyConstraint("connection_id", "purpose", name="pk_connection_secrets"),
+    ForeignKeyConstraint(
+        ["tenant_id", "connection_id"],
+        ["source_connections.tenant_id", "source_connections.id"],
+        name="fk_secrets_connection",
+    ),
+    CheckConstraint("purpose IN ('credential','webhook')", name="ck_connection_secrets_purpose"),
+)
+
+project_repositories = Table(
+    "project_repositories",
+    metadata,
+    _id(),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("connection_id", UUID(as_uuid=True), nullable=False),
+    Column("provider_repo_id", Text, nullable=False),
+    Column("full_name", Text, nullable=False),
+    Column("private", Boolean, nullable=False),
+    Column("default_branch", Text, nullable=False),
+    Column("branches", ARRAY(Text), nullable=False),
+    Column("permissions", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("status", Text, nullable=False),
+    Column("status_reason", Text),
+    Column("webhook_id", Text),
+    Column("webhook_status", Text, nullable=False, server_default="none"),
+    Column("selected_by", Text, nullable=False),
+    Column("selected_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("version", Integer, nullable=False, server_default="1"),
+    UniqueConstraint("project_id", "connection_id", "provider_repo_id", name="uq_project_repositories_repo"),
+    ForeignKeyConstraint(
+        ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_project_repos_project"
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "connection_id"],
+        ["source_connections.tenant_id", "source_connections.id"],
+        name="fk_project_repos_connection",
+    ),
+    CheckConstraint("status IN ('ACTIVE','PAUSED')", name="ck_project_repositories_status"),
+    CheckConstraint(
+        "webhook_status IN ('none','registered','failed','not_configured')",
+        name="ck_project_repositories_webhook",
+    ),
+    CheckConstraint("cardinality(branches) BETWEEN 1 AND 50", name="ck_project_repositories_branches"),
+)
+
+webhook_deliveries = Table(
+    "webhook_deliveries",
+    metadata,
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("connection_id", UUID(as_uuid=True), nullable=False),
+    Column("delivery_id", Text, nullable=False),
+    Column("event", Text, nullable=False),
+    Column("provider_repo_id", Text),
+    Column("outcome", Text, nullable=False),
+    Column("received_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("connection_id", "delivery_id", name="pk_webhook_deliveries"),
+    ForeignKeyConstraint(
+        ["tenant_id", "connection_id"],
+        ["source_connections.tenant_id", "source_connections.id"],
+        name="fk_deliveries_connection",
+    ),
+    CheckConstraint("outcome IN ('processed','ignored')", name="ck_webhook_deliveries_outcome"),
 )
 
 
