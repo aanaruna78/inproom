@@ -16,10 +16,12 @@ from app import audit
 from app.api_errors import ApiError, conflict
 from app.auth import CurrentPrincipal, Principal
 from app.authz import authorize
+from app.connectors.base import ProviderError
 from app.connectors.registry import GitTransport, provider_errors, provider_for
 from app.db import tenant_session
 from app.db_schema import outbox_events, project_repositories, source_connections
 from app.modules import settings as settings_module
+from app.modules import webhooks
 from app.modules.connections import credential_of, load_connection
 
 router = APIRouter(tags=["sources"])
@@ -54,6 +56,11 @@ class RepositoryOptions(BaseModel):
 
 class SelectRepository(BaseModel):
     branches: list[BRANCH] = Field(default_factory=list, max_length=50, description="Empty = default branch")
+    register_webhook: bool = Field(
+        default=False,
+        description="Register (or reuse) a webhook on the repository. External write: opt-in, idempotent, "
+        "needs INPROOM_PUBLIC_URL and the token's Webhooks permission.",
+    )
 
 
 class ProjectRepository(BaseModel):
@@ -230,6 +237,16 @@ def select_repository(
             f"Branch not found: {', '.join(missing)}",
             branches=missing,
         )
+    webhook: dict[str, Any] = {}
+    if payload.register_webhook:
+        url = webhooks.hook_url(principal.tenant_id, connection_id)
+        if url is None:
+            webhook = {"webhook_status": "not_configured", "webhook_id": None}
+        else:
+            with tenant_session(principal.tenant_id) as conn:
+                secret = webhooks.webhook_secret(conn, principal.tenant_id, connection_id)
+            status, hook_id = webhooks.register(provider, repo.id, url, secret)
+            webhook = {"webhook_status": status, "webhook_id": hook_id}
     # 3) write under the project lock; unchanged selection is a no-op
     with tenant_session(principal.tenant_id) as conn:
         access = authorize(conn, principal, request, "project.source.manage", project_id, lock=True)
@@ -255,7 +272,7 @@ def select_repository(
             "permissions": repo.permissions,
             "status": "ACTIVE",
             "status_reason": None,
-        }
+        } | webhook
         if existing is None:
             conn.execute(
                 insert(project_repositories).values(
@@ -288,6 +305,9 @@ def select_repository(
                 "provider_repo_id": repo.id,
                 "branches": branches,
                 "excess_privileges": repo.excess_privileges,
+                "webhook_status": webhook.get(
+                    "webhook_status", existing["webhook_status"] if existing else "none"
+                ),
             }
             audit.record(
                 conn,
@@ -319,6 +339,7 @@ def select_repository(
 def remove_repository(
     request: Request,
     principal: CurrentPrincipal,
+    transport: GitTransport,
     project_id: uuid.UUID,
     connection_id: uuid.UUID,
     repo_id: Annotated[str, Path(pattern=r"^\d{1,20}$")],
@@ -333,7 +354,7 @@ def remove_repository(
                 project_repositories.c.connection_id == connection_id,
                 project_repositories.c.provider_repo_id == repo_id,
             )
-            .returning(project_repositories.c.full_name)
+            .returning(project_repositories.c.full_name, project_repositories.c.webhook_id)
         ).first()
         if removed is None:
             raise ApiError(
@@ -359,7 +380,31 @@ def remove_repository(
                 tenant_id=principal.tenant_id, type="source.repository.removed", payload=change
             )
         )
+    if removed.webhook_id:
+        _remove_hook_if_unused(request, principal, transport, connection_id, repo_id, removed.webhook_id)
     return Response(status_code=204)
+
+
+def _remove_hook_if_unused(
+    request: Request, principal: Principal, transport, connection_id: uuid.UUID, repo_id: str, hook_id: str
+) -> None:
+    """Hooks are per repository and connection; another project may still rely on the same hook."""
+    with tenant_session(principal.tenant_id) as conn:
+        in_use = conn.execute(
+            select(project_repositories.c.id).where(
+                project_repositories.c.tenant_id == principal.tenant_id,
+                project_repositories.c.connection_id == connection_id,
+                project_repositories.c.provider_repo_id == repo_id,
+                project_repositories.c.webhook_id == hook_id,
+            )
+        ).first()
+        row = load_connection(conn, principal, request, connection_id, "project.source.manage")
+        token = None if in_use or row["status"] == "REVOKED" else credential_of(conn, principal, row)
+    if token is not None:
+        try:
+            provider_for(row["provider"], row["base_url"], token, transport).delete_hook(repo_id, hook_id)
+        except ProviderError:
+            pass  # best effort: deliveries for unselected repositories are ignored anyway
 
 
 @router.get(

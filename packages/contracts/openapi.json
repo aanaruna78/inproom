@@ -1118,6 +1118,12 @@
             "maxItems": 50,
             "title": "Branches",
             "type": "array"
+          },
+          "register_webhook": {
+            "default": false,
+            "description": "Register (or reuse) a webhook on the repository. External write: opt-in, idempotent, needs INPROOM_PUBLIC_URL and the token's Webhooks permission.",
+            "title": "Register Webhook",
+            "type": "boolean"
           }
         },
         "title": "SelectRepository",
@@ -2065,6 +2071,69 @@
         "summary": "Revoke: destroy the stored credential and pause every repository using this connection",
         "tags": [
           "connections"
+        ]
+      }
+    },
+    "/v1/hooks/github/{tenant_id}/{connection_id}": {
+      "post": {
+        "operationId": "receive_v1_hooks_github__tenant_id___connection_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "duplicate delivery"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "413": {
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "GitHub webhook receiver (HMAC-signed; replayed deliveries are acknowledged, not reprocessed)",
+        "tags": [
+          "webhooks"
         ]
       }
     },
