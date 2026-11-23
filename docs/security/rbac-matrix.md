@@ -13,6 +13,9 @@
 Project role names in the token are ignored: project access comes only from project membership,
 checked in the database on every request, so removal and downgrades take effect immediately.
 
+**auditor is a read-only cap:** an auditor keeps only audit.read, project.read on every project, even if they also hold write-capable project roles.
+tenant_admin overrides the cap.
+
 ## Project roles (from project membership)
 
 | Permission | Kind | project_admin | product_owner | tech_lead | developer | reviewer | qa_lead | tester | release_manager | viewer |

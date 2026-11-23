@@ -35,6 +35,11 @@ def render() -> str:
         "Project role names in the token are ignored: project access comes only from project membership,",
         "checked in the database on every request, so removal and downgrades take effect immediately.",
         "",
+        "**auditor is a read-only cap:** an auditor keeps only "
+        + ", ".join(sorted(policy.READ_ONLY_CAP[policy.AUDITOR]))
+        + " on every project, even if they also hold write-capable project roles.",
+        "tenant_admin overrides the cap.",
+        "",
         "## Project roles (from project membership)",
         "",
         "| Permission | Kind | " + " | ".join(roles) + " |",

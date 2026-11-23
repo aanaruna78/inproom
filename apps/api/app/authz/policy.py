@@ -110,6 +110,21 @@ TENANT_ROLE_PROJECT_GRANTS: dict[str, frozenset[str]] = {
 TENANT_ROLE_PROJECT_PERMISSIONS: dict[str, frozenset[str]] = {
     AUDITOR: frozenset({"project.read", "audit.read"}),
 }
+# Read-only cap (INPROOM-99): an auditor keeps only these permissions on every project, even when they also
+# hold write-capable project roles through membership. Precedence: tenant_admin overrides the cap (a tenant
+# admin can change their own roles anyway, so capping them would add no protection).
+READ_ONLY_CAP: dict[str, frozenset[str]] = {
+    AUDITOR: TENANT_ROLE_PROJECT_PERMISSIONS[AUDITOR],
+}
+
+
+def _cap(token_roles: frozenset[str]) -> frozenset[str] | None:
+    roles = tenant_roles(token_roles)
+    if TENANT_ADMIN in roles:
+        return None
+    caps = [READ_ONLY_CAP[r] for r in roles if r in READ_ONLY_CAP]
+    return frozenset.intersection(*caps) if caps else None
+
 
 # ---- decisions ---------------------------------------------------------------------------------------
 
@@ -165,10 +180,13 @@ def project_permissions(token_roles: frozenset[str], member_roles: frozenset[str
     granted = {perm for perm, allowed in PROJECT_MATRIX.items() if roles & allowed}
     for role in tenant_roles(token_roles):
         granted |= TENANT_ROLE_PROJECT_PERMISSIONS.get(role, frozenset())
-    return frozenset(granted)
+    cap = _cap(token_roles)
+    return frozenset(granted if cap is None else granted & cap)
 
 
 def approval_scopes(token_roles: frozenset[str], member_roles: frozenset[str]) -> frozenset[str]:
+    if "approval.decide" not in project_permissions(token_roles, member_roles):
+        return frozenset()
     roles = effective_project_roles(token_roles, member_roles)
     if PROJECT_ADMIN in roles:
         return frozenset(APPROVER_SCOPES)
