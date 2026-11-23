@@ -257,3 +257,69 @@ def test_database_hides_victim_rows_from_attacker_session(world, owner_engine):
         assert (
             conn.execute(text("SELECT count(*) FROM projects WHERE tenant_id=:a"), {"a": a.id}).scalar() == 1
         )
+
+
+@pytest.mark.parametrize(("method", "path"), SCOPED, ids=[f"{m} {p}" for m, p in SCOPED])
+def test_cross_tenant_probe_is_audited_in_callers_tenant_only(db_client, world, owner_engine, method, path):
+    """INPROOM-90 (QA-01): every masked 404 leaves one DENIED audit row in the caller's tenant,
+    naming only what the caller sent; the victim's audit trail is untouched."""
+    a, b = world
+    target = a.project["id"] if "{project_id}" in path else a.workspace["id"]
+    with owner_engine.connect() as conn:
+        victim_before = conn.execute(
+            text("SELECT count(*) FROM audit_events WHERE tenant_id=:a"), {"a": a.id}
+        ).scalar()
+    r = _request(db_client, method, path, a, b.headers)
+    with owner_engine.connect() as conn:
+        rows = (
+            conn.execute(
+                text("SELECT * FROM audit_events WHERE tenant_id=:b AND target_id=:t AND outcome='DENIED'"),
+                {"b": b.id, "t": target},
+            )
+            .mappings()
+            .all()
+        )
+        victim_after = conn.execute(
+            text("SELECT count(*) FROM audit_events WHERE tenant_id=:a"), {"a": a.id}
+        ).scalar()
+    record(
+        f"{method} {path}",
+        "foreign id probe audited (caller tenant)",
+        "1 DENIED row",
+        f"{len(rows)} DENIED row",
+    )
+    assert r.status_code == 404
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["actor_id"] == "admin-b" and row["reason"] == "resource not found or not accessible"
+    assert row["trace_id"] == r.headers["X-Trace-Id"]
+    assert row["project_id"] is None  # nothing about tenant A is recorded beyond the id the caller sent
+    assert victim_after == victim_before
+
+
+def test_missing_and_foreign_ids_are_audited_identically(db_client, world, owner_engine):
+    a, b = world
+    ghost = str(uuid.uuid4())
+    foreign = db_client.get(f"/v1/projects/{a.project['id']}", headers=b.headers)
+    missing = db_client.get(f"/v1/projects/{ghost}", headers=b.headers)
+    with owner_engine.connect() as conn:
+        rows = (
+            conn.execute(
+                text(
+                    "SELECT target_id, action, outcome, reason FROM audit_events "
+                    "WHERE tenant_id=:b AND target_id IN (:f, :g)"
+                ),
+                {"b": b.id, "f": a.project["id"], "g": ghost},
+            )
+            .mappings()
+            .all()
+        )
+    shapes = {(r["action"], r["outcome"], r["reason"]) for r in rows}
+    record(
+        "GET /v1/projects/{project_id}",
+        "audit shape foreign vs random id",
+        "identical",
+        "identical" if len(shapes) == 1 else "differs",
+    )
+    assert foreign.status_code == missing.status_code == 404
+    assert len(rows) == 2 and len(shapes) == 1
