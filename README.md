@@ -182,6 +182,10 @@ The [INPROOM Jira planning package](docs/planning/README.md) defines **14 epics 
 
 ## UI / UX design concepts
 
+> **Complete V2.1 screen library:** [17 editable UI screen concepts](docs/ux/v2.1/README.md), [screen-by-screen implementation specifications](docs/ux/v2.1/screen-specifications.md), [Jira / Confluence cross-reference](docs/ux/v2.1/jira-confluence-map.md) and [local review prototype](docs/ux/v2.1/prototype/index.html). [Open Confluence visual gallery](https://aanaruna78.atlassian.net/wiki/spaces/INPROOM/pages/1933313). These are design artifacts, not delivered UI features.
+
+
+
 > **UI/UX design update (November 2026):** [Premium Experience System V2](docs/ux/experience-system-v2.md) defines the current design direction, component behavior, accessibility, interaction quality gates and original [V2 SVG concepts](docs/ux/visuals-v2/README.md). The earlier design files remain for historical reference. [Confluence review page](https://aanaruna78.atlassian.net/wiki/spaces/INPROOM/pages/1441793).
 
 
