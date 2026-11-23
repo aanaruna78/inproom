@@ -63,6 +63,32 @@ def record(
     return conn.execute(insert(audit_events).values(**row).returning(audit_events.c.id)).scalar_one()
 
 
+def record_standalone(
+    principal: Principal,
+    action: str,
+    target_type: str,
+    target_id: str | None = None,
+    *,
+    outcome: str,
+    trace_id: str | None = None,
+    reason: str,
+    project_id: uuid.UUID | None = None,
+) -> uuid.UUID:
+    """Write an audit event in its own transaction, so it survives the failing request's rollback."""
+    with tenant_session(principal.tenant_id) as conn:
+        return record(
+            conn,
+            principal,
+            action,
+            target_type,
+            target_id,
+            outcome=outcome,
+            trace_id=trace_id,
+            project_id=project_id,
+            reason=reason,
+        )
+
+
 def record_denied(
     principal: Principal,
     action: str,

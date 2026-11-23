@@ -248,6 +248,23 @@ def _record_change(
     )
 
 
+def _record_rejection(
+    request: Request, principal: Principal, project_id: uuid.UUID, user_id: str, action: str, exc: ApiError
+) -> None:
+    """A member change rejected by a business rule (e.g. 409 LAST_PROJECT_ADMIN, 404 MEMBER_NOT_FOUND) rolls
+    back; record the attempt in its own transaction, correlated by trace_id, as FAILED (never SUCCESS)."""
+    audit.record_standalone(
+        principal,
+        action,
+        "project_member",
+        user_id,
+        outcome="FAILED",
+        trace_id=request.state.trace_id,
+        reason=f"{exc.code}: {exc.detail}",
+        project_id=project_id,
+    )
+
+
 @router.get(
     "/v1/projects/{project_id}/members",
     response_model=list[Member],
@@ -274,43 +291,48 @@ def put_member(
     payload: Annotated[MemberRoles, Body()],
 ) -> Member:
     new = set(payload.roles)
-    with tenant_session(principal.tenant_id) as conn:
-        authorize(conn, principal, request, "project.member.manage", project_id, lock=True)
-        known = conn.execute(
-            select(tenant_users.c.user_id).where(
-                tenant_users.c.tenant_id == principal.tenant_id, tenant_users.c.user_id == user_id
-            )
-        ).first()
-        if known is None:
-            not_in_tenant = True
-        else:
-            not_in_tenant = False
-            old = _roles_of(conn, principal.tenant_id, project_id, user_id)
-            if old != new:
-                _guard_last_admin(conn, principal.tenant_id, project_id, user_id, old, new)
-                if old - new:
-                    conn.execute(
-                        delete(project_members).where(
-                            project_members.c.tenant_id == principal.tenant_id,
-                            project_members.c.project_id == project_id,
-                            project_members.c.user_id == user_id,
-                            project_members.c.role.in_(old - new),
+    attempt = {"action": "project.member.update"}  # refined once the current roles are known
+    member: Member | None = None
+    try:
+        with tenant_session(principal.tenant_id) as conn:
+            authorize(conn, principal, request, "project.member.manage", project_id, lock=True)
+            known = conn.execute(
+                select(tenant_users.c.user_id).where(
+                    tenant_users.c.tenant_id == principal.tenant_id, tenant_users.c.user_id == user_id
+                )
+            ).first()
+            if known is not None:
+                old = _roles_of(conn, principal.tenant_id, project_id, user_id)
+                attempt["action"] = "project.member.add" if not old else "project.member.update"
+                if old != new:
+                    _guard_last_admin(conn, principal.tenant_id, project_id, user_id, old, new)
+                    if old - new:
+                        conn.execute(
+                            delete(project_members).where(
+                                project_members.c.tenant_id == principal.tenant_id,
+                                project_members.c.project_id == project_id,
+                                project_members.c.user_id == user_id,
+                                project_members.c.role.in_(old - new),
+                            )
                         )
-                    )
-                for role in _ordered(new - old):
-                    conn.execute(
-                        insert(project_members).values(
-                            tenant_id=principal.tenant_id,
-                            project_id=project_id,
-                            user_id=user_id,
-                            role=role,
-                            added_by=principal.user_id,
+                    for role in _ordered(new - old):
+                        conn.execute(
+                            insert(project_members).values(
+                                tenant_id=principal.tenant_id,
+                                project_id=project_id,
+                                user_id=user_id,
+                                role=role,
+                                added_by=principal.user_id,
+                            )
                         )
-                    )
-                action = "project.member.add" if not old else "project.member.update"
-                _record_change(conn, principal, request, project_id, user_id, action, old, new)
-            member = next(m for m in _members(conn, principal.tenant_id, project_id) if m.user_id == user_id)
-    if not_in_tenant:
+                    _record_change(conn, principal, request, project_id, user_id, attempt["action"], old, new)
+                member = next(
+                    m for m in _members(conn, principal.tenant_id, project_id) if m.user_id == user_id
+                )
+    except ApiError as exc:
+        _record_rejection(request, principal, project_id, user_id, attempt["action"], exc)
+        raise
+    if member is None:
         # Audited after the (empty) transaction: a grant to an unknown or foreign user was attempted.
         record_denied(
             principal,
@@ -336,20 +358,26 @@ def put_member(
 def remove_member(
     request: Request, principal: CurrentPrincipal, project_id: uuid.UUID, user_id: str
 ) -> Response:
-    with tenant_session(principal.tenant_id) as conn:
-        authorize(conn, principal, request, "project.member.manage", project_id, lock=True)
-        old = _roles_of(conn, principal.tenant_id, project_id, user_id)
-        if not old:
-            raise ApiError(404, "MEMBER_NOT_FOUND", "Not found", "This user is not a member of the project")
-        _guard_last_admin(conn, principal.tenant_id, project_id, user_id, old, set())
-        conn.execute(
-            delete(project_members).where(
-                project_members.c.tenant_id == principal.tenant_id,
-                project_members.c.project_id == project_id,
-                project_members.c.user_id == user_id,
+    try:
+        with tenant_session(principal.tenant_id) as conn:
+            authorize(conn, principal, request, "project.member.manage", project_id, lock=True)
+            old = _roles_of(conn, principal.tenant_id, project_id, user_id)
+            if not old:
+                raise ApiError(
+                    404, "MEMBER_NOT_FOUND", "Not found", "This user is not a member of the project"
+                )
+            _guard_last_admin(conn, principal.tenant_id, project_id, user_id, old, set())
+            conn.execute(
+                delete(project_members).where(
+                    project_members.c.tenant_id == principal.tenant_id,
+                    project_members.c.project_id == project_id,
+                    project_members.c.user_id == user_id,
+                )
             )
-        )
-        _record_change(conn, principal, request, project_id, user_id, "project.member.remove", old, set())
+            _record_change(conn, principal, request, project_id, user_id, "project.member.remove", old, set())
+    except ApiError as exc:
+        _record_rejection(request, principal, project_id, user_id, "project.member.remove", exc)
+        raise
     return Response(status_code=204)
 
 
