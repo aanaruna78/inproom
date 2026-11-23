@@ -1,26 +1,32 @@
 """Idempotency-Key support for POST endpoints (tenant-scoped, 24h retention).
 
-Flow: claim the key in its own transaction (IN_PROGRESS) -> run the handler -> store the response
-(COMPLETED). A retry with the same key and body replays the stored response; a different body is
-rejected; a concurrent duplicate gets 409. If the handler fails, the claim is released so the client
-can retry safely.
+Flow: claim the key in its own transaction (IN_PROGRESS), then run the handler AND store its response
+(COMPLETED) in one transaction, so the business write and the replayable response commit together.
+A retry with the same key and body replays the stored response; a different body is rejected (422); a
+duplicate still in flight gets 409. If the handler fails, nothing is committed and the claim is released;
+a claim abandoned by a crashed process is reclaimable after IN_PROGRESS_LEASE.
 """
 
 import hashlib
 import json
+import logging
 import uuid
 from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
 from fastapi.responses import JSONResponse
-from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy import Connection, and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from app.db import tenant_session
 from app.db_schema import idempotency_keys
 
+logger = logging.getLogger(__name__)
+
 RETENTION = timedelta(hours=24)
+# A claim older than this with no committed result is treated as abandoned and may be reclaimed.
+IN_PROGRESS_LEASE = timedelta(seconds=120)
 REPLAY_HEADER = "Idempotent-Replayed"
 
 
@@ -51,10 +57,19 @@ def _claim(tenant_id: uuid.UUID, key: str, fingerprint: str) -> JSONResponse | N
     with tenant_session(tenant_id) as conn:
         conn.execute(
             delete(idempotency_keys).where(
-                and_(
-                    idempotency_keys.c.key == key,
+                idempotency_keys.c.tenant_id == tenant_id,
+                idempotency_keys.c.key == key,
+                or_(
+                    # Expired completed responses.
                     idempotency_keys.c.created_at < func.now() - RETENTION,
-                )
+                    # Abandoned claims (process died between claim and commit). Because the response is
+                    # stored in the same transaction as the business write, an IN_PROGRESS row can only
+                    # mean nothing was committed - reclaiming it is safe.
+                    and_(
+                        idempotency_keys.c.status == "IN_PROGRESS",
+                        idempotency_keys.c.created_at < func.now() - IN_PROGRESS_LEASE,
+                    ),
+                ),
             )
         )
         claimed = conn.execute(
@@ -65,7 +80,15 @@ def _claim(tenant_id: uuid.UUID, key: str, fingerprint: str) -> JSONResponse | N
         ).first()
         if claimed:
             return None
-        row = conn.execute(select(idempotency_keys).where(idempotency_keys.c.key == key)).mappings().one()
+        row = (
+            conn.execute(
+                select(idempotency_keys).where(
+                    idempotency_keys.c.tenant_id == tenant_id, idempotency_keys.c.key == key
+                )
+            )
+            .mappings()
+            .one()
+        )
     if row["request_sha256"] != fingerprint:
         raise IdempotencyError(
             422, "IDEMPOTENCY_KEY_REUSED", "Idempotency-Key was already used with a different request"
@@ -79,30 +102,49 @@ def _claim(tenant_id: uuid.UUID, key: str, fingerprint: str) -> JSONResponse | N
     )
 
 
-def run_idempotent(
-    tenant_id: uuid.UUID,
-    key: str | None,
-    fingerprint: str,
-    handler: Callable[[], tuple[int, dict[str, Any]]],
-) -> JSONResponse:
-    """Execute `handler` at most once per (tenant, key). `handler` returns (status_code, json_body)."""
+def _release(tenant_id: uuid.UUID, key: str) -> None:
+    """Best effort: free the claim after a failed attempt. If this fails too, the lease expires it."""
+    try:
+        with tenant_session(tenant_id) as conn:
+            conn.execute(
+                delete(idempotency_keys).where(
+                    idempotency_keys.c.tenant_id == tenant_id,
+                    idempotency_keys.c.key == key,
+                    idempotency_keys.c.status == "IN_PROGRESS",
+                )
+            )
+    except Exception:  # noqa: BLE001 - never mask the original failure
+        logger.exception("could not release idempotency key; it will expire after the lease")
+
+
+Handler = Callable[[Connection], tuple[int, dict[str, Any]]]
+
+
+def run_idempotent(tenant_id: uuid.UUID, key: str | None, fingerprint: str, handler: Handler) -> JSONResponse:
+    """Execute `handler(conn)` at most once per (tenant, key); it returns (status_code, json_body).
+
+    The handler runs inside the tenant transaction opened here, and the response is stored in the
+    SAME transaction. The business write and its replayable response therefore commit together: if
+    anything fails after the commit (sending the response, a crash), an identical retry replays the
+    original result; if anything fails before it, nothing was written and the retry runs again.
+    """
     if key is None:
-        status, body = handler()
+        with tenant_session(tenant_id) as conn:
+            status, body = handler(conn)
         return JSONResponse(body, status_code=status)
     validate_key(key)
     replay = _claim(tenant_id, key, fingerprint)
     if replay is not None:
         return replay
     try:
-        status, body = handler()
-    except BaseException:
         with tenant_session(tenant_id) as conn:
-            conn.execute(delete(idempotency_keys).where(idempotency_keys.c.key == key))
+            status, body = handler(conn)
+            conn.execute(
+                update(idempotency_keys)
+                .where(idempotency_keys.c.tenant_id == tenant_id, idempotency_keys.c.key == key)
+                .values(status="COMPLETED", response_status=status, response_body=body)
+            )
+    except BaseException:
+        _release(tenant_id, key)
         raise
-    with tenant_session(tenant_id) as conn:
-        conn.execute(
-            update(idempotency_keys)
-            .where(idempotency_keys.c.key == key)
-            .values(status="COMPLETED", response_status=status, response_body=body)
-        )
     return JSONResponse(body, status_code=status)

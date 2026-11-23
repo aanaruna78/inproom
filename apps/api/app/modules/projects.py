@@ -166,94 +166,91 @@ def create_project(
     body = payload.model_dump()
     limit = get_settings().workspace_project_limit
 
-    def handler() -> tuple[int, dict]:
+    def handler(conn: Connection) -> tuple[int, dict]:
         try:
-            with tenant_session(principal.tenant_id) as conn:
-                if not conn.execute(
-                    select(
-                        exists().where(
-                            workspaces.c.tenant_id == principal.tenant_id, workspaces.c.id == workspace_id
-                        )
-                    )
-                ).scalar():
-                    raise deny_not_found(
-                        principal,
-                        request,
-                        action="workspace.project.create",
-                        resource="Workspace",
-                        target_type="workspace",
-                        target_id=str(workspace_id),
-                    )
-                active = conn.execute(
-                    select(func.count())
-                    .select_from(projects)
-                    .where(
-                        projects.c.tenant_id == principal.tenant_id,
-                        projects.c.workspace_id == workspace_id,
-                        projects.c.status != "ARCHIVED",
-                    )
-                ).scalar_one()
-                if active >= limit:
-                    raise unprocessable(
-                        "PROJECT_LIMIT_REACHED", f"Workspace already has {limit} active projects"
-                    )
-
-                status = "PENDING_SOURCES" if payload.mode == "MIGRATION" else "ACTIVE"
-                row = (
-                    conn.execute(
-                        insert(projects)
-                        .values(
-                            tenant_id=principal.tenant_id,
-                            workspace_id=workspace_id,
-                            key=payload.key,
-                            name=payload.name,
-                            description=payload.description,
-                            mode=payload.mode,
-                            status=status,
-                            owner_id=principal.user_id,
-                        )
-                        .returning(*projects.c)
-                    )
-                    .mappings()
-                    .one()
-                )
-                project_id = row["id"]
-                conn.execute(
-                    insert(project_members).values(
-                        tenant_id=principal.tenant_id,
-                        project_id=project_id,
-                        user_id=principal.user_id,
-                        role=PROJECT_ADMIN_ROLE,
-                        added_by=principal.user_id,
+            if not conn.execute(
+                select(
+                    exists().where(
+                        workspaces.c.tenant_id == principal.tenant_id, workspaces.c.id == workspace_id
                     )
                 )
-                settings = default_settings(payload.process_package)
-                conn.execute(
-                    insert(project_settings_versions).values(
-                        tenant_id=principal.tenant_id,
-                        project_id=project_id,
-                        version=1,
-                        settings=settings,
-                        content_sha256=settings_hash(settings),
-                        created_by=principal.user_id,
-                    )
-                )
-                result = _detail(conn, dict(row), [PROJECT_ADMIN_ROLE])
-                conn.execute(
-                    insert(outbox_events).values(
-                        tenant_id=principal.tenant_id, type="project.created", payload=result
-                    )
-                )
-                audit.record(
-                    conn,
+            ).scalar():
+                raise deny_not_found(
                     principal,
-                    "project.create",
-                    "project",
-                    str(project_id),
-                    trace_id=request.state.trace_id,
-                    payload=body,
-                    project_id=project_id,
+                    request,
+                    action="workspace.project.create",
+                    resource="Workspace",
+                    target_type="workspace",
+                    target_id=str(workspace_id),
                 )
+            active = conn.execute(
+                select(func.count())
+                .select_from(projects)
+                .where(
+                    projects.c.tenant_id == principal.tenant_id,
+                    projects.c.workspace_id == workspace_id,
+                    projects.c.status != "ARCHIVED",
+                )
+            ).scalar_one()
+            if active >= limit:
+                raise unprocessable("PROJECT_LIMIT_REACHED", f"Workspace already has {limit} active projects")
+
+            status = "PENDING_SOURCES" if payload.mode == "MIGRATION" else "ACTIVE"
+            row = (
+                conn.execute(
+                    insert(projects)
+                    .values(
+                        tenant_id=principal.tenant_id,
+                        workspace_id=workspace_id,
+                        key=payload.key,
+                        name=payload.name,
+                        description=payload.description,
+                        mode=payload.mode,
+                        status=status,
+                        owner_id=principal.user_id,
+                    )
+                    .returning(*projects.c)
+                )
+                .mappings()
+                .one()
+            )
+            project_id = row["id"]
+            conn.execute(
+                insert(project_members).values(
+                    tenant_id=principal.tenant_id,
+                    project_id=project_id,
+                    user_id=principal.user_id,
+                    role=PROJECT_ADMIN_ROLE,
+                    added_by=principal.user_id,
+                )
+            )
+            settings = default_settings(payload.process_package)
+            conn.execute(
+                insert(project_settings_versions).values(
+                    tenant_id=principal.tenant_id,
+                    project_id=project_id,
+                    version=1,
+                    settings=settings,
+                    content_sha256=settings_hash(settings),
+                    created_by=principal.user_id,
+                )
+            )
+            result = _detail(conn, dict(row), [PROJECT_ADMIN_ROLE])
+            conn.execute(
+                insert(outbox_events).values(
+                    tenant_id=principal.tenant_id, type="project.created", payload=result
+                )
+            )
+            audit.record(
+                conn,
+                principal,
+                "project.create",
+                "project",
+                str(project_id),
+                trace_id=request.state.trace_id,
+                payload=body,
+                project_id=project_id,
+            )
         except IntegrityError as exc:
             if is_unique_violation(exc, "uq_projects_tenant_key"):
                 raise conflict("PROJECT_KEY_EXISTS", f"Project key '{payload.key}' already exists") from exc
