@@ -1,6 +1,49 @@
 {
   "components": {
     "schemas": {
+      "Approvals": {
+        "additionalProperties": false,
+        "properties": {
+          "expiry_hours": {
+            "default": 72,
+            "maximum": 168.0,
+            "minimum": 1.0,
+            "title": "Expiry Hours",
+            "type": "integer"
+          },
+          "min_approvers": {
+            "default": 1,
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Min Approvers",
+            "type": "integer"
+          },
+          "required_scopes": {
+            "description": "Approvals required before any external write",
+            "items": {
+              "enum": [
+                "requirement",
+                "plan",
+                "impact",
+                "test",
+                "release"
+              ],
+              "type": "string"
+            },
+            "title": "Required Scopes",
+            "type": "array"
+          },
+          "self_approval": {
+            "const": false,
+            "default": false,
+            "description": "Never allowed",
+            "title": "Self Approval",
+            "type": "boolean"
+          }
+        },
+        "title": "Approvals",
+        "type": "object"
+      },
       "DirectoryUser": {
         "properties": {
           "display_name": {
@@ -310,6 +353,33 @@
         "title": "Page[Project]",
         "type": "object"
       },
+      "Page_SettingsVersion_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SettingsVersion"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "Page[SettingsVersion]",
+        "type": "object"
+      },
       "Page_Workspace_": {
         "properties": {
           "items": {
@@ -335,6 +405,52 @@
           "items"
         ],
         "title": "Page[Workspace]",
+        "type": "object"
+      },
+      "Production": {
+        "additionalProperties": false,
+        "properties": {
+          "actions_enabled": {
+            "default": false,
+            "title": "Actions Enabled",
+            "type": "boolean"
+          },
+          "enabled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set by the server; client values are ignored",
+            "title": "Enabled At"
+          },
+          "enabled_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set by the server; client values are ignored",
+            "title": "Enabled By"
+          },
+          "environments": {
+            "items": {
+              "pattern": "^[a-z][a-z0-9-]{1,31}$",
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Environments",
+            "type": "array"
+          }
+        },
+        "title": "Production",
         "type": "object"
       },
       "Project": {
@@ -458,7 +574,10 @@
           },
           "process_package": {
             "default": "sdlc@1",
-            "pattern": "^[a-z][a-z0-9-]*@\\d+$",
+            "enum": [
+              "sdlc@1",
+              "stlc@1"
+            ],
             "title": "Process Package",
             "type": "string"
           }
@@ -563,6 +682,54 @@
         "title": "ProjectDetail",
         "type": "object"
       },
+      "ProjectSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "approvals": {
+            "$ref": "#/components/schemas/Approvals"
+          },
+          "model_policy": {
+            "default": "tenant_default",
+            "enum": [
+              "tenant_default",
+              "local_only",
+              "cloud_allowed"
+            ],
+            "title": "Model Policy",
+            "type": "string"
+          },
+          "process_package": {
+            "default": "sdlc@1",
+            "pattern": "^[a-z][a-z0-9-]*@\\d+$",
+            "title": "Process Package",
+            "type": "string"
+          },
+          "production": {
+            "$ref": "#/components/schemas/Production"
+          },
+          "schema_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sources": {
+            "$ref": "#/components/schemas/Sources"
+          },
+          "write_mode": {
+            "default": "read_only",
+            "enum": [
+              "read_only",
+              "draft_only",
+              "approved_writes"
+            ],
+            "title": "Write Mode",
+            "type": "string"
+          }
+        },
+        "title": "ProjectSettings",
+        "type": "object"
+      },
       "ProjectUpdate": {
         "properties": {
           "description": {
@@ -613,6 +780,225 @@
           "checks"
         ],
         "title": "Readiness",
+        "type": "object"
+      },
+      "SettingsChange": {
+        "properties": {
+          "new": {
+            "title": "New"
+          },
+          "old": {
+            "title": "Old"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "SettingsChange",
+        "type": "object"
+      },
+      "SettingsUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "change_note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Note"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ProjectSettings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "title": "SettingsUpdate",
+        "type": "object"
+      },
+      "SettingsVersion": {
+        "properties": {
+          "change_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Note"
+          },
+          "changed_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Changed Paths",
+            "type": "array"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "description": "Schema the version was stored with (1 = legacy, read as v2)",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ProjectSettings"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_id",
+          "version",
+          "schema_version",
+          "settings",
+          "content_sha256",
+          "created_by",
+          "created_at",
+          "change_note",
+          "changed_paths"
+        ],
+        "title": "SettingsVersion",
+        "type": "object"
+      },
+      "SettingsVersionDetail": {
+        "properties": {
+          "change_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Note"
+          },
+          "changed_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Changed Paths",
+            "type": "array"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "diff": {
+            "description": "Changes against the previous version (empty for version 1)",
+            "items": {
+              "$ref": "#/components/schemas/SettingsChange"
+            },
+            "title": "Diff",
+            "type": "array"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "description": "Schema the version was stored with (1 = legacy, read as v2)",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ProjectSettings"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_id",
+          "version",
+          "schema_version",
+          "settings",
+          "content_sha256",
+          "created_by",
+          "created_at",
+          "change_note",
+          "changed_paths",
+          "diff"
+        ],
+        "title": "SettingsVersionDetail",
+        "type": "object"
+      },
+      "Sources": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_kinds": {
+            "items": {
+              "enum": [
+                "git",
+                "jira",
+                "confluence",
+                "upload"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Allowed Kinds",
+            "type": "array"
+          },
+          "approve_new_sources": {
+            "default": true,
+            "title": "Approve New Sources",
+            "type": "boolean"
+          },
+          "max_classification": {
+            "default": "internal",
+            "enum": [
+              "public",
+              "internal",
+              "confidential"
+            ],
+            "title": "Max Classification",
+            "type": "string"
+          }
+        },
+        "title": "Sources",
         "type": "object"
       },
       "ValidationError": {
@@ -1220,6 +1606,278 @@
         "summary": "The caller's effective roles, permissions and approval scopes on a project",
         "tags": [
           "members"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/settings": {
+      "get": {
+        "operationId": "get_settings__v1_projects__project_id__settings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsVersion"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Current project settings (schema v2) with their version",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "put_settings_v1_projects__project_id__settings_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsVersion"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "412": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          },
+          "428": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save project settings as a new immutable version (If-Match = current settings version)",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/settings/versions": {
+      "get": {
+        "operationId": "list_versions_v1_projects__project_id__settings_versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_SettingsVersion_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Settings history, newest first",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/settings/versions/{version}": {
+      "get": {
+        "operationId": "get_version_v1_projects__project_id__settings_versions__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "maximum": 1000000,
+              "minimum": 1,
+              "title": "Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsVersionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "One settings version and its diff against the previous version",
+        "tags": [
+          "settings"
         ]
       }
     },

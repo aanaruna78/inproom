@@ -142,6 +142,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Current project settings (schema v2) with their version */
+        get: operations["get_settings__v1_projects__project_id__settings_get"];
+        /** Save project settings as a new immutable version (If-Match = current settings version) */
+        put: operations["put_settings_v1_projects__project_id__settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/settings/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Settings history, newest first */
+        get: operations["list_versions_v1_projects__project_id__settings_versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/settings/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One settings version and its diff against the previous version */
+        get: operations["get_version_v1_projects__project_id__settings_versions__version__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/users": {
         parameters: {
             query?: never;
@@ -199,6 +251,31 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Approvals */
+        Approvals: {
+            /**
+             * Expiry Hours
+             * @default 72
+             */
+            expiry_hours: number;
+            /**
+             * Min Approvers
+             * @default 1
+             */
+            min_approvers: number;
+            /**
+             * Required Scopes
+             * @description Approvals required before any external write
+             */
+            required_scopes?: ("requirement" | "plan" | "impact" | "test" | "release")[];
+            /**
+             * Self Approval
+             * @description Never allowed
+             * @default false
+             * @constant
+             */
+            self_approval: false;
+        };
         /** DirectoryUser */
         DirectoryUser: {
             /** Display Name */
@@ -303,12 +380,39 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[SettingsVersion] */
+        Page_SettingsVersion_: {
+            /** Items */
+            items: components["schemas"]["SettingsVersion"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[Workspace] */
         Page_Workspace_: {
             /** Items */
             items: components["schemas"]["Workspace"][];
             /** Next Cursor */
             next_cursor?: string | null;
+        };
+        /** Production */
+        Production: {
+            /**
+             * Actions Enabled
+             * @default false
+             */
+            actions_enabled: boolean;
+            /**
+             * Enabled At
+             * @description Set by the server; client values are ignored
+             */
+            enabled_at?: string | null;
+            /**
+             * Enabled By
+             * @description Set by the server; client values are ignored
+             */
+            enabled_by?: string | null;
+            /** Environments */
+            environments?: string[];
         };
         /** Project */
         Project: {
@@ -366,8 +470,9 @@ export interface components {
             /**
              * Process Package
              * @default sdlc@1
+             * @enum {string}
              */
-            process_package: string;
+            process_package: "sdlc@1" | "stlc@1";
         };
         /** ProjectDetail */
         ProjectDetail: {
@@ -414,6 +519,35 @@ export interface components {
              */
             workspace_id: string;
         };
+        /** ProjectSettings */
+        ProjectSettings: {
+            approvals?: components["schemas"]["Approvals"];
+            /**
+             * Model Policy
+             * @default tenant_default
+             * @enum {string}
+             */
+            model_policy: "tenant_default" | "local_only" | "cloud_allowed";
+            /**
+             * Process Package
+             * @default sdlc@1
+             */
+            process_package: string;
+            production?: components["schemas"]["Production"];
+            /**
+             * Schema Version
+             * @default 2
+             * @constant
+             */
+            schema_version: 2;
+            sources?: components["schemas"]["Sources"];
+            /**
+             * Write Mode
+             * @default read_only
+             * @enum {string}
+             */
+            write_mode: "read_only" | "draft_only" | "approved_writes";
+        };
         /** ProjectUpdate */
         ProjectUpdate: {
             /** Description */
@@ -429,6 +563,100 @@ export interface components {
             };
             /** Status */
             status: string;
+        };
+        /** SettingsChange */
+        SettingsChange: {
+            /** New */
+            new?: unknown;
+            /** Old */
+            old?: unknown;
+            /** Path */
+            path: string;
+        };
+        /** SettingsUpdate */
+        SettingsUpdate: {
+            /** Change Note */
+            change_note?: string | null;
+            settings: components["schemas"]["ProjectSettings"];
+        };
+        /** SettingsVersion */
+        SettingsVersion: {
+            /** Change Note */
+            change_note: string | null;
+            /** Changed Paths */
+            changed_paths: string[];
+            /** Content Sha256 */
+            content_sha256: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Schema Version
+             * @description Schema the version was stored with (1 = legacy, read as v2)
+             */
+            schema_version: number;
+            settings: components["schemas"]["ProjectSettings"];
+            /** Version */
+            version: number;
+        };
+        /** SettingsVersionDetail */
+        SettingsVersionDetail: {
+            /** Change Note */
+            change_note: string | null;
+            /** Changed Paths */
+            changed_paths: string[];
+            /** Content Sha256 */
+            content_sha256: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /**
+             * Diff
+             * @description Changes against the previous version (empty for version 1)
+             */
+            diff: components["schemas"]["SettingsChange"][];
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Schema Version
+             * @description Schema the version was stored with (1 = legacy, read as v2)
+             */
+            schema_version: number;
+            settings: components["schemas"]["ProjectSettings"];
+            /** Version */
+            version: number;
+        };
+        /** Sources */
+        Sources: {
+            /** Allowed Kinds */
+            allowed_kinds?: ("git" | "jira" | "confluence" | "upload")[];
+            /**
+             * Approve New Sources
+             * @default true
+             */
+            approve_new_sources: boolean;
+            /**
+             * Max Classification
+             * @default internal
+             * @enum {string}
+             */
+            max_classification: "public" | "internal" | "confidential";
         };
         /** ValidationError */
         ValidationError: {
@@ -858,6 +1086,194 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MyPermissions"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings__v1_projects__project_id__settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsVersion"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_settings_v1_projects__project_id__settings_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsVersion"];
+                };
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_versions_v1_projects__project_id__settings_versions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SettingsVersion_"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_version_v1_projects__project_id__settings_versions__version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsVersionDetail"];
                 };
             };
             /** @description problem+json */

@@ -20,7 +20,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 metadata = MetaData()
 
@@ -140,7 +140,12 @@ project_settings_versions = Table(
     Column("content_sha256", Text, nullable=False),
     Column("created_by", Text, nullable=False),
     _created(),
+    # INPROOM-102: schema of the stored document (1 = legacy, read as v2), note and changed paths per version.
+    Column("schema_version", SmallInteger, nullable=False, server_default="1"),
+    Column("change_note", Text),
+    Column("changed_paths", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
     PrimaryKeyConstraint("project_id", "version", name="pk_project_settings_versions"),
+    CheckConstraint("version >= 1", name="ck_settings_version_positive"),
     ForeignKeyConstraint(
         ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_settings_project"
     ),

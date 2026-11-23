@@ -1,6 +1,5 @@
 """Projects: create (atomic with owner, settings v1, outbox, audit), list, get, update, archive."""
 
-import hashlib
 import json
 import re
 import uuid
@@ -18,8 +17,9 @@ from app.auth import CurrentPrincipal
 from app.authz import authorize, deny_not_found, policy, require_tenant
 from app.config import get_settings
 from app.db import tenant_session
-from app.db_schema import outbox_events, project_members, project_settings_versions, projects, workspaces
+from app.db_schema import outbox_events, project_members, projects, workspaces
 from app.idempotency import request_fingerprint, run_idempotent
+from app.modules import settings as settings_module
 from app.modules.workspaces import is_unique_violation
 from app.pagination import MAX_LIMIT, Page, apply_keyset, next_cursor
 
@@ -34,7 +34,7 @@ class ProjectCreate(BaseModel):
     name: str = Field(min_length=3, max_length=120, examples=["INPROOM platform"])
     description: str | None = Field(default=None, max_length=2000)
     mode: Literal["NEW", "MIGRATION"] = "NEW"
-    process_package: str = Field(default="sdlc@1", pattern=r"^[a-z][a-z0-9-]*@\d+$")
+    process_package: Literal["sdlc@1", "stlc@1"] = "sdlc@1"
 
 
 class ProjectUpdate(BaseModel):
@@ -62,20 +62,6 @@ class ProjectDetail(Project):
     my_roles: list[str]
 
 
-def default_settings(process_package: str) -> dict[str, Any]:
-    return {
-        "write_mode": "read_only",
-        "approval_policy": "approval_required_for_external_writes",
-        "model_policy": "tenant_default",
-        "process_package": process_package,
-    }
-
-
-def settings_hash(settings: dict[str, Any]) -> str:
-    canonical = json.dumps(settings, sort_keys=True, separators=(",", ":"))
-    return "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
-
-
 def etag(version: int) -> str:
     return f'"{version}"'
 
@@ -90,16 +76,10 @@ def parse_if_match(value: str | None) -> int:
 
 
 def _detail(conn: Connection, row: dict, roles: list[str] | frozenset[str]) -> dict[str, Any]:
-    settings = conn.execute(
-        select(project_settings_versions.c.settings).where(
-            project_settings_versions.c.tenant_id == row["tenant_id"],
-            project_settings_versions.c.project_id == row["id"],
-            project_settings_versions.c.version == row["settings_version"],
-        )
-    ).scalar_one()
-    return ProjectDetail.model_validate(row | {"settings": settings, "my_roles": sorted(roles)}).model_dump(
-        mode="json"
-    )
+    current = settings_module.current_settings(conn, row["tenant_id"], row)
+    return ProjectDetail.model_validate(
+        row | {"settings": settings_module.canonical(current.settings), "my_roles": sorted(roles)}
+    ).model_dump(mode="json")
 
 
 @router.post(
@@ -182,16 +162,8 @@ def create_project(
                     added_by=principal.user_id,
                 )
             )
-            settings = default_settings(payload.process_package)
-            conn.execute(
-                insert(project_settings_versions).values(
-                    tenant_id=principal.tenant_id,
-                    project_id=project_id,
-                    version=1,
-                    settings=settings,
-                    content_sha256=settings_hash(settings),
-                    created_by=principal.user_id,
-                )
+            settings_module.insert_version(
+                conn, principal, project_id, 1, settings_module.default_settings(payload.process_package)
             )
             result = _detail(conn, dict(row), [PROJECT_ADMIN_ROLE])
             conn.execute(

@@ -10,6 +10,7 @@ from app.health import router as health_router
 from app.me import router as me_router
 from app.modules.members import router as members_router
 from app.modules.projects import router as projects_router
+from app.modules.settings import router as settings_router
 from app.modules.workspaces import router as workspaces_router
 
 TRACE_HEADER = "X-Trace-Id"
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
     app.include_router(workspaces_router)
     app.include_router(projects_router)
     app.include_router(members_router)
+    app.include_router(settings_router)
     return app
 
 

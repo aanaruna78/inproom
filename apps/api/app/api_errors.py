@@ -2,12 +2,13 @@
 
 
 class ApiError(Exception):
-    def __init__(self, status: int, code: str, title: str, detail: str | None = None):
+    def __init__(self, status: int, code: str, title: str, detail: str | None = None, **extra):
         super().__init__(detail or title)
         self.status = status
         self.code = code
         self.title = title
         self.detail = detail
+        self.extra = extra  # additional problem+json members, e.g. field errors
 
 
 def conflict(code: str, detail: str) -> ApiError:

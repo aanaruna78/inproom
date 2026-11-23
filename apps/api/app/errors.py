@@ -33,7 +33,7 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ApiError)
     async def api_error(request: Request, exc: ApiError) -> JSONResponse:
-        return problem(request, exc.status, exc.title, exc.code, detail=exc.detail)
+        return problem(request, exc.status, exc.title, exc.code, detail=exc.detail, **exc.extra)
 
     from app.authz import Forbidden, NotFound
     from app.idempotency import IdempotencyError
