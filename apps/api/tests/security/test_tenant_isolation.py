@@ -45,6 +45,8 @@ ROUTES: dict[tuple[str, str], str] = {
     ("PUT", "/v1/projects/{project_id}/settings"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/settings/versions"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/settings/versions/{version}"): "project_scoped",
+    # INPROOM-103: lifecycle
+    ("POST", "/v1/projects/{project_id}/lifecycle"): "project_scoped",
 }
 
 SCOPED = [r for r, kind in ROUTES.items() if kind in ("workspace_scoped", "project_scoped")]
@@ -122,6 +124,8 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
     elif method == "PUT" and path_template.endswith("/settings"):
         kwargs["json"] = {"settings": {"write_mode": "draft_only"}}
         kwargs["headers"]["If-Match"] = '"1"'
+    elif method == "POST" and path_template.endswith("/lifecycle"):
+        kwargs["json"] = {"action": "archive"}
     elif method == "POST" and path_template.endswith("/projects"):
         kwargs["json"] = {"key": "XTENANT", "name": "Cross tenant write", "mode": "NEW"}
     elif method == "PATCH":

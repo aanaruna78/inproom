@@ -56,6 +56,7 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("PUT", "/v1/projects/{project_id}/settings"): ("project", "project.settings.update"),
     ("GET", "/v1/projects/{project_id}/settings/versions"): ("project", "project.read"),
     ("GET", "/v1/projects/{project_id}/settings/versions/{version}"): ("project", "project.read"),
+    ("POST", "/v1/projects/{project_id}/lifecycle"): ("project", "project.archive"),
 }
 # Audit action recorded for a denial when it differs from the permission (listing projects of a workspace
 # the caller cannot see is audited as a project read).
@@ -153,6 +154,8 @@ def _call(client, method, path, world: World, headers):
     kwargs: dict = {"headers": dict(headers)}
     if method == "POST" and path == "/v1/workspaces":
         kwargs["json"] = {"slug": f"ws-{uuid.uuid4().hex[:8]}", "name": "New"}
+    elif method == "POST" and path.endswith("/lifecycle"):
+        kwargs["json"] = {"action": "archive", "reason": "matrix"}
     elif method == "POST" and path.endswith("/projects"):
         kwargs["json"] = {"key": "N" + uuid.uuid4().hex[:6].upper(), "name": "New project"}
     elif method == "PATCH":
