@@ -4,6 +4,9 @@ on:
   push:
     branches: ["main", "INPROOM-*"]
   pull_request:
+  schedule:
+    - cron: "17 2 * * *" # nightly: exhaustive role x route matrix (INPROOM_FULL_MATRIX)
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -48,6 +51,8 @@ jobs:
         env:
           INPROOM_ISOLATION_REPORT: ${{ github.workspace }}/apps/api/build/isolation-matrix.md
           INPROOM_RBAC_REPORT: ${{ github.workspace }}/apps/api/build/rbac-matrix-results.md
+          # Pushes run the targeted matrix; the nightly schedule runs every actor on every route.
+          INPROOM_FULL_MATRIX: ${{ github.event_name == 'schedule' && '1' || '' }}
       - name: Upload tenant isolation matrix
         if: always()
         uses: actions/upload-artifact@v4

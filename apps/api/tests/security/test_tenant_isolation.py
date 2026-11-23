@@ -175,46 +175,21 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
     return client.request(method, path, **kwargs)
 
 
+def _ghost(tenant_id: uuid.UUID) -> Tenant:
+    """Random ids that exist nowhere (for existence probes and auth checks)."""
+    return Tenant(
+        tenant_id,
+        {},
+        {"id": str(uuid.uuid4()), "slug": "ghost-ws", "name": "Ghost workspace"},
+        {"id": str(uuid.uuid4()), "version": 1, "key": "GHOST", "name": "Ghost project"},
+        {"id": str(uuid.uuid4()), "display_name": "Ghost connection"},
+    )
+
+
 def _assert_no_leak(response, victim: Tenant):
     blob = response.text + json.dumps(dict(response.headers))
     leaked = [s for s in victim.secrets() if s in blob]
     assert not leaked, f"response leaked {leaked}"
-
-
-@pytest.mark.parametrize(("method", "path"), SCOPED, ids=[f"{m} {p}" for m, p in SCOPED])
-def test_foreign_tenant_ids_return_404_without_leaking(db_client, world, method, path):
-    a, b = world
-    r = _request(db_client, method, path, a, b.headers)  # tenant B uses tenant A's ids
-    record(f"{method} {path}", "tenant B token + tenant A ids", "404", str(r.status_code))
-    assert r.status_code == 404, r.text
-    assert r.json()["code"] == "NOT_FOUND"
-    _assert_no_leak(r, a)
-
-
-@pytest.mark.parametrize(("method", "path"), SCOPED, ids=[f"{m} {p}" for m, p in SCOPED])
-def test_foreign_response_is_identical_to_nonexistent_resource(db_client, world, method, path):
-    a, b = world
-    ghost = Tenant(
-        a.id,
-        {},
-        {"id": str(uuid.uuid4())},
-        {"id": str(uuid.uuid4()), "version": 1},
-        {"id": str(uuid.uuid4())},
-    )
-    foreign = _request(db_client, method, path, a, b.headers)
-    missing = _request(db_client, method, path, ghost, b.headers)
-
-    def strip(resp):
-        return resp.status_code, {k: v for k, v in resp.json().items() if k != "trace_id"}
-
-    same = strip(foreign) == strip(missing)
-    record(
-        f"{method} {path}",
-        "existence probe (foreign vs random id)",
-        "identical",
-        "identical" if same else "differs",
-    )
-    assert same
 
 
 def test_cross_tenant_attempts_do_not_modify_victim_data(db_client, world, owner_engine):
@@ -287,22 +262,19 @@ def _forge_tid(token: str, tenant_id: uuid.UUID) -> str:
 
 
 @pytest.mark.parametrize(("method", "path"), AUTHENTICATED, ids=[f"{m} {p}" for m, p in AUTHENTICATED])
-def test_forged_tenant_claim_is_rejected_on_every_authenticated_route(db_client, world, method, path):
-    a, b = world
-    forged = _forge_tid(b.headers["Authorization"].removeprefix("Bearer "), a.id)
-    r = _request(db_client, method, path, a, {"Authorization": f"Bearer {forged}"})
-    record(f"{method} {path}", "tenant B token with tid forged to A", "401", str(r.status_code))
+def test_forged_or_missing_token_is_rejected_on_every_authenticated_route(db_client, tokens, method, path):
+    """No seeded data needed: authentication fails before any lookup, so random ids are enough."""
+    victim = _ghost(uuid.uuid4())
+    attacker_token = tokens.mint(tenant_id=uuid.uuid4(), user_id="admin-b", roles=["tenant_admin"])
+    forged = _forge_tid(attacker_token, victim.id)
+    r = _request(db_client, method, path, victim, {"Authorization": f"Bearer {forged}"})
+    record(f"{method} {path}", "token with tid forged to another tenant", "401", str(r.status_code))
     assert r.status_code == 401 and r.json()["code"] == "TOKEN_INVALID_SIGNATURE"
-    _assert_no_leak(r, a)
-
-
-@pytest.mark.parametrize(("method", "path"), AUTHENTICATED, ids=[f"{m} {p}" for m, p in AUTHENTICATED])
-def test_unauthenticated_requests_are_rejected(db_client, world, method, path):
-    a, _ = world
-    r = _request(db_client, method, path, a, {})
+    _assert_no_leak(r, victim)
+    r = _request(db_client, method, path, victim, {})
     record(f"{method} {path}", "no token", "401", str(r.status_code))
     assert r.status_code == 401
-    _assert_no_leak(r, a)
+    _assert_no_leak(r, victim)
 
 
 def test_public_routes_expose_no_tenant_data(db_client, world):
@@ -332,9 +304,11 @@ def test_database_hides_victim_rows_from_attacker_session(world, owner_engine):
 
 
 @pytest.mark.parametrize(("method", "path"), SCOPED, ids=[f"{m} {p}" for m, p in SCOPED])
-def test_cross_tenant_probe_is_audited_in_callers_tenant_only(db_client, world, owner_engine, method, path):
-    """INPROOM-90 (QA-01): every masked 404 leaves one DENIED audit row in the caller's tenant,
-    naming only what the caller sent; the victim's audit trail is untouched."""
+def test_cross_tenant_access_is_masked_audited_and_leak_free(db_client, world, owner_engine, method, path):
+    """Per scoped route, tenant B using tenant A's ids gets:
+    - a 404 that leaks nothing about tenant A (INPROOM-85);
+    - exactly the response a random, non-existent id gets, so existence cannot be probed;
+    - one DENIED audit row in B's own tenant naming only what B sent; A's trail untouched (INPROOM-90)."""
     a, b = world
     if "{project_id}" in path:
         target = a.project["id"]
@@ -346,7 +320,7 @@ def test_cross_tenant_probe_is_audited_in_callers_tenant_only(db_client, world, 
         victim_before = conn.execute(
             text("SELECT count(*) FROM audit_events WHERE tenant_id=:a"), {"a": a.id}
         ).scalar()
-    r = _request(db_client, method, path, a, b.headers)
+    foreign = _request(db_client, method, path, a, b.headers)
     with owner_engine.connect() as conn:
         rows = (
             conn.execute(
@@ -359,17 +333,27 @@ def test_cross_tenant_probe_is_audited_in_callers_tenant_only(db_client, world, 
         victim_after = conn.execute(
             text("SELECT count(*) FROM audit_events WHERE tenant_id=:a"), {"a": a.id}
         ).scalar()
+    missing = _request(db_client, method, path, _ghost(a.id), b.headers)
+
+    def strip(resp):
+        return resp.status_code, {k: v for k, v in resp.json().items() if k != "trace_id"}
+
+    route = f"{method} {path}"
+    record(route, "tenant B token + tenant A ids", "404", str(foreign.status_code))
     record(
-        f"{method} {path}",
-        "foreign id probe audited (caller tenant)",
-        "1 DENIED row",
-        f"{len(rows)} DENIED row",
+        route,
+        "existence probe (foreign vs random id)",
+        "identical",
+        "identical" if strip(foreign) == strip(missing) else "differs",
     )
-    assert r.status_code == 404
+    record(route, "foreign id probe audited (caller tenant)", "1 DENIED row", f"{len(rows)} DENIED row")
+    assert foreign.status_code == 404 and foreign.json()["code"] == "NOT_FOUND", foreign.text
+    _assert_no_leak(foreign, a)
+    assert strip(foreign) == strip(missing)
     assert len(rows) == 1
     row = rows[0]
     assert row["actor_id"] == "admin-b" and row["reason"] == "resource not found or not accessible"
-    assert row["trace_id"] == r.headers["X-Trace-Id"]
+    assert row["trace_id"] == foreign.headers["X-Trace-Id"]
     assert row["project_id"] is None  # nothing about tenant A is recorded beyond the id the caller sent
     assert victim_after == victim_before
 

@@ -8,6 +8,7 @@ Every API route must appear in ROUTE_RULES, or test_every_route_has_an_rbac_rule
 cannot ship without RBAC cases.
 """
 
+import os
 import uuid
 from dataclasses import dataclass
 
@@ -97,6 +98,33 @@ ACTORS: dict[str, tuple[tuple[str, ...], str | None, bool]] = {
     # INPROOM-99: an auditor who is also a project member stays read-only, whatever the project role.
     **{f"auditor + member:{r}": (("auditor",), r, True) for r in policy.PROJECT_ROLES},
 }
+
+# Default runs test the permission BOUNDARY of every route; INPROOM_FULL_MATRIX=1 (make test-full, nightly CI)
+# runs every actor on every route. Every role x permission pair is always covered by test_authz_policy.py.
+FULL_MATRIX = os.environ.get("INPROOM_FULL_MATRIX") == "1"
+
+
+def boundary_actors(route: tuple[str, str]) -> list[str]:
+    level, permission = ROUTE_RULES[route]
+    if level != "project":
+        return ["tenant_admin (not a member)", "tenant member, not in project", "other tenant's tenant_admin"]
+    holders = EXPECTED[permission]
+    least_allowed = next(r for r in reversed(policy.PROJECT_ROLES) if r in holders)
+    strongest_denied = next((r for r in policy.PROJECT_ROLES if r not in holders), None)
+    actors = [f"member:{least_allowed}"]
+    if strongest_denied:
+        actors.append(f"member:{strongest_denied}")
+    actors += ["token claims developer, not in project", "other tenant's tenant_admin"]
+    if policy.PROJECT_PERMISSIONS[permission] != policy.Kind.READ:
+        actors.append("auditor + member:project_admin")  # INPROOM-99 regression on every write route
+    return actors
+
+
+CASES = [
+    (method, path, actor)
+    for method, path in TESTED
+    for actor in (list(ACTORS) if FULL_MATRIX else boundary_actors((method, path)))
+]
 
 
 def test_every_route_has_an_rbac_rule():
@@ -224,8 +252,7 @@ def _denials(owner_engine, tenant, actor_id):
         ).all()
 
 
-@pytest.mark.parametrize("actor", list(ACTORS))
-@pytest.mark.parametrize(("method", "path"), TESTED, ids=[f"{m} {p}" for m, p in TESTED])
+@pytest.mark.parametrize(("method", "path", "actor"), CASES, ids=[f"{m} {p} [{a}]" for m, p, a in CASES])
 def test_route_x_role(db_client, tokens, world, owner_engine, method, path, actor):
     roles, member, same = ACTORS[actor]
     level, permission = ROUTE_RULES[(method, path)]
@@ -262,9 +289,19 @@ def test_route_x_role(db_client, tokens, world, owner_engine, method, path, acto
 # ---------------------------------------------------------------- revocation (AC 2, 3)
 
 PROJECT_ROUTES = [r for r in TESTED if ROUTE_RULES[r][0] == "project"]
+# Revocation is enforced in one place (authorize): by default a read, an admin write and a settings write
+# prove it; the full run covers every project route.
+REVOCATION_SAMPLE = [
+    ("GET", "/v1/projects/{project_id}"),
+    ("PATCH", "/v1/projects/{project_id}"),
+    ("PUT", "/v1/projects/{project_id}/settings"),
+]
+REVOCATION_ROUTES = PROJECT_ROUTES if FULL_MATRIX else REVOCATION_SAMPLE
 
 
-@pytest.mark.parametrize(("method", "path"), PROJECT_ROUTES, ids=[f"{m} {p}" for m, p in PROJECT_ROUTES])
+@pytest.mark.parametrize(
+    ("method", "path"), REVOCATION_ROUTES, ids=[f"{m} {p}" for m, p in REVOCATION_ROUTES]
+)
 def test_removed_member_loses_every_route_with_unexpired_token(db_client, tokens, world, method, path):
     headers = bearer(tokens.mint(tenant_id=world.tenant, user_id="leaver", roles=[]))
     db_client.get("/v1/me", headers=headers)
@@ -278,7 +315,7 @@ def test_removed_member_loses_every_route_with_unexpired_token(db_client, tokens
 
 
 ADMIN_ROUTES = [
-    r for r in PROJECT_ROUTES if policy.PROJECT_PERMISSIONS[ROUTE_RULES[r][1]] == policy.Kind.ADMIN
+    r for r in REVOCATION_ROUTES if policy.PROJECT_PERMISSIONS[ROUTE_RULES[r][1]] == policy.Kind.ADMIN
 ]
 
 
