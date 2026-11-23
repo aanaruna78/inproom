@@ -34,6 +34,7 @@ class Principal:
     tenant_id: uuid.UUID
     email: str | None = None
     roles: frozenset[str] = field(default_factory=frozenset)
+    name: str | None = None
 
 
 class JwksCache:
@@ -122,7 +123,10 @@ def verify_token(token: str, jwks: JwksCache) -> Principal:
         raise AuthError("TOKEN_MISSING_TENANT", "Token has no valid tenant (tid) claim")
 
     roles = frozenset((claims.get("realm_access") or {}).get("roles") or [])
-    return Principal(user_id=claims["sub"], tenant_id=tenant_id, email=claims.get("email"), roles=roles)
+    name = claims.get("name") or claims.get("preferred_username")
+    return Principal(
+        user_id=claims["sub"], tenant_id=tenant_id, email=claims.get("email"), roles=roles, name=name
+    )
 
 
 _bearer = HTTPBearer(auto_error=False, description="OIDC access token issued for audience inproom-api")

@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.errors import install_error_handlers
 from app.health import router as health_router
 from app.me import router as me_router
+from app.modules.members import router as members_router
 from app.modules.projects import router as projects_router
 from app.modules.workspaces import router as workspaces_router
 
@@ -36,6 +37,7 @@ def create_app() -> FastAPI:
     app.include_router(me_router)
     app.include_router(workspaces_router)
     app.include_router(projects_router)
+    app.include_router(members_router)
     return app
 
 
