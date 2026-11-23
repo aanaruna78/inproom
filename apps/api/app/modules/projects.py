@@ -168,13 +168,15 @@ def create_project(
 
     def handler(conn: Connection) -> tuple[int, dict]:
         try:
-            if not conn.execute(
-                select(
-                    exists().where(
-                        workspaces.c.tenant_id == principal.tenant_id, workspaces.c.id == workspace_id
-                    )
-                )
-            ).scalar():
+            # Lock the workspace row for the rest of this transaction: concurrent creates in the same
+            # workspace queue here, so the count below always sees every previously committed project
+            # and the active-project limit cannot be exceeded (INPROOM-92 / QA-03).
+            locked = conn.execute(
+                select(workspaces.c.id)
+                .where(workspaces.c.tenant_id == principal.tenant_id, workspaces.c.id == workspace_id)
+                .with_for_update()
+            ).first()
+            if locked is None:
                 raise deny_not_found(
                     principal,
                     request,
