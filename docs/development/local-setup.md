@@ -44,6 +44,38 @@ make web       # http://localhost:3000  (shows live API status)
 | API | http://localhost:8000 | — |
 | Web | http://localhost:3000 | — |
 
+### Local demo users (Keycloak realm `inproom`)
+
+| User | Password | Tenant (`tid` claim) | Realm role |
+|---|---|---|---|
+| alice | alice-local | `a0000000-0000-4000-8000-00000000000a` (tenant A) | tenant_admin |
+| dave | dave-local | `a0000000-0000-4000-8000-00000000000a` (tenant A) | developer |
+| bob | bob-local | `b0000000-0000-4000-8000-00000000000b` (tenant B) | tenant_admin |
+
+Get a token for API calls (client `inproom-dev-cli` allows the password grant **locally only**):
+
+```bash
+TOKEN=$(curl -s -d grant_type=password -d client_id=inproom-dev-cli -d username=alice -d password=alice-local \
+  http://localhost:18080/realms/inproom/protocol/openid-connect/token | jq -r .access_token)
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/v1/me
+```
+
+The realm is imported only when Keycloak starts without existing data. After changing `infra/local/keycloak/inproom-realm.json` run `docker compose --env-file .env -f infra/local/docker-compose.yml up -d --force-recreate keycloak`.
+
+### Tenant isolation model
+
+The API connects as the database owner but runs every request transaction as the restricted role `inproom_app` with `app.tenant_id` set from the verified token (`app.db.tenant_session`). Row-level security is **forced** on every tenant table, so a query without a tenant returns no rows. `audit_events` is insert-only for the app role.
+
+### API authentication settings
+
+| Variable | Default |
+|---|---|
+| `INPROOM_OIDC_ISSUER` | `http://localhost:18080/realms/inproom` |
+| `INPROOM_OIDC_AUDIENCE` | `inproom-api` |
+| `INPROOM_OIDC_JWKS_URL` | `<issuer>/protocol/openid-connect/certs` |
+
+The real-Keycloak test (`tests/test_keycloak_integration.py`) runs when `INPROOM_TEST_KEYCLOAK_URL` is set (local `.env`); CI skips it and covers token verification with locally signed test tokens.
+
 These are **local-only** defaults from `.env.example`. Change ports in `.env` (git-ignored). Never reuse them in shared environments.
 
 > MinIO is listed in the architecture as the reference S3 store; its images are no longer freely published on Docker Hub, so local development uses SeaweedFS's S3 gateway. Code must depend only on the S3 API so either works.
