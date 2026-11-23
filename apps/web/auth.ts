@@ -2,6 +2,17 @@ import NextAuth from "next-auth";
 import Keycloak from "next-auth/providers/keycloak";
 
 const issuer = process.env.AUTH_KEYCLOAK_ISSUER ?? "http://localhost:18080/realms/inproom";
+const apiUrl = process.env.INPROOM_API_URL ?? "http://localhost:8000";
+
+/** Register the user in the tenant directory (GET /v1/me) so project admins can add them. Best effort. */
+async function registerInDirectory(accessToken: string | undefined) {
+  if (!accessToken) return;
+  try {
+    await fetch(`${apiUrl}/v1/me`, { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" });
+  } catch {
+    // Sign-in must not fail because the API is briefly unavailable; the next sign-in retries.
+  }
+}
 
 /**
  * OIDC Authorization Code + PKCE against Keycloak (public client `inproom-web`).
@@ -30,6 +41,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.accessToken = account.access_token;
         token.expiresAt = account.expires_at;
         token.tenantId = (profile as { tid?: string } | undefined)?.tid;
+        await registerInDirectory(account.access_token);
       }
       return token;
     },

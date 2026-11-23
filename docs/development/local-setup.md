@@ -46,11 +46,20 @@ make web       # http://localhost:3000  (shows live API status)
 
 ### Local demo users (Keycloak realm `inproom`)
 
-| User | Password | Tenant (`tid` claim) | Realm role |
+| User | Password | Tenant (`tid` claim) | Tenant role (token) |
 |---|---|---|---|
 | alice | alice-local | `a0000000-0000-4000-8000-00000000000a` (tenant A) | tenant_admin |
-| dave | dave-local | `a0000000-0000-4000-8000-00000000000a` (tenant A) | developer |
+| dave | dave-local | `a0000000-0000-4000-8000-00000000000a` (tenant A) | — (plain member) |
+| erin | erin-local | `a0000000-0000-4000-8000-00000000000a` (tenant A) | — (plain member) |
 | bob | bob-local | `b0000000-0000-4000-8000-00000000000b` (tenant B) | tenant_admin |
+
+Project roles (project_admin, developer, viewer, ...) are **not** in the token: a project admin grants them on
+the project's **Members** screen (or `PUT /v1/projects/{id}/members/{user_id}`), and they take effect on the
+next request. A user can be added only after signing in once (that registers them in the tenant directory).
+See [the role matrix](../security/rbac-matrix.md).
+
+> Existing local stacks: Keycloak imports the realm only when it is first created. To pick up dave's
+> changed role and the new user erin, run `make reset && make up && make migrate` (deletes local data).
 
 Get a token for API calls (client `inproom-dev-cli` allows the password grant **locally only**):
 

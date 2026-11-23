@@ -163,7 +163,7 @@
       "username": "dave",
       "email": "dave@tenant-a.local",
       "firstName": "Dave",
-      "lastName": "Developer",
+      "lastName": "Member",
       "enabled": true,
       "emailVerified": true,
       "attributes": {
@@ -171,13 +171,32 @@
           "a0000000-0000-4000-8000-00000000000a"
         ]
       },
-      "realmRoles": [
-        "developer"
-      ],
+      "realmRoles": [],
       "credentials": [
         {
           "type": "password",
           "value": "dave-local",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "erin",
+      "email": "erin@tenant-a.local",
+      "firstName": "Erin",
+      "lastName": "Member",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "tid": [
+          "a0000000-0000-4000-8000-00000000000a"
+        ]
+      },
+      "realmRoles": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "erin-local",
           "temporary": false
         }
       ]

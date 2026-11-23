@@ -8,9 +8,31 @@ import { requireAccessToken } from "./session";
 export type Workspace = components["schemas"]["Workspace"];
 export type Project = components["schemas"]["Project"];
 export type ProjectDetail = components["schemas"]["ProjectDetail"];
+export type Member = components["schemas"]["Member"];
+export type MyPermissions = components["schemas"]["MyPermissions"];
+
+export const PROJECT_ROLES = [
+  "project_admin",
+  "product_owner",
+  "tech_lead",
+  "developer",
+  "reviewer",
+  "qa_lead",
+  "tester",
+  "release_manager",
+  "viewer",
+] as const;
+export type ProjectRole = (typeof PROJECT_ROLES)[number];
 
 /** RFC 7807 problem returned by the INPROOM API. */
-export type Problem = { status: number; code: string; title: string; detail?: string; trace_id?: string };
+export type Problem = {
+  status: number;
+  code: string;
+  title: string;
+  detail?: string;
+  trace_id?: string;
+  required_permission?: string;
+};
 
 export const API_URL = process.env.INPROOM_API_URL ?? "http://localhost:8000";
 

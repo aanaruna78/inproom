@@ -78,3 +78,13 @@ dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px;
 dl.facts dt { color: var(--muted); }
 dl.facts dd { margin: 0; }
 code { background: #eef2f8; padding: 1px 5px; border-radius: 4px; }
+
+/* INPROOM-96: members screen */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
+form.roles { display: flex; flex-direction: column; gap: 8px; }
+form.roles fieldset { border: 0; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 12px; }
+label.check { flex-direction: row; align-items: center; gap: 6px; font-weight: 400; }
+form.inline { display: flex; gap: 6px; }
+td button, form.roles button { background: #fff; border: 1px solid #c8d3e1; border-radius: 8px; padding: 6px 10px; cursor: pointer; font: inherit; }
+button.danger { background: var(--red); color: #fff; border-color: var(--red); }
+td { vertical-align: top; }

@@ -55,3 +55,93 @@ export async function createProject(_prev: FormState, form: FormData): Promise<F
   revalidatePath(`/workspaces/${workspaceId}/projects`);
   return { status: "success", message: `Project ${data.key} created (${data.status}).` };
 }
+
+// ---------------------------------------------------------------- project edit / archive (INPROOM-96)
+
+function problemState(error: unknown, status: number, submitted?: Record<string, string>): FormState {
+  const p = asProblem(error, status);
+  const message =
+    p.code === "FORBIDDEN"
+      ? `You don't have permission to do this (requires ${p.required_permission ?? "a higher role"}).`
+      : (p.detail ?? p.title);
+  return { status: "error", message, code: p.code, values: submitted, traceId: p.trace_id };
+}
+
+export async function updateProject(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const submitted = values(form, ["name", "description"]);
+  const api = await apiClient(`/projects/${projectId}`);
+  const { data, error, response } = await api.PATCH("/v1/projects/{project_id}", {
+    params: { path: { project_id: projectId }, header: { "If-Match": `"${form.get("version")}"` } },
+    body: { name: submitted.name, description: submitted.description || null },
+  });
+  if (error || !data) return problemState(error, response.status, submitted);
+  revalidatePath(`/projects/${projectId}`);
+  return { status: "success", message: `Project renamed to "${data.name}".` };
+}
+
+export async function archiveProject(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const api = await apiClient(`/projects/${projectId}`);
+  const { data, error, response } = await api.POST("/v1/projects/{project_id}/archive", {
+    params: { path: { project_id: projectId } },
+  });
+  if (error || !data) return problemState(error, response.status);
+  revalidatePath(`/projects/${projectId}`);
+  return { status: "success", message: "Project archived." };
+}
+
+// ---------------------------------------------------------------- members (INPROOM-96)
+
+export async function addMember(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const submitted = values(form, ["email", "role"]);
+  const email = submitted.email.trim().toLowerCase();
+  const api = await apiClient(`/projects/${projectId}/members`);
+  const users = await api.GET("/v1/users", { params: { query: { q: email, limit: 20 } } });
+  const user = users.data?.items.find((u) => (u.email ?? "").toLowerCase() === email);
+  if (!user) {
+    return {
+      status: "error",
+      message: `No one with email ${email} has signed in to this tenant yet. Ask them to sign in once, then add them.`,
+      field: "email",
+      values: submitted,
+    };
+  }
+  const { data, error, response } = await api.PUT("/v1/projects/{project_id}/members/{user_id}", {
+    params: { path: { project_id: projectId, user_id: user.user_id } },
+    body: { roles: [submitted.role as never] },
+  });
+  if (error || !data) return problemState(error, response.status, submitted);
+  revalidatePath(`/projects/${projectId}/members`);
+  return { status: "success", message: `${data.email ?? data.user_id} is now ${data.roles.join(", ")}.` };
+}
+
+export async function setMemberRoles(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const userId = String(form.get("user_id"));
+  const roles = form.getAll("roles").map(String);
+  if (roles.length === 0) {
+    return { status: "error", message: "Pick at least one role, or remove the member instead." };
+  }
+  const api = await apiClient(`/projects/${projectId}/members`);
+  const { data, error, response } = await api.PUT("/v1/projects/{project_id}/members/{user_id}", {
+    params: { path: { project_id: projectId, user_id: userId } },
+    body: { roles: roles as never[] },
+  });
+  if (error || !data) return problemState(error, response.status);
+  revalidatePath(`/projects/${projectId}/members`);
+  return { status: "success", message: `Roles saved: ${data.roles.join(", ")}.` };
+}
+
+export async function removeMember(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const userId = String(form.get("user_id"));
+  const api = await apiClient(`/projects/${projectId}/members`);
+  const { error, response } = await api.DELETE("/v1/projects/{project_id}/members/{user_id}", {
+    params: { path: { project_id: projectId, user_id: userId } },
+  });
+  if (error || response.status !== 204) return problemState(error, response.status);
+  revalidatePath(`/projects/${projectId}/members`);
+  return { status: "success", message: "Member removed." };
+}
