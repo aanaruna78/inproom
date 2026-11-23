@@ -1,0 +1,259 @@
+"""INPROOM-85 / story INPROOM-18 AC 4: no cross-tenant read, write or existence leak through any route or
+at the database layer.
+
+Every API route must be classified in ROUTES. Adding an endpoint without classifying it fails
+`test_every_route_is_classified`, so new endpoints cannot skip isolation testing.
+"""
+
+import base64
+import json
+import uuid
+from dataclasses import dataclass
+
+import pytest
+from fastapi.routing import APIRoute
+from sqlalchemy import text
+
+from app.db import tenant_session
+from app.db_schema import TENANT_SCOPED_TABLES
+from app.main import create_app
+from tests.auth_helpers import bearer
+from tests.security.conftest import record
+
+pytestmark = pytest.mark.integration
+
+# kind: public | self | tenant_collection | workspace_scoped | project_scoped
+ROUTES: dict[tuple[str, str], str] = {
+    ("GET", "/healthz"): "public",
+    ("GET", "/readyz"): "public",
+    ("GET", "/v1/me"): "self",
+    ("POST", "/v1/workspaces"): "tenant_collection",
+    ("GET", "/v1/workspaces"): "tenant_collection",
+    ("POST", "/v1/workspaces/{workspace_id}/projects"): "workspace_scoped",
+    ("GET", "/v1/workspaces/{workspace_id}/projects"): "workspace_scoped",
+    ("GET", "/v1/projects/{project_id}"): "project_scoped",
+    ("PATCH", "/v1/projects/{project_id}"): "project_scoped",
+    ("POST", "/v1/projects/{project_id}/archive"): "project_scoped",
+}
+
+SCOPED = [r for r, kind in ROUTES.items() if kind in ("workspace_scoped", "project_scoped")]
+AUTHENTICATED = [r for r, kind in ROUTES.items() if kind != "public"]
+
+
+def app_routes() -> set[tuple[str, str]]:
+    found = set()
+    for route in create_app().routes:
+        if isinstance(route, APIRoute):
+            for method in route.methods - {"HEAD", "OPTIONS"}:
+                found.add((method, route.path))
+    return found
+
+
+def test_every_route_is_classified():
+    unclassified = app_routes() - ROUTES.keys()
+    stale = ROUTES.keys() - app_routes()
+    assert not unclassified, f"Classify these routes in ROUTES and cover them: {sorted(unclassified)}"
+    assert not stale, f"ROUTES lists routes that no longer exist: {sorted(stale)}"
+
+
+@dataclass
+class Tenant:
+    id: uuid.UUID
+    headers: dict
+    workspace: dict
+    project: dict
+
+    def secrets(self) -> list[str]:
+        """Identifiers and names that must never appear in another tenant's responses."""
+        return [
+            str(self.id),
+            self.workspace["id"],
+            self.workspace["slug"],
+            self.workspace["name"],
+            self.project["id"],
+            self.project["key"],
+            self.project["name"],
+        ]
+
+
+@pytest.fixture
+def world(db_client, tokens):
+    def make(label: str) -> Tenant:
+        tid = uuid.uuid4()
+        h = bearer(tokens.mint(tenant_id=tid, user_id=f"admin-{label}", roles=["tenant_admin"]))
+        suffix = uuid.uuid4().hex[:6]
+        ws = db_client.post(
+            "/v1/workspaces",
+            json={"slug": f"{label}-{suffix}", "name": f"Secret workspace {label}{suffix}"},
+            headers=h,
+        ).json()
+        key = f"{label.upper()}{suffix[:4].upper()}"
+        pj = db_client.post(
+            f"/v1/workspaces/{ws['id']}/projects",
+            json={"key": key, "name": f"Secret project {label}{suffix}", "mode": "NEW"},
+            headers=h,
+        ).json()
+        return Tenant(tid, h, ws, pj)
+
+    return make("a"), make("b")
+
+
+def _request(client, method, path_template, tenant_ids: Tenant, headers):
+    path = path_template.format(workspace_id=tenant_ids.workspace["id"], project_id=tenant_ids.project["id"])
+    kwargs: dict = {"headers": dict(headers)}
+    if method == "POST" and path_template.endswith("/projects"):
+        kwargs["json"] = {"key": "XTENANT", "name": "Cross tenant write", "mode": "NEW"}
+    elif method == "PATCH":
+        kwargs["json"] = {"name": "Cross tenant rename"}
+        kwargs["headers"]["If-Match"] = f'"{tenant_ids.project["version"]}"'
+    return client.request(method, path, **kwargs)
+
+
+def _assert_no_leak(response, victim: Tenant):
+    blob = response.text + json.dumps(dict(response.headers))
+    leaked = [s for s in victim.secrets() if s in blob]
+    assert not leaked, f"response leaked {leaked}"
+
+
+@pytest.mark.parametrize(("method", "path"), SCOPED, ids=[f"{m} {p}" for m, p in SCOPED])
+def test_foreign_tenant_ids_return_404_without_leaking(db_client, world, method, path):
+    a, b = world
+    r = _request(db_client, method, path, a, b.headers)  # tenant B uses tenant A's ids
+    record(f"{method} {path}", "tenant B token + tenant A ids", "404", str(r.status_code))
+    assert r.status_code == 404, r.text
+    assert r.json()["code"] == "NOT_FOUND"
+    _assert_no_leak(r, a)
+
+
+@pytest.mark.parametrize(("method", "path"), SCOPED, ids=[f"{m} {p}" for m, p in SCOPED])
+def test_foreign_response_is_identical_to_nonexistent_resource(db_client, world, method, path):
+    a, b = world
+    ghost = Tenant(a.id, {}, {"id": str(uuid.uuid4())}, {"id": str(uuid.uuid4()), "version": 1})
+    foreign = _request(db_client, method, path, a, b.headers)
+    missing = _request(db_client, method, path, ghost, b.headers)
+
+    def strip(resp):
+        return resp.status_code, {k: v for k, v in resp.json().items() if k != "trace_id"}
+
+    same = strip(foreign) == strip(missing)
+    record(
+        f"{method} {path}",
+        "existence probe (foreign vs random id)",
+        "identical",
+        "identical" if same else "differs",
+    )
+    assert same
+
+
+def test_cross_tenant_attempts_do_not_modify_victim_data(db_client, world, owner_engine):
+    a, b = world
+    for method, path in SCOPED:
+        _request(db_client, method, path, a, b.headers)
+    after = db_client.get(f"/v1/projects/{a.project['id']}", headers=a.headers).json()
+    assert (after["name"], after["status"], after["version"]) == (a.project["name"], "ACTIVE", 1)
+    with owner_engine.connect() as conn:
+        a_projects = conn.execute(
+            text("SELECT count(*) FROM projects WHERE tenant_id=:t"), {"t": a.id}
+        ).scalar()
+        b_projects = conn.execute(
+            text("SELECT count(*) FROM projects WHERE tenant_id=:t"), {"t": b.id}
+        ).scalar()
+    assert (a_projects, b_projects) == (1, 1)
+    record("all workspace/project routes", "victim data after attacks", "unchanged", "unchanged")
+
+
+def test_collections_never_contain_other_tenants_items(db_client, world):
+    a, b = world
+    for viewer, victim in ((a, b), (b, a)):
+        r = db_client.get("/v1/workspaces?limit=100", headers=viewer.headers)
+        ids = {w["id"] for w in r.json()["items"]}
+        assert viewer.workspace["id"] in ids and victim.workspace["id"] not in ids
+        _assert_no_leak(r, victim)
+        own = db_client.get(f"/v1/workspaces/{viewer.workspace['id']}/projects", headers=viewer.headers)
+        _assert_no_leak(own, victim)
+    record("GET /v1/workspaces", "list as other tenant", "own items only", "own items only")
+    record(
+        "GET /v1/workspaces/{workspace_id}/projects", "list own workspace", "own items only", "own items only"
+    )
+
+
+def test_uniqueness_does_not_leak_across_tenants(db_client, world):
+    """Tenant B can reuse tenant A's slug and key; a 409 would reveal that A uses them."""
+    a, b = world
+    ws = db_client.post(
+        "/v1/workspaces", json={"slug": a.workspace["slug"], "name": "Mine"}, headers=b.headers
+    )
+    pj = db_client.post(
+        f"/v1/workspaces/{b.workspace['id']}/projects",
+        json={"key": a.project["key"], "name": "Mine too"},
+        headers=b.headers,
+    )
+    record("POST /v1/workspaces", "reuse tenant A's slug", "201", str(ws.status_code))
+    record("POST /v1/workspaces/{workspace_id}/projects", "reuse tenant A's key", "201", str(pj.status_code))
+    assert ws.status_code == 201 and pj.status_code == 201
+
+
+def test_me_reports_only_the_callers_tenant(db_client, world):
+    a, b = world
+    r = db_client.get("/v1/me", headers=b.headers)
+    record(
+        "GET /v1/me",
+        "tenant B token",
+        "tenant B",
+        "tenant B" if r.json()["tenant_id"] == str(b.id) else "other",
+    )
+    assert r.json()["tenant_id"] == str(b.id)
+    _assert_no_leak(r, a)
+
+
+def _forge_tid(token: str, tenant_id: uuid.UUID) -> str:
+    header, payload, signature = token.split(".")
+    claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    claims["tid"] = str(tenant_id)
+    forged = base64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=").decode()
+    return f"{header}.{forged}.{signature}"
+
+
+@pytest.mark.parametrize(("method", "path"), AUTHENTICATED, ids=[f"{m} {p}" for m, p in AUTHENTICATED])
+def test_forged_tenant_claim_is_rejected_on_every_authenticated_route(db_client, world, method, path):
+    a, b = world
+    forged = _forge_tid(b.headers["Authorization"].removeprefix("Bearer "), a.id)
+    r = _request(db_client, method, path, a, {"Authorization": f"Bearer {forged}"})
+    record(f"{method} {path}", "tenant B token with tid forged to A", "401", str(r.status_code))
+    assert r.status_code == 401 and r.json()["code"] == "TOKEN_INVALID_SIGNATURE"
+    _assert_no_leak(r, a)
+
+
+@pytest.mark.parametrize(("method", "path"), AUTHENTICATED, ids=[f"{m} {p}" for m, p in AUTHENTICATED])
+def test_unauthenticated_requests_are_rejected(db_client, world, method, path):
+    a, _ = world
+    r = _request(db_client, method, path, a, {})
+    record(f"{method} {path}", "no token", "401", str(r.status_code))
+    assert r.status_code == 401
+    _assert_no_leak(r, a)
+
+
+def test_public_routes_expose_no_tenant_data(db_client, world):
+    a, b = world
+    for method, path in (r for r, kind in ROUTES.items() if kind == "public"):
+        r = db_client.request(method, path)
+        _assert_no_leak(r, a)
+        _assert_no_leak(r, b)
+        record(f"{method} {path}", "unauthenticated read", "no tenant data", "no tenant data")
+
+
+def test_database_hides_victim_rows_from_attacker_session(world, owner_engine):
+    a, b = world
+    with tenant_session(b.id) as conn:
+        for table in TENANT_SCOPED_TABLES:
+            column = "id" if table == "tenants" else "tenant_id"
+            visible = conn.execute(
+                text(f"SELECT count(*) FROM {table} WHERE {column} = :a"), {"a": a.id}
+            ).scalar()
+            record(f"DB {table}", "tenant B session selects tenant A rows", "0 rows", f"{visible} rows")
+            assert visible == 0, table
+    # Sanity: the rows really exist (seen by the owner, who bypasses RLS).
+    with owner_engine.connect() as conn:
+        assert (
+            conn.execute(text("SELECT count(*) FROM projects WHERE tenant_id=:a"), {"a": a.id}).scalar() == 1
+        )
