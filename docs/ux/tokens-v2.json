@@ -1,0 +1,54 @@
+{
+  "version": "2.0",
+  "status": "proposed",
+  "theme": {
+    "light": {
+      "canvas": "#F7F8FA",
+      "surface": "#FFFFFF",
+      "elevated": "#FCFCFE",
+      "sidebar": "#101828",
+      "text": "#172033",
+      "muted": "#667085",
+      "border": "#E7E9EF",
+      "primary": "#5546E8",
+      "primaryHover": "#4033CC",
+      "accentSoft": "#EFEDFF",
+      "success": "#067647",
+      "warning": "#B54708",
+      "danger": "#B42318"
+    },
+    "dark": {
+      "canvas": "#0B1020",
+      "surface": "#131A2B",
+      "elevated": "#1A2336",
+      "sidebar": "#090D18",
+      "text": "#F5F6FA",
+      "muted": "#A4ADC1",
+      "border": "#293247",
+      "primary": "#9F91FF",
+      "primaryHover": "#B6ADFF",
+      "accentSoft": "#2B2850",
+      "success": "#49D6A0",
+      "warning": "#F6B56B",
+      "danger": "#F58C8C"
+    }
+  },
+  "typography": {
+    "family": "Inter,system-ui,sans-serif",
+    "body": 14,
+    "meta": 12,
+    "heading": 24
+  },
+  "radius": {
+    "control": 6,
+    "panel": 10,
+    "modal": 14
+  },
+  "density": {
+    "compactRow": 36,
+    "comfortableRow": 44
+  },
+  "motion": {
+    "durationSmallMs": 160
+  }
+}
