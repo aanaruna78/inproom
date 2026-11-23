@@ -162,7 +162,6 @@ def test_fresh_in_progress_claim_still_conflicts(api, owner_engine):
     assert r.status_code == 409 and r.json()["code"] == "IDEMPOTENCY_IN_PROGRESS"
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-92 (QA-03) open: concurrent creates exceed limit")
 def test_concurrent_project_creates_respect_workspace_limit(api, owner_engine, monkeypatch):
     monkeypatch.setenv("INPROOM_WORKSPACE_PROJECT_LIMIT", "1")
     get_settings.cache_clear()
@@ -173,7 +172,13 @@ def test_concurrent_project_creates_respect_workspace_limit(api, owner_engine, m
 
     def synchronize_limit_reads(conn, cursor, statement, parameters, context, executemany):
         if statement.startswith("SELECT count(*)") and "FROM projects" in statement:
-            barrier.wait(timeout=10)
+            # INPROOM-92: best effort. Without serialization both requests reach this read together
+            # (the QA reproduction). With the workspace row lock the second request cannot reach its
+            # count until the first commits, so the first waits briefly here and then proceeds.
+            try:
+                barrier.wait(timeout=3)
+            except threading.BrokenBarrierError:
+                pass
 
     def create(key):
         return api.client.post(
@@ -190,3 +195,25 @@ def test_concurrent_project_creates_respect_workspace_limit(api, owner_engine, m
         event.remove(engine, "after_cursor_execute", synchronize_limit_reads)
     assert sorted(r.status_code for r in responses) == [201, 422]
     assert q(owner_engine, "SELECT count(*) FROM projects WHERE tenant_id=:t", t=api.tenant) == 1
+
+
+def test_parallel_burst_never_exceeds_workspace_limit(api, owner_engine, monkeypatch):
+    """INPROOM-92: 8 simultaneous creates against a limit of 3 => exactly 3 created, 5 refused."""
+    monkeypatch.setenv("INPROOM_WORKSPACE_PROJECT_LIMIT", "3")
+    get_settings.cache_clear()
+    workspace = api.workspace()
+    headers = api.h()
+    start = threading.Barrier(8)
+
+    def create(i):
+        start.wait(timeout=10)
+        return api.client.post(
+            f"/v1/workspaces/{workspace['id']}/projects",
+            json={"key": f"BURST{i}", "name": f"Burst {i}"},
+            headers=headers,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        statuses = sorted(r.status_code for r in pool.map(create, range(8)))
+    assert statuses == [201] * 3 + [422] * 5
+    assert q(owner_engine, "SELECT count(*) FROM projects WHERE workspace_id=:w", w=workspace["id"]) == 3
