@@ -295,7 +295,12 @@ def put_member(
     member: Member | None = None
     try:
         with tenant_session(principal.tenant_id) as conn:
-            authorize(conn, principal, request, "project.member.manage", project_id, lock=True)
+            access = authorize(conn, principal, request, "project.member.manage", project_id, lock=True)
+            if access.project["status"] == "ARCHIVED":
+                # Archived projects are read-only; removing members stays possible so access can be revoked.
+                raise conflict(
+                    "PROJECT_ARCHIVED", "Archived projects are read-only; restore the project first"
+                )
             known = conn.execute(
                 select(tenant_users.c.user_id).where(
                     tenant_users.c.tenant_id == principal.tenant_id, tenant_users.c.user_id == user_id

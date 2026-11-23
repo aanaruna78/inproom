@@ -118,6 +118,36 @@
         "title": "Health",
         "type": "object"
       },
+      "LifecycleRequest": {
+        "properties": {
+          "action": {
+            "enum": [
+              "activate",
+              "archive",
+              "restore"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "LifecycleRequest",
+        "type": "object"
+      },
       "Me": {
         "properties": {
           "email": {
@@ -1369,7 +1399,67 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Archive a project (idempotent)",
+        "summary": "Archive a project (idempotent; alias of lifecycle action 'archive')",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/lifecycle": {
+      "post": {
+        "operationId": "change_lifecycle_v1_projects__project_id__lifecycle_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LifecycleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Change project status: activate, archive or restore (audited; invalid transitions are 409)",
         "tags": [
           "projects"
         ]

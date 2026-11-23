@@ -82,8 +82,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Archive a project (idempotent) */
+        /** Archive a project (idempotent; alias of lifecycle action 'archive') */
         post: operations["archive_project_v1_projects__project_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/lifecycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change project status: activate, archive or restore (audited; invalid transitions are 409) */
+        post: operations["change_lifecycle_v1_projects__project_id__lifecycle_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -301,6 +318,16 @@ export interface components {
             status: string;
             /** Version */
             version: string;
+        };
+        /** LifecycleRequest */
+        LifecycleRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "activate" | "archive" | "restore";
+            /** Reason */
+            reason?: string | null;
         };
         /** Me */
         Me: {
@@ -921,6 +948,60 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    change_lifecycle_v1_projects__project_id__lifecycle_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectDetail"];
+                };
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

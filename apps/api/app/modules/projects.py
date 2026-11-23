@@ -12,8 +12,8 @@ from sqlalchemy import Connection, exists, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app import audit
-from app.api_errors import conflict, precondition_failed, precondition_required, unprocessable
-from app.auth import CurrentPrincipal
+from app.api_errors import ApiError, conflict, precondition_failed, precondition_required, unprocessable
+from app.auth import CurrentPrincipal, Principal
 from app.authz import authorize, deny_not_found, policy, require_tenant
 from app.config import get_settings
 from app.db import tenant_session
@@ -309,36 +309,143 @@ def update_project(
     return result
 
 
+# ---------------------------------------------------------------- lifecycle (INPROOM-103)
+
+LifecycleAction = Literal["activate", "archive", "restore"]
+
+# (current status, action) -> target status. A missing pair is an invalid transition. Applying an action
+# whose target already holds (e.g. archive while ARCHIVED, activate while ACTIVE) is a no-op.
+TRANSITIONS: dict[tuple[str, str], str] = {
+    ("PENDING_SOURCES", "activate"): "ACTIVE",
+    ("PENDING_SOURCES", "archive"): "ARCHIVED",
+    ("ACTIVE", "activate"): "ACTIVE",
+    ("ACTIVE", "archive"): "ARCHIVED",
+    ("ARCHIVED", "archive"): "ARCHIVED",
+    ("ARCHIVED", "restore"): "ACTIVE",
+}
+
+
+def allowed_actions(status: str) -> list[str]:
+    return [
+        action for (current, action), target in TRANSITIONS.items() if current == status and target != status
+    ]
+
+
+class LifecycleRequest(BaseModel):
+    action: LifecycleAction
+    reason: str | None = Field(default=None, max_length=500)
+
+
+def _transition(
+    request: Request, response: Response, principal: Principal, project_id: uuid.UUID, body: LifecycleRequest
+) -> dict[str, Any]:
+    try:
+        with tenant_session(principal.tenant_id) as conn:
+            access = authorize(conn, principal, request, "project.archive", project_id, lock=True)
+            row, roles = access.project, access.member_roles
+            current = row["status"]
+            target = TRANSITIONS.get((current, body.action))
+            if target is None:
+                raise ApiError(
+                    409,
+                    "INVALID_TRANSITION",
+                    "Conflict",
+                    f"Cannot {body.action} a project that is {current}; allowed: "
+                    + (", ".join(allowed_actions(current)) or "none"),
+                    current_status=current,
+                    allowed_actions=allowed_actions(current),
+                )
+            if target != current:
+                if body.action == "restore":
+                    _check_capacity(conn, principal, row["workspace_id"])
+                row = dict(
+                    conn.execute(
+                        update(projects)
+                        .where(projects.c.tenant_id == principal.tenant_id, projects.c.id == project_id)
+                        .values(status=target, version=projects.c.version + 1, updated_at=func.now())
+                        .returning(*projects.c)
+                    )
+                    .mappings()
+                    .one()
+                )
+                change = {"project_id": str(project_id), "from": current, "to": target, "reason": body.reason}
+                audit.record(
+                    conn,
+                    principal,
+                    f"project.{body.action}",
+                    "project",
+                    str(project_id),
+                    trace_id=request.state.trace_id,
+                    payload=change,
+                    project_id=project_id,
+                )
+                conn.execute(
+                    insert(outbox_events).values(
+                        tenant_id=principal.tenant_id,
+                        type="project.status.changed",
+                        payload=change | {"action": body.action, "changed_by": principal.user_id},
+                    )
+                )
+            result = _detail(conn, row, roles)
+    except ApiError as exc:
+        # Rejected transitions roll back; keep evidence of the attempt (same rule as INPROOM-100).
+        audit.record_standalone(
+            principal,
+            f"project.{body.action}",
+            "project",
+            str(project_id),
+            outcome="FAILED",
+            trace_id=request.state.trace_id,
+            reason=f"{exc.code}: {exc.detail}",
+            project_id=project_id,
+        )
+        raise
+    response.headers["ETag"] = etag(row["version"])
+    return result
+
+
+def _check_capacity(conn: Connection, principal: Principal, workspace_id: uuid.UUID) -> None:
+    """Restoring makes a project count toward the workspace limit again. Same lock as create (INPROOM-92)."""
+    conn.execute(
+        select(workspaces.c.id)
+        .where(workspaces.c.tenant_id == principal.tenant_id, workspaces.c.id == workspace_id)
+        .with_for_update()
+    ).first()
+    limit = get_settings().workspace_project_limit
+    active = conn.execute(
+        select(func.count())
+        .select_from(projects)
+        .where(
+            projects.c.tenant_id == principal.tenant_id,
+            projects.c.workspace_id == workspace_id,
+            projects.c.status != "ARCHIVED",
+        )
+    ).scalar_one()
+    if active >= limit:
+        raise unprocessable("PROJECT_LIMIT_REACHED", f"Workspace already has {limit} active projects")
+
+
+@router.post(
+    "/v1/projects/{project_id}/lifecycle",
+    response_model=ProjectDetail,
+    summary="Change project status: activate, archive or restore (audited; invalid transitions are 409)",
+    responses={403: PROBLEM, 404: PROBLEM, 409: PROBLEM, 422: PROBLEM},
+)
+def change_lifecycle(
+    request: Request,
+    response: Response,
+    principal: CurrentPrincipal,
+    project_id: uuid.UUID,
+    payload: Annotated[LifecycleRequest, Body()],
+):
+    return _transition(request, response, principal, project_id, payload)
+
+
 @router.post(
     "/v1/projects/{project_id}/archive",
     response_model=ProjectDetail,
-    summary="Archive a project (idempotent)",
+    summary="Archive a project (idempotent; alias of lifecycle action 'archive')",
     responses={403: PROBLEM, 404: PROBLEM},
 )
 def archive_project(request: Request, response: Response, principal: CurrentPrincipal, project_id: uuid.UUID):
-    with tenant_session(principal.tenant_id) as conn:
-        access = authorize(conn, principal, request, "project.archive", project_id)
-        row, roles = access.project, access.member_roles
-        if row["status"] != "ARCHIVED":
-            row = dict(
-                conn.execute(
-                    update(projects)
-                    .where(projects.c.tenant_id == principal.tenant_id, projects.c.id == project_id)
-                    .values(status="ARCHIVED", version=projects.c.version + 1, updated_at=func.now())
-                    .returning(*projects.c)
-                )
-                .mappings()
-                .one()
-            )
-            audit.record(
-                conn,
-                principal,
-                "project.archive",
-                "project",
-                str(project_id),
-                trace_id=request.state.trace_id,
-                project_id=project_id,
-            )
-        result = _detail(conn, row, roles)
-    response.headers["ETag"] = etag(row["version"])
-    return result
+    return _transition(request, response, principal, project_id, LifecycleRequest(action="archive"))
