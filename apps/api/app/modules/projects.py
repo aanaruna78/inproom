@@ -93,9 +93,11 @@ def parse_if_match(value: str | None) -> int:
     return int(match.group(1))
 
 
-def _member_roles(conn: Connection, project_id: uuid.UUID, user_id: str) -> list[str]:
+def _member_roles(conn: Connection, principal: Principal, project_id: uuid.UUID) -> list[str]:
     stmt = select(project_members.c.role).where(
-        project_members.c.project_id == project_id, project_members.c.user_id == user_id
+        project_members.c.tenant_id == principal.tenant_id,
+        project_members.c.project_id == project_id,
+        project_members.c.user_id == principal.user_id,
     )
     return sorted(conn.execute(stmt).scalars())
 
@@ -105,10 +107,11 @@ def _load_visible_project(
 ) -> tuple[dict, list[str]]:
     """Return the project if the caller may see it: tenant admins see all, others need membership.
     Anything else (missing, other tenant, not a member) is the same 404."""
-    row = conn.execute(select(projects).where(projects.c.id == project_id)).mappings().first()
+    stmt = select(projects).where(projects.c.tenant_id == principal.tenant_id, projects.c.id == project_id)
+    row = conn.execute(stmt).mappings().first()
     if row is None:
         raise NotFound("Project")
-    roles = _member_roles(conn, project_id, principal.user_id)
+    roles = _member_roles(conn, principal, project_id)
     if not roles and not is_tenant_admin(principal):
         raise NotFound("Project")
     return dict(row), roles
@@ -128,6 +131,7 @@ def _require_project_admin(
 def _detail(conn: Connection, row: dict, roles: list[str]) -> dict[str, Any]:
     settings = conn.execute(
         select(project_settings_versions.c.settings).where(
+            project_settings_versions.c.tenant_id == row["tenant_id"],
             project_settings_versions.c.project_id == row["id"],
             project_settings_versions.c.version == row["settings_version"],
         )
@@ -160,12 +164,22 @@ def create_project(
     def handler() -> tuple[int, dict]:
         try:
             with tenant_session(principal.tenant_id) as conn:
-                if not conn.execute(select(exists().where(workspaces.c.id == workspace_id))).scalar():
+                if not conn.execute(
+                    select(
+                        exists().where(
+                            workspaces.c.tenant_id == principal.tenant_id, workspaces.c.id == workspace_id
+                        )
+                    )
+                ).scalar():
                     raise NotFound("Workspace")
                 active = conn.execute(
                     select(func.count())
                     .select_from(projects)
-                    .where(projects.c.workspace_id == workspace_id, projects.c.status != "ARCHIVED")
+                    .where(
+                        projects.c.tenant_id == principal.tenant_id,
+                        projects.c.workspace_id == workspace_id,
+                        projects.c.status != "ARCHIVED",
+                    )
                 ).scalar_one()
                 if active >= limit:
                     raise unprocessable(
@@ -255,16 +269,24 @@ def list_projects(
     cursor: str | None = None,
 ) -> Page[Project]:
     require(principal, "project.read", request, target_type="workspace", target_id=str(workspace_id))
-    stmt = select(projects).where(projects.c.workspace_id == workspace_id)
+    stmt = select(projects).where(
+        projects.c.tenant_id == principal.tenant_id, projects.c.workspace_id == workspace_id
+    )
     if not is_tenant_admin(principal):
         stmt = stmt.where(
             exists().where(
-                project_members.c.project_id == projects.c.id, project_members.c.user_id == principal.user_id
+                project_members.c.tenant_id == principal.tenant_id,
+                project_members.c.project_id == projects.c.id,
+                project_members.c.user_id == principal.user_id,
             )
         )
     stmt = apply_keyset(stmt, projects.c.created_at, projects.c.id, cursor, limit)
     with tenant_session(principal.tenant_id) as conn:
-        if not conn.execute(select(exists().where(workspaces.c.id == workspace_id))).scalar():
+        if not conn.execute(
+            select(
+                exists().where(workspaces.c.tenant_id == principal.tenant_id, workspaces.c.id == workspace_id)
+            )
+        ).scalar():
             raise NotFound("Workspace")
         rows = [dict(r) for r in conn.execute(stmt).mappings()]
     page, nxt = next_cursor(rows, limit)
@@ -314,7 +336,11 @@ def update_project(
         updated = (
             conn.execute(
                 update(projects)
-                .where(projects.c.id == project_id, projects.c.version == expected)
+                .where(
+                    projects.c.tenant_id == principal.tenant_id,
+                    projects.c.id == project_id,
+                    projects.c.version == expected,
+                )
                 .values(**changes, version=projects.c.version + 1, updated_at=func.now())
                 .returning(*projects.c)
             )
@@ -352,7 +378,7 @@ def archive_project(request: Request, response: Response, principal: CurrentPrin
             row = dict(
                 conn.execute(
                     update(projects)
-                    .where(projects.c.id == project_id)
+                    .where(projects.c.tenant_id == principal.tenant_id, projects.c.id == project_id)
                     .values(status="ARCHIVED", version=projects.c.version + 1, updated_at=func.now())
                     .returning(*projects.c)
                 )

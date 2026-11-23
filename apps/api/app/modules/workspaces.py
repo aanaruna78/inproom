@@ -116,7 +116,9 @@ def list_workspaces(
     cursor: str | None = None,
 ) -> Page[Workspace]:
     require(principal, "tenant.read", request, target_type="workspace")
-    stmt = apply_keyset(select(workspaces), workspaces.c.created_at, workspaces.c.id, cursor, limit)
+    # Explicit tenant filter in addition to row-level security (defence in depth).
+    base = select(workspaces).where(workspaces.c.tenant_id == principal.tenant_id)
+    stmt = apply_keyset(base, workspaces.c.created_at, workspaces.c.id, cursor, limit)
     with tenant_session(principal.tenant_id) as conn:
         rows = [dict(r) for r in conn.execute(stmt).mappings()]
     page, nxt = next_cursor(rows, limit)
