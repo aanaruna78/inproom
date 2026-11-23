@@ -29,7 +29,6 @@ def test_auditor_permissions_do_not_inherit_project_membership_writes(env):
     assert set(response.json()["permissions"]) == {"project.read", "audit.read"}
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-100 open")
 @pytest.mark.parametrize("operation", ["remove_last_admin", "downgrade_last_admin", "remove_missing"])
 def test_denied_membership_change_is_audited(env, operation):
     if operation == "remove_last_admin":

@@ -43,6 +43,10 @@ def env(db_client, tokens, owner_engine):
             with owner_engine.connect() as conn:
                 return conn.execute(text(sql), {"t": tenant, "p": self.pid} | params).scalar()
 
+        def rows(self, sql, **params):
+            with owner_engine.connect() as conn:
+                return [tuple(r) for r in conn.execute(text(sql), {"t": tenant, "p": self.pid} | params)]
+
         def audits(self, action):
             return self.count(
                 "SELECT count(*) FROM audit_events WHERE tenant_id=:t AND action=:a AND outcome='SUCCESS'",
@@ -292,3 +296,49 @@ def test_permissions_me_for_tenant_admin_and_auditor(env):
 def test_permissions_me_for_non_member_is_masked(env):
     r = env.client.get(f"/v1/projects/{env.pid}/permissions/me", headers=env.h("erin"))
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------- INPROOM-100 (QA-20-02): rejections audited
+
+
+@pytest.mark.parametrize(
+    ("operation", "action", "code"),
+    [
+        ("remove_last_admin", "project.member.remove", "LAST_PROJECT_ADMIN"),
+        ("downgrade_last_admin", "project.member.update", "LAST_PROJECT_ADMIN"),
+        ("remove_missing", "project.member.remove", "MEMBER_NOT_FOUND"),
+    ],
+)
+def test_rejected_member_change_leaves_one_failed_audit_and_changes_nothing(env, operation, action, code):
+    if operation == "remove_last_admin":
+        r, target = env.delete("alice"), "alice"
+    elif operation == "downgrade_last_admin":
+        r, target = env.put("alice", "viewer"), "alice"
+    else:
+        r, target = env.delete("dave"), "dave"
+    assert r.json()["code"] == code
+    rows = env.rows(
+        "SELECT action, outcome, target_type, target_id, project_id::text, reason FROM audit_events "
+        "WHERE tenant_id=:t AND trace_id=:trace",
+        trace=r.json()["trace_id"],
+    )
+    assert rows == [(action, "FAILED", "project_member", target, env.pid, rows[0][5])]
+    assert rows[0][5].startswith(f"{code}: ")
+    assert env.outbox() == 0
+    members = env.client.get(f"/v1/projects/{env.pid}/members", headers=env.admin).json()
+    assert {m["user_id"]: m["roles"] for m in members} == {"alice": ["project_admin"]}
+    assert env.audits(action) == 0  # never recorded as a successful change
+
+
+def test_rejections_are_not_recorded_in_other_tenants(env, owner_engine):
+    r = env.delete("alice")
+    with owner_engine.connect() as conn:
+        tenants = (
+            conn.execute(
+                text("SELECT DISTINCT tenant_id FROM audit_events WHERE trace_id=:tr"),
+                {"tr": r.json()["trace_id"]},
+            )
+            .scalars()
+            .all()
+        )
+    assert tenants == [env.tenant]
