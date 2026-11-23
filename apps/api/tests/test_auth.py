@@ -1,4 +1,4 @@
-"""AC4: token verification. No database needed - /v1/me only reads the verified principal."""
+"""AC4: token verification. /v1/me answers from the verified principal even when the DB is unreachable."""
 
 import time
 import uuid

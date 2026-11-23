@@ -34,6 +34,12 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/v1/projects/{project_id}"): "project_scoped",
     ("PATCH", "/v1/projects/{project_id}"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/archive"): "project_scoped",
+    # INPROOM-94: membership, effective permissions, tenant user directory
+    ("GET", "/v1/users"): "tenant_collection",
+    ("GET", "/v1/projects/{project_id}/members"): "project_scoped",
+    ("PUT", "/v1/projects/{project_id}/members/{user_id}"): "project_scoped",
+    ("DELETE", "/v1/projects/{project_id}/members/{user_id}"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/permissions/me"): "project_scoped",
 }
 
 SCOPED = [r for r, kind in ROUTES.items() if kind in ("workspace_scoped", "project_scoped")]
@@ -99,9 +105,15 @@ def world(db_client, tokens):
 
 
 def _request(client, method, path_template, tenant_ids: Tenant, headers):
-    path = path_template.format(workspace_id=tenant_ids.workspace["id"], project_id=tenant_ids.project["id"])
+    path = path_template.format(
+        workspace_id=tenant_ids.workspace["id"],
+        project_id=tenant_ids.project["id"],
+        user_id=tenant_ids.project.get("owner_id", "someone"),  # a real member of the victim project
+    )
     kwargs: dict = {"headers": dict(headers)}
-    if method == "POST" and path_template.endswith("/projects"):
+    if method == "PUT" and "/members/" in path_template:
+        kwargs["json"] = {"roles": ["viewer"]}
+    elif method == "POST" and path_template.endswith("/projects"):
         kwargs["json"] = {"key": "XTENANT", "name": "Cross tenant write", "mode": "NEW"}
     elif method == "PATCH":
         kwargs["json"] = {"name": "Cross tenant rename"}
