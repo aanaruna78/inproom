@@ -167,3 +167,69 @@ def standard() -> FakeGitHub:
     fake.add_token(VALID_TOKEN, "octo-bot", {1: FULL | {"hooks": True}, 2: FULL | {"push": True}})
     fake.add_token(OTHER_TOKEN, "octo-bot-2", {1: dict(FULL), 2: dict(FULL)})
     return fake
+
+
+def serve(port: int) -> None:
+    """Run the standard fake as a local HTTP server for browser E2E. NEVER expose it: test-only.
+
+    Control endpoints (test-only): POST /_fake/reset, POST /_fake/access {"token","repo_id","grant"},
+    GET /_fake/health.
+    """
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    state = {"fake": standard()}
+
+    class Handler(BaseHTTPRequestHandler):
+        def _send(self, status: int, body: bytes, headers: dict[str, str]) -> None:
+            self.send_response(status)
+            for k, v in headers.items():
+                if k.lower() not in ("content-length", "transfer-encoding", "connection"):
+                    self.send_header(k, v)
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _handle(self) -> None:
+            length = int(self.headers.get("content-length") or 0)
+            body = self.rfile.read(length) if length else b""
+            if self.path.startswith("/_fake/"):
+                return self._control(body)
+            request = httpx.Request(
+                self.command, f"http://localhost:{port}{self.path}", headers=dict(self.headers), content=body
+            )
+            try:
+                response = state["fake"].handle(request)
+            except httpx.TimeoutException:
+                return self._send(504, b"", {})
+            self._send(response.status_code, response.content, dict(response.headers))
+
+        def _control(self, body: bytes) -> None:
+            if self.path == "/_fake/health":
+                return self._send(200, b"ok", {})
+            if self.path == "/_fake/reset":
+                state["fake"] = standard()
+                return self._send(204, b"", {})
+            if self.path == "/_fake/access":
+                data = json.loads(body)
+                access = state["fake"].tokens[data["token"]].access
+                if data.get("grant"):
+                    access[int(data["repo_id"])] = dict(FULL)
+                else:
+                    access.pop(int(data["repo_id"]), None)
+                return self._send(204, b"", {})
+            return self._send(404, b"", {})
+
+        do_GET = do_POST = do_DELETE = do_PATCH = do_PUT = _handle
+
+        def log_message(self, *args: Any) -> None:  # keep test output quiet
+            pass
+
+    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Fake GitHub API for local E2E tests")
+    parser.add_argument("--port", type=int, default=18090)
+    serve(parser.parse_args().port)
