@@ -78,7 +78,7 @@ test("project admin grants, promotes and revokes access; the UI and API follow i
   await dave.goto(projectUrl);
   await expect(dave.getByTestId("my-roles")).toHaveText("viewer");
   await expect(dave.getByTestId("edit-project")).toHaveCount(0);
-  await expect(dave.getByTestId("archive-project")).toHaveCount(0);
+  await expect(dave.getByTestId("lifecycle-archive")).toHaveCount(0);
   await expect(dave.getByTestId("read-only-note")).toBeVisible();
   await shot(dave, "rbac-03-dave-viewer-read-only");
   await dave.getByTestId("members-link").click();
