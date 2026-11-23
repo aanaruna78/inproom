@@ -60,12 +60,14 @@ ROUTES: dict[tuple[str, str], str] = {
     ("PUT", "/v1/projects/{project_id}/sources/repositories/{connection_id}/{repo_id}"): "project_scoped",
     ("DELETE", "/v1/projects/{project_id}/sources/repositories/{connection_id}/{repo_id}"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/sources/scope"): "project_scoped",
+    # INPROOM-110: unauthenticated, HMAC-signed webhook receiver (covered by test_webhooks_integration.py)
+    ("POST", "/v1/hooks/github/{tenant_id}/{connection_id}"): "webhook",
 }
 
 SCOPED = [
     r for r, kind in ROUTES.items() if kind in ("workspace_scoped", "project_scoped", "connection_scoped")
 ]
-AUTHENTICATED = [r for r, kind in ROUTES.items() if kind != "public"]
+AUTHENTICATED = [r for r, kind in ROUTES.items() if kind not in ("public", "webhook")]
 
 
 def app_routes() -> set[tuple[str, str]]:

@@ -123,7 +123,8 @@ class FakeGitHub:
                 return self._json(200, {"name": name, "commit": {"sha": repo.branches[name]}})
             return self._json(404, {"message": "Branch not found"})
         if rest == "/hooks":
-            if not visible[rid].get("admin"):
+            # Fine-grained tokens can hold "Webhooks: read and write" without repository admin.
+            if not (visible[rid].get("admin") or visible[rid].get("hooks")):
                 return self._json(404, {"message": "Not Found"})
             hooks = self.hooks.setdefault(rid, [])
             if request.method == "GET":
@@ -163,6 +164,6 @@ def standard() -> FakeGitHub:
     fake.add_repo(1, "acme/api", private=True, branches={"main": "a" * 40, "release/1.0": "b" * 40})
     fake.add_repo(2, "acme/web", branches={"main": "c" * 40, "develop": "d" * 40})
     fake.add_repo(3, "other/secret", private=True)
-    fake.add_token(VALID_TOKEN, "octo-bot", {1: dict(FULL), 2: FULL | {"push": True}})
+    fake.add_token(VALID_TOKEN, "octo-bot", {1: FULL | {"hooks": True}, 2: FULL | {"push": True}})
     fake.add_token(OTHER_TOKEN, "octo-bot-2", {1: dict(FULL), 2: dict(FULL)})
     return fake

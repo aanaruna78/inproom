@@ -77,11 +77,13 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
         "project.source.manage",
     ),
     ("GET", "/v1/projects/{project_id}/sources/scope"): ("project", "project.read"),
+    # HMAC-signed, no user identity: tested in test_webhooks_integration.py
+    ("POST", "/v1/hooks/github/{tenant_id}/{connection_id}"): ("webhook", None),
 }
 # Audit action recorded for a denial when it differs from the permission (listing projects of a workspace
 # the caller cannot see is audited as a project read).
 AUDIT_ACTION = {("GET", "/v1/workspaces/{workspace_id}/projects"): "project.read"}
-TESTED = [r for r, (level, _) in ROUTE_RULES.items() if level not in ("public", "self")]
+TESTED = [r for r, (level, _) in ROUTE_RULES.items() if level not in ("public", "self", "webhook")]
 SUCCESS = {"GET": "200", "PATCH": "200", "PUT": "200", "DELETE": "204", "POST": "200"}
 
 # actor -> (token roles, project membership role or None, same tenant?)
