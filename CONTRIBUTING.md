@@ -36,7 +36,8 @@ CI repeats these checks on every push and pull request.
 
 ## Engineering rules (from the architecture baseline)
 
-- Every row, query, index and job is tenant- and project-scoped.
+- Every row, query, index and job is tenant- and project-scoped. Queries filter on `tenant_id` explicitly **and** run inside `tenant_session()` so row-level security applies — two independent layers.
+- Every new API route must be classified in `apps/api/tests/security/test_tenant_isolation.py` (`ROUTES`); the suite fails until it is. Run `make test-security` to produce the isolation matrix.
 - External writes (Jira, Confluence, Git) happen only after recorded approval, with idempotency keys.
 - Connector and document content is untrusted input; it never changes policy or triggers tools.
 - Deterministic evidence (tests, CI, diffs) outranks model opinion; "cannot verify" is a valid result.

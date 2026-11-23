@@ -9,7 +9,7 @@ include .env
 export
 endif
 
-.PHONY: help doctor setup up down reset migrate api web test test-api lint format contracts contracts-check
+.PHONY: help doctor setup up down reset migrate api web test test-api test-security lint format contracts contracts-check
 
 help: ## List available commands
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  \033[36m%-16s\033[0m %s\n",$$1,$$2}'
@@ -45,6 +45,9 @@ test: test-api contracts-check ## Run all tests and checks (stack must be up and
 
 test-api: ## API unit + integration tests
 	$(API) uv run pytest -v
+
+test-security: ## Tenant isolation suite; writes apps/api/build/isolation-matrix.md
+	$(API) INPROOM_ISOLATION_REPORT=build/isolation-matrix.md uv run pytest tests/security -v
 
 lint: ## Lint and format-check
 	$(API) uv run ruff check . && uv run ruff format --check .
