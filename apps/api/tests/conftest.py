@@ -82,3 +82,14 @@ def make_tenant(owner_engine):
         return tid
 
     return make
+
+
+@pytest.fixture
+def fake_github(db_client):
+    """The standard fake GitHub (tests/fakes/github.py) wired into db_client's app instead of the network."""
+    from app.connectors.registry import get_git_transport
+    from tests.fakes.github import standard
+
+    fake = standard()
+    db_client.app.dependency_overrides[get_git_transport] = fake.transport
+    return fake

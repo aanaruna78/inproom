@@ -18,6 +18,7 @@ from app.db import tenant_session
 from app.db_schema import TENANT_SCOPED_TABLES
 from app.main import create_app
 from tests.auth_helpers import bearer
+from tests.fakes.github import VALID_TOKEN
 from tests.security.conftest import record
 
 pytestmark = pytest.mark.integration
@@ -47,9 +48,23 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/v1/projects/{project_id}/settings/versions/{version}"): "project_scoped",
     # INPROOM-103: lifecycle
     ("POST", "/v1/projects/{project_id}/lifecycle"): "project_scoped",
+    # INPROOM-109: Git connections (tenant-level) and project source selection
+    ("POST", "/v1/connections"): "tenant_collection",
+    ("GET", "/v1/connections"): "tenant_collection",
+    ("GET", "/v1/connections/{connection_id}"): "connection_scoped",
+    ("POST", "/v1/connections/{connection_id}/check"): "connection_scoped",
+    ("PUT", "/v1/connections/{connection_id}/credential"): "connection_scoped",
+    ("POST", "/v1/connections/{connection_id}/revoke"): "connection_scoped",
+    ("GET", "/v1/connections/{connection_id}/repositories"): "connection_scoped",
+    ("GET", "/v1/projects/{project_id}/sources/repositories"): "project_scoped",
+    ("PUT", "/v1/projects/{project_id}/sources/repositories/{connection_id}/{repo_id}"): "project_scoped",
+    ("DELETE", "/v1/projects/{project_id}/sources/repositories/{connection_id}/{repo_id}"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/sources/scope"): "project_scoped",
 }
 
-SCOPED = [r for r, kind in ROUTES.items() if kind in ("workspace_scoped", "project_scoped")]
+SCOPED = [
+    r for r, kind in ROUTES.items() if kind in ("workspace_scoped", "project_scoped", "connection_scoped")
+]
 AUTHENTICATED = [r for r, kind in ROUTES.items() if kind != "public"]
 
 
@@ -75,6 +90,7 @@ class Tenant:
     headers: dict
     workspace: dict
     project: dict
+    connection: dict
 
     def secrets(self) -> list[str]:
         """Identifiers and names that must never appear in another tenant's responses."""
@@ -86,11 +102,13 @@ class Tenant:
             self.project["id"],
             self.project["key"],
             self.project["name"],
+            self.connection["id"],
+            self.connection["display_name"],
         ]
 
 
 @pytest.fixture
-def world(db_client, tokens):
+def world(db_client, tokens, fake_github):
     def make(label: str) -> Tenant:
         tid = uuid.uuid4()
         h = bearer(tokens.mint(tenant_id=tid, user_id=f"admin-{label}", roles=["tenant_admin"]))
@@ -106,7 +124,18 @@ def world(db_client, tokens):
             json={"key": key, "name": f"Secret project {label}{suffix}", "mode": "NEW"},
             headers=h,
         ).json()
-        return Tenant(tid, h, ws, pj)
+        conn = db_client.post(
+            "/v1/connections",
+            json={"display_name": f"Secret GitHub {label}{suffix}", "token": VALID_TOKEN},
+            headers=h,
+        ).json()
+        selected = db_client.put(
+            f"/v1/projects/{pj['id']}/sources/repositories/{conn['id']}/1",
+            json={"branches": ["main"]},
+            headers=h,
+        )
+        assert selected.status_code == 200, selected.text
+        return Tenant(tid, h, ws, pj, conn)
 
     return make("a"), make("b")
 
@@ -117,9 +146,19 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         project_id=tenant_ids.project["id"],
         user_id=tenant_ids.project.get("owner_id", "someone"),  # a real member of the victim project
         version=1,
+        connection_id=tenant_ids.connection["id"],
+        repo_id="1",
     )
+    if path_template.endswith("/repositories") and "{connection_id}" in path_template:
+        path += f"?project_id={tenant_ids.project['id']}"
     kwargs: dict = {"headers": dict(headers)}
-    if method == "PUT" and "/members/" in path_template:
+    if path_template == "/v1/connections" and method == "POST":
+        kwargs["json"] = {"display_name": f"x-{uuid.uuid4().hex[:6]}", "token": VALID_TOKEN}
+    elif method == "PUT" and path_template.endswith("/credential"):
+        kwargs["json"] = {"token": VALID_TOKEN}
+    elif method == "PUT" and "/sources/repositories/" in path_template:
+        kwargs["json"] = {"branches": ["main"]}
+    elif method == "PUT" and "/members/" in path_template:
         kwargs["json"] = {"roles": ["viewer"]}
     elif method == "PUT" and path_template.endswith("/settings"):
         kwargs["json"] = {"settings": {"write_mode": "draft_only"}}
@@ -153,7 +192,13 @@ def test_foreign_tenant_ids_return_404_without_leaking(db_client, world, method,
 @pytest.mark.parametrize(("method", "path"), SCOPED, ids=[f"{m} {p}" for m, p in SCOPED])
 def test_foreign_response_is_identical_to_nonexistent_resource(db_client, world, method, path):
     a, b = world
-    ghost = Tenant(a.id, {}, {"id": str(uuid.uuid4())}, {"id": str(uuid.uuid4()), "version": 1})
+    ghost = Tenant(
+        a.id,
+        {},
+        {"id": str(uuid.uuid4())},
+        {"id": str(uuid.uuid4()), "version": 1},
+        {"id": str(uuid.uuid4())},
+    )
     foreign = _request(db_client, method, path, a, b.headers)
     missing = _request(db_client, method, path, ghost, b.headers)
 
@@ -289,7 +334,12 @@ def test_cross_tenant_probe_is_audited_in_callers_tenant_only(db_client, world, 
     """INPROOM-90 (QA-01): every masked 404 leaves one DENIED audit row in the caller's tenant,
     naming only what the caller sent; the victim's audit trail is untouched."""
     a, b = world
-    target = a.project["id"] if "{project_id}" in path else a.workspace["id"]
+    if "{project_id}" in path:
+        target = a.project["id"]
+    elif "{connection_id}" in path:
+        target = a.connection["id"]
+    else:
+        target = a.workspace["id"]
     with owner_engine.connect() as conn:
         victim_before = conn.execute(
             text("SELECT count(*) FROM audit_events WHERE tenant_id=:a"), {"a": a.id}

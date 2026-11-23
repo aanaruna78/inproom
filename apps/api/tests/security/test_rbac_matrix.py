@@ -16,6 +16,7 @@ from sqlalchemy import text
 
 from app.authz import policy
 from tests.auth_helpers import bearer
+from tests.fakes.github import OTHER_TOKEN, VALID_TOKEN
 from tests.security.conftest import record_rbac
 from tests.security.test_tenant_isolation import app_routes
 from tests.test_authz_policy import EXPECTED
@@ -25,6 +26,7 @@ TENANT_EXPECTED = {
     "tenant.read": {"*"},  # every signed-in user of the tenant
     "tenant.workspace.create": {"tenant_admin"},
     "workspace.project.create": {"tenant_admin"},
+    "tenant.connection.manage": {"tenant_admin"},
 }
 AUDITOR_CAP = {"project.read", "audit.read"}
 # Agreed project rules for tenant roles without membership.
@@ -57,6 +59,24 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("GET", "/v1/projects/{project_id}/settings/versions"): ("project", "project.read"),
     ("GET", "/v1/projects/{project_id}/settings/versions/{version}"): ("project", "project.read"),
     ("POST", "/v1/projects/{project_id}/lifecycle"): ("project", "project.archive"),
+    # INPROOM-109
+    ("POST", "/v1/connections"): ("tenant", "tenant.connection.manage"),
+    ("GET", "/v1/connections"): ("tenant", "tenant.read"),
+    ("GET", "/v1/connections/{connection_id}"): ("connection", "tenant.read"),
+    ("POST", "/v1/connections/{connection_id}/check"): ("connection", "tenant.connection.manage"),
+    ("PUT", "/v1/connections/{connection_id}/credential"): ("connection", "tenant.connection.manage"),
+    ("POST", "/v1/connections/{connection_id}/revoke"): ("connection", "tenant.connection.manage"),
+    ("GET", "/v1/connections/{connection_id}/repositories"): ("project", "project.source.manage"),
+    ("GET", "/v1/projects/{project_id}/sources/repositories"): ("project", "project.read"),
+    ("PUT", "/v1/projects/{project_id}/sources/repositories/{connection_id}/{repo_id}"): (
+        "project",
+        "project.source.manage",
+    ),
+    ("DELETE", "/v1/projects/{project_id}/sources/repositories/{connection_id}/{repo_id}"): (
+        "project",
+        "project.source.manage",
+    ),
+    ("GET", "/v1/projects/{project_id}/sources/scope"): ("project", "project.read"),
 }
 # Audit action recorded for a denial when it differs from the permission (listing projects of a workspace
 # the caller cannot see is audited as a project read).
@@ -90,10 +110,11 @@ class World:
     workspace: dict
     project: dict
     owner: dict
+    connection: dict
 
 
 @pytest.fixture
-def world(db_client, tokens):
+def world(db_client, tokens, fake_github):
     tenant = uuid.uuid4()
     owner = bearer(tokens.mint(tenant_id=tenant, user_id="owner", roles=["tenant_admin"]))
     ws = db_client.post("/v1/workspaces", json={"slug": "main", "name": "Main"}, headers=owner).json()
@@ -107,7 +128,15 @@ def world(db_client, tokens):
         f"/v1/projects/{project['id']}/members/target", json={"roles": ["viewer"]}, headers=owner
     )
     assert r.status_code == 200, r.text
-    return World(tenant, ws, project, owner)
+    # A Git connection with acme/api (repo 1) selected: DELETE acts on it, PUT selects acme/web (repo 2).
+    connection = db_client.post(
+        "/v1/connections", json={"display_name": "GitHub", "token": VALID_TOKEN}, headers=owner
+    ).json()
+    r = db_client.put(
+        f"/v1/projects/{project['id']}/sources/repositories/{connection['id']}/1", json={}, headers=owner
+    )
+    assert r.status_code == 200, r.text
+    return World(tenant, ws, project, owner, connection)
 
 
 def _tenant_allows(roles: tuple[str, ...], permission: str) -> bool:
@@ -137,7 +166,7 @@ def _expected(
     ok = "201" if (method, level) in {("POST", "tenant"), ("POST", "workspace")} else SUCCESS[method]
     if level == "tenant":
         return ok if _tenant_allows(roles, permission) else "403"
-    if level == "workspace":
+    if level in ("workspace", "connection"):
         if not _tenant_allows(roles, permission):
             return "403"
         return ok if same else "404"
@@ -149,10 +178,23 @@ def _expected(
 
 def _call(client, method, path, world: World, headers):
     url = path.format(
-        workspace_id=world.workspace["id"], project_id=world.project["id"], user_id="target", version=1
+        workspace_id=world.workspace["id"],
+        project_id=world.project["id"],
+        user_id="target",
+        version=1,
+        connection_id=world.connection["id"],
+        repo_id="2" if method == "PUT" else "1",
     )
+    if path == "/v1/connections/{connection_id}/repositories":
+        url += f"?project_id={world.project['id']}"
     kwargs: dict = {"headers": dict(headers)}
-    if method == "POST" and path == "/v1/workspaces":
+    if method == "POST" and path == "/v1/connections":
+        kwargs["json"] = {"display_name": f"c-{uuid.uuid4().hex[:8]}", "token": VALID_TOKEN}
+    elif method == "PUT" and path.endswith("/credential"):
+        kwargs["json"] = {"token": OTHER_TOKEN}
+    elif method == "PUT" and "/sources/repositories/" in path:
+        kwargs["json"] = {"branches": []}
+    elif method == "POST" and path == "/v1/workspaces":
         kwargs["json"] = {"slug": f"ws-{uuid.uuid4().hex[:8]}", "name": "New"}
     elif method == "POST" and path.endswith("/lifecycle"):
         kwargs["json"] = {"action": "archive", "reason": "matrix"}

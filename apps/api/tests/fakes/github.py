@@ -149,3 +149,20 @@ class FakeGitHub:
                 else self._json(404, {"message": "Not Found"})
             )
         return self._json(404, {"message": "Not Found"})
+
+
+# Tokens used across API tests (fake values; shaped like fine-grained PATs).
+VALID_TOKEN = "github_pat_11VALID000000000000000000000000000000000000000000000000000000000000000ab12"
+OTHER_TOKEN = "github_pat_11OTHER000000000000000000000000000000000000000000000000000000000000000cd34"
+BAD_TOKEN = "github_pat_11NOPE0000000000000000000000000000000000000000000000000000000000000000ef56"
+
+
+def standard() -> FakeGitHub:
+    """acme/api (private, readable), acme/web (readable but token can push), other/secret (no access)."""
+    fake = FakeGitHub()
+    fake.add_repo(1, "acme/api", private=True, branches={"main": "a" * 40, "release/1.0": "b" * 40})
+    fake.add_repo(2, "acme/web", branches={"main": "c" * 40, "develop": "d" * 40})
+    fake.add_repo(3, "other/secret", private=True)
+    fake.add_token(VALID_TOKEN, "octo-bot", {1: dict(FULL), 2: FULL | {"push": True}})
+    fake.add_token(OTHER_TOKEN, "octo-bot-2", {1: dict(FULL), 2: dict(FULL)})
+    return fake
