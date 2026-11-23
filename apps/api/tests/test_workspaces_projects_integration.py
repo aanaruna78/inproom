@@ -152,11 +152,24 @@ def test_create_project_atomically_writes_owner_settings_audit_outbox(api, owner
     assert r.headers["ETag"] == '"1"'
     assert p["status"] == "ACTIVE" and p["owner_id"] == "alice" and p["version"] == 1
     assert p["my_roles"] == ["project_admin"]
+    # Settings schema v2 defaults (INPROOM-102 replaced the v1 shape; production actions are off).
     assert p["settings"] == {
-        "write_mode": "read_only",
-        "approval_policy": "approval_required_for_external_writes",
-        "model_policy": "tenant_default",
+        "schema_version": 2,
         "process_package": "sdlc@1",
+        "write_mode": "read_only",
+        "model_policy": "tenant_default",
+        "approvals": {
+            "required_scopes": ["plan"],
+            "min_approvers": 1,
+            "expiry_hours": 72,
+            "self_approval": False,
+        },
+        "sources": {
+            "allowed_kinds": ["git", "jira", "confluence", "upload"],
+            "max_classification": "internal",
+            "approve_new_sources": True,
+        },
+        "production": {"actions_enabled": False, "environments": [], "enabled_by": None, "enabled_at": None},
     }
     pid, t = p["id"], api.tenant
     assert (

@@ -18,6 +18,7 @@ EXPECTED: dict[str, set[str]] = {
     "project.update": {ADMIN},
     "project.archive": {ADMIN},
     "project.member.manage": {ADMIN},
+    "project.settings.update": {ADMIN},
     "audit.read": {ADMIN},
     "artifact.propose": {ADMIN, PO, TL, DEV, QL, TS},
     "artifact.review": {ADMIN, PO, TL, DEV, REV, QL, TS, RM},

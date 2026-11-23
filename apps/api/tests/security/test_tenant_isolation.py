@@ -40,6 +40,11 @@ ROUTES: dict[tuple[str, str], str] = {
     ("PUT", "/v1/projects/{project_id}/members/{user_id}"): "project_scoped",
     ("DELETE", "/v1/projects/{project_id}/members/{user_id}"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/permissions/me"): "project_scoped",
+    # INPROOM-102: versioned settings
+    ("GET", "/v1/projects/{project_id}/settings"): "project_scoped",
+    ("PUT", "/v1/projects/{project_id}/settings"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/settings/versions"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/settings/versions/{version}"): "project_scoped",
 }
 
 SCOPED = [r for r, kind in ROUTES.items() if kind in ("workspace_scoped", "project_scoped")]
@@ -109,10 +114,14 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         workspace_id=tenant_ids.workspace["id"],
         project_id=tenant_ids.project["id"],
         user_id=tenant_ids.project.get("owner_id", "someone"),  # a real member of the victim project
+        version=1,
     )
     kwargs: dict = {"headers": dict(headers)}
     if method == "PUT" and "/members/" in path_template:
         kwargs["json"] = {"roles": ["viewer"]}
+    elif method == "PUT" and path_template.endswith("/settings"):
+        kwargs["json"] = {"settings": {"write_mode": "draft_only"}}
+        kwargs["headers"]["If-Match"] = '"1"'
     elif method == "POST" and path_template.endswith("/projects"):
         kwargs["json"] = {"key": "XTENANT", "name": "Cross tenant write", "mode": "NEW"}
     elif method == "PATCH":
