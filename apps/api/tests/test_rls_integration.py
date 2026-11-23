@@ -101,6 +101,7 @@ SEED_SQL = [
     "INSERT INTO outbox_events (tenant_id, type, payload) VALUES (:t, 'seed', '{}')",
     "INSERT INTO idempotency_keys (tenant_id, key, request_sha256, status) "
     "VALUES (:t, 'k', 'x', 'IN_PROGRESS')",
+    "INSERT INTO tenant_users (tenant_id, user_id, email) VALUES (:t, 'seed', 'seed@example.test')",
 ]
 
 

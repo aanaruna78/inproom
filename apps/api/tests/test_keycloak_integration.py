@@ -42,7 +42,8 @@ def _password_token(base: str, username: str, password: str) -> str:
     [
         ("alice", "alice-local", "a0000000-0000-4000-8000-00000000000a", "tenant_admin"),
         ("bob", "bob-local", "b0000000-0000-4000-8000-00000000000b", "tenant_admin"),
-        ("dave", "dave-local", "a0000000-0000-4000-8000-00000000000a", "developer"),
+        # Project roles in the token are ignored (INPROOM-20): dave is a plain tenant member.
+        ("dave", "dave-local", "a0000000-0000-4000-8000-00000000000a", None),
     ],
 )
 def test_real_keycloak_token_accepted(keycloak_url, monkeypatch, username, password, tenant, role):
@@ -52,5 +53,5 @@ def test_real_keycloak_token_accepted(keycloak_url, monkeypatch, username, passw
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["tenant_id"] == tenant
-    assert role in body["roles"]
+    assert body["roles"] == ([role] if role else [])
     assert body["email"].startswith(username)
