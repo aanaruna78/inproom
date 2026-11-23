@@ -78,7 +78,7 @@ test("tenant admin creates a workspace and a project, duplicate key shows inline
   await shot(page, "06-project-detail");
 });
 
-test("a developer cannot create a workspace and sees the API's reason", async ({ page }) => {
+test("a plain tenant member cannot create a workspace and sees the API's reason", async ({ page }) => {
   await page.goto("/workspaces");
   await keycloakLogin(page, "dave", "dave-local");
   const form = page.getByTestId("create-workspace");
