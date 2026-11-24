@@ -1,13 +1,9 @@
 """GitHub REST adapter (INPROOM-108). Works for github.com and GitHub Enterprise (base_url .../api/v3).
 
-Hardening:
-- bounded timeouts; at most `max_attempts` tries with jittered backoff on timeouts, transport errors and 5xx;
-- rate limits surface immediately as RateLimited(retry_after) and are never slept on;
-- 401 -> CredentialInvalid; 404 -> NotFoundOrNoAccess (GitHub hides private repos as 404);
-- redirects are never followed; the token only ever goes in the Authorization header, never in messages.
+Transport hardening (timeouts, bounded retries, rate limits, no redirects, error mapping) lives in the shared
+app.connectors.http core (INPROOM-130). GitHub hides private repositories it won't show as 404.
 """
 
-import random
 import re
 import time
 from collections.abc import Callable
@@ -16,16 +12,9 @@ from urllib.parse import quote
 
 import httpx
 
-from app.connectors.base import (
-    Account,
-    CredentialInvalid,
-    NotFoundOrNoAccess,
-    ProviderError,
-    ProviderUnavailable,
-    RateLimited,
-    Repository,
-)
+from app.connectors.base import Account, NotFoundOrNoAccess, Repository
 from app.connectors.egress import validate_base_url
+from app.connectors.http import ProviderHttp
 from app.connectors.vault import Secret
 
 API_VERSION = "2022-11-28"
@@ -44,62 +33,22 @@ class GitHubProvider:
         sleep: Callable[[float], None] = time.sleep,
     ):
         self.base_url = validate_base_url(base_url)
-        self.max_attempts = max_attempts
-        self._sleep = sleep
-        self._client = httpx.Client(
-            base_url=self.base_url,
-            headers={
+        self._http = ProviderHttp(
+            "GitHub",
+            self.base_url,
+            {
                 "Authorization": f"Bearer {token.reveal()}",
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": API_VERSION,
-                "User-Agent": "inproom-connector",
             },
-            timeout=httpx.Timeout(10.0, connect=5.0),
-            follow_redirects=False,
             transport=transport,
+            max_attempts=max_attempts,
+            sleep=sleep,
         )
+        self._request = self._http.request
 
     def close(self) -> None:
-        self._client.close()
-
-    # ------------------------------------------------------------ transport
-
-    def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
-        last: str = "no attempt made"
-        for attempt in range(1, self.max_attempts + 1):
-            try:
-                response = self._client.request(method, path, **kwargs)
-            except httpx.TimeoutException:
-                last = "timeout"
-            except httpx.TransportError as exc:
-                last = f"transport error ({type(exc).__name__})"
-            else:
-                if response.status_code < 500:
-                    return self._check(response)
-                last = f"HTTP {response.status_code}"
-            if attempt < self.max_attempts:
-                self._sleep(min(0.25 * 2 ** (attempt - 1), 2.0) + random.uniform(0, 0.1))
-        raise ProviderUnavailable(
-            f"GitHub did not respond successfully after {self.max_attempts} attempts ({last})"
-        )
-
-    @staticmethod
-    def _check(response: httpx.Response) -> httpx.Response:
-        status = response.status_code
-        if status == 401:
-            raise CredentialInvalid("GitHub rejected the credential (invalid, expired or revoked)")
-        if status == 429 or (status == 403 and response.headers.get("x-ratelimit-remaining") == "0"):
-            retry = response.headers.get("retry-after")
-            if retry is None and response.headers.get("x-ratelimit-reset"):
-                retry = str(max(1, int(response.headers["x-ratelimit-reset"]) - int(time.time())))
-            raise RateLimited(int(retry or 60))
-        if status == 404:
-            raise NotFoundOrNoAccess("not found, or the credential has no access")
-        if 300 <= status < 400:
-            raise ProviderError("GitHub returned an unexpected redirect (not followed)")
-        if status >= 400:
-            raise ProviderError(f"GitHub returned HTTP {status}")
-        return response
+        self._http.close()
 
     def _pages(self, path: str, params: dict[str, Any], start: int = 1, limit: int = MAX_PAGES):
         page = start

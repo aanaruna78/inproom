@@ -42,6 +42,8 @@ TENANT_SCOPED_TABLES = (
     "connection_secrets",
     "project_repositories",
     "webhook_deliveries",
+    "project_jira_sources",
+    "jira_schema_snapshots",
 )
 
 # Project roles allowed in project_members (mirrors app.authz.policy.PROJECT_ROLES; checked by a unit test).
@@ -238,9 +240,11 @@ source_connections = Table(
     Column("version", Integer, nullable=False, server_default="1"),
     UniqueConstraint("tenant_id", "id", name="uq_source_connections_tenant_id"),
     UniqueConstraint("tenant_id", "display_name", name="uq_source_connections_name"),
-    CheckConstraint("provider IN ('github')", name="ck_source_connections_provider"),
-    CheckConstraint("kind IN ('git')", name="ck_source_connections_kind"),
-    CheckConstraint("auth_type IN ('token','github_app')", name="ck_source_connections_auth"),
+    CheckConstraint("provider IN ('github','jira')", name="ck_source_connections_provider"),
+    CheckConstraint("kind IN ('git','jira')", name="ck_source_connections_kind"),
+    CheckConstraint(
+        "auth_type IN ('token','github_app','basic_token','pat')", name="ck_source_connections_auth"
+    ),
     CheckConstraint(
         "status IN ('ACTIVE','DEGRADED','INVALID','REVOKED')", name="ck_source_connections_status"
     ),
@@ -322,6 +326,64 @@ webhook_deliveries = Table(
     CheckConstraint("outcome IN ('processed','ignored')", name="ck_webhook_deliveries_outcome"),
 )
 
+
+project_jira_sources = Table(
+    "project_jira_sources",
+    metadata,
+    _id(),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("connection_id", UUID(as_uuid=True), nullable=False),
+    Column("jira_project_id", Text, nullable=False),
+    Column("jira_key", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("status_reason", Text),
+    Column("capabilities", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("mapping", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("mapping_version", Integer, nullable=False, server_default="1"),
+    Column("snapshot_version", Integer, nullable=False, server_default="0"),
+    Column("warnings", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("selected_by", Text, nullable=False),
+    Column("selected_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("version", Integer, nullable=False, server_default="1"),
+    UniqueConstraint("tenant_id", "id", name="uq_project_jira_sources_tenant_id"),
+    UniqueConstraint(
+        "project_id", "connection_id", "jira_project_id", name="uq_project_jira_sources_project"
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_jira_sources_project"
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "connection_id"],
+        ["source_connections.tenant_id", "source_connections.id"],
+        name="fk_jira_sources_connection",
+    ),
+    CheckConstraint("status IN ('ACTIVE','PAUSED')", name="ck_project_jira_sources_status"),
+)
+
+jira_schema_snapshots = Table(
+    "jira_schema_snapshots",
+    metadata,
+    _id(),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("source_id", UUID(as_uuid=True), nullable=False),
+    Column("version", Integer, nullable=False),
+    Column("fingerprint", Text, nullable=False),
+    Column("schema", JSONB, nullable=False),
+    Column("diff", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("discovered_by", Text, nullable=False),
+    Column("discovered_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("source_id", "version", name="uq_jira_schema_snapshots_version"),
+    ForeignKeyConstraint(
+        ["tenant_id", "source_id"],
+        ["project_jira_sources.tenant_id", "project_jira_sources.id"],
+        name="fk_jira_snapshots_source",
+        ondelete="CASCADE",
+    ),
+    CheckConstraint("version >= 1", name="ck_jira_schema_snapshots_version"),
+)
 
 Index("ix_audit_events_tenant_time", audit_events.c.tenant_id, audit_events.c.occurred_at)
 Index("ix_outbox_unpublished", outbox_events.c.created_at, postgresql_where=text("published_at IS NULL"))

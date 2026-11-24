@@ -51,3 +51,46 @@ def test_allowed(url, expected):
 def test_denied(url):
     with pytest.raises(EgressDenied):
         validate_base_url(url)
+
+
+# ---------------------------------------------------------------- Jira site allowlist (INPROOM-130)
+
+
+@pytest.mark.parametrize(
+    ("url", "ok"),
+    [
+        ("https://acme.atlassian.net", True),
+        ("https://ACME.atlassian.net/", True),
+        ("https://jira.corp.example.com", True),  # exact host entry (Data Center)
+        ("http://localhost:18091", True),  # explicit local fake origin
+        ("https://atlassian.net", False),  # the wildcard needs exactly one label
+        ("https://a.b.atlassian.net", False),
+        ("https://atlassian.net.evil.com", False),
+        ("https://acme.atlassian.net.evil.com", False),
+        ("https://evilatlassian.net", False),
+        ("http://acme.atlassian.net", False),
+        ("https://acme.atlassian.net:8443", False),
+        ("https://user@acme.atlassian.net", False),
+        ("https://169.254.169.254", False),
+        ("https://api.github.com", False),  # Git hosts are not Jira hosts
+    ],
+)
+def test_jira_site_allowlist(monkeypatch, url, ok):
+    from app.connectors.egress import validate_jira_url
+
+    monkeypatch.setenv(
+        "INPROOM_JIRA_ALLOWED_HOSTS", "*.atlassian.net, jira.corp.example.com, http://localhost:18091"
+    )
+    get_settings.cache_clear()
+    if ok:
+        assert validate_jira_url(url) == url.lower().rstrip("/")
+    else:
+        with pytest.raises(EgressDenied):
+            validate_jira_url(url)
+
+
+def test_wildcard_never_matches_ip_literals(monkeypatch):
+    monkeypatch.setenv("INPROOM_GIT_ALLOWED_HOSTS", "*.0.0.1")
+    get_settings.cache_clear()
+    with pytest.raises(EgressDenied):
+        validate_base_url("https://127.0.0.1")

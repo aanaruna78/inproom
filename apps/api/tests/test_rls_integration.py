@@ -59,6 +59,29 @@ def test_migration_upgrade_downgrade_upgrade(scratch_database):
     assert set(TENANT_SCOPED_TABLES) <= _tables(scratch_database)
 
 
+def test_jira_downgrade_refuses_while_jira_connections_exist(scratch_database):
+    """INPROOM-130: 0005's downgrade must not silently drop Jira connections (0004's checks forbid them)."""
+    cfg = _alembic(scratch_database)
+    command.upgrade(cfg, "head")
+    engine = create_engine(scratch_database)
+    try:
+        with engine.begin() as conn:
+            tenant = uuid.uuid4()
+            conn.execute(text("INSERT INTO tenants (id, name) VALUES (:t, 't')"), {"t": tenant})
+            conn.execute(
+                text(
+                    "INSERT INTO source_connections (tenant_id, provider, kind, display_name, base_url, "
+                    "auth_type, status, created_by) VALUES (:t, 'jira', 'jira', 'j', "
+                    "'https://acme.atlassian.net', 'basic_token', 'ACTIVE', 'seed')"
+                ),
+                {"t": tenant},
+            )
+        with pytest.raises(RuntimeError, match="Jira connection"):
+            command.downgrade(cfg, "0004_git_sources")
+    finally:
+        engine.dispose()
+
+
 def test_code_schema_matches_migrated_database(owner_engine):
     """app/db_schema.py must describe exactly what the migrations created (no drift)."""
     with owner_engine.connect() as conn:
@@ -112,6 +135,10 @@ SEED_SQL = [
     "VALUES (:t, :p, :c, '1', 'acme/api', true, 'main', ARRAY['main'], 'ACTIVE', 'seed')",
     "INSERT INTO webhook_deliveries (tenant_id, connection_id, delivery_id, event, outcome) "
     "VALUES (:t, :c, 'd-1', 'push', 'processed')",
+    "INSERT INTO project_jira_sources (id, tenant_id, project_id, connection_id, jira_project_id, jira_key, "
+    "name, status, selected_by) VALUES (:j, :t, :p, :c, '10100', 'ABC', 'Acme', 'ACTIVE', 'seed')",
+    "INSERT INTO jira_schema_snapshots (tenant_id, source_id, version, fingerprint, schema, discovered_by) "
+    "VALUES (:t, :j, 1, 'x', '{}', 'seed')",
 ]
 
 
@@ -122,6 +149,7 @@ def _seed(owner_engine, tenant_id: uuid.UUID) -> dict[str, str]:
         "w": uuid.uuid4(),
         "p": uuid.uuid4(),
         "c": uuid.uuid4(),
+        "j": uuid.uuid4(),
         "k": "P" + uuid.uuid4().hex[:6].upper(),
     }
     with owner_engine.begin() as c:
