@@ -93,6 +93,7 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
         "project",
         "project.source.manage",
     ),
+    ("GET", "/v1/projects/{project_id}/sources/jira/{source_id}/issues"): ("project", "project.read"),
     # HMAC-signed, no user identity: tested in test_webhooks_integration.py
     ("POST", "/v1/hooks/github/{tenant_id}/{connection_id}"): ("webhook", None),
 }

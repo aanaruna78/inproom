@@ -233,10 +233,11 @@ class FakeJira:
 
     def _search(self, rest: str, body: dict[str, Any], browsable: dict[str, FakeProject]) -> httpx.Response:
         jql = body.get("jql", "")
-        m = re.search(r'project\s*=\s*"?([A-Z][A-Z0-9_]*)"?', jql)
-        if not m or m.group(1) not in browsable:
+        m = re.search(r'project\s*=\s*"?([A-Za-z0-9_]+)"?', jql)
+        project = m and next((p for p in browsable.values() if m.group(1) in (p.key, p.id)), None)
+        if not project:
             return self._json(400, {"errorMessages": ["The value in the project clause does not exist"]})
-        issues = browsable[m.group(1)].issues
+        issues = project.issues
         since = re.search(r'updated\s*>=\s*"([^"]+)"', jql)
         if since:
             issues = [i for i in issues if i["fields"]["updated"] >= since.group(1)]

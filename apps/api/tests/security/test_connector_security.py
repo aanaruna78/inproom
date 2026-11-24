@@ -106,3 +106,104 @@ def test_connection_setup_cannot_be_pointed_at_internal_hosts(db_client, tokens,
     record("POST /v1/connections", f"SSRF base_url {base_url}", "422", str(r.status_code))
     assert r.status_code == 422 and r.json()["code"] == "BASE_URL_NOT_ALLOWED"
     assert fake_github.calls == []
+
+
+# ------------------------------------------------ Jira (INPROOM-132; story INPROOM-23 AC 1, 3, 8)
+
+
+def test_no_jira_token_leaks_anywhere(db_client, tokens, fake_jira, owner_engine, caplog):
+    """Drive every Jira flow (good and bad credentials), then search every table row, response and log
+    line, including the Basic auth header form (base64 of email:token)."""
+    import base64
+
+    from tests.fakes import jira as fj
+
+    caplog.set_level(logging.DEBUG)
+    tenant = uuid.uuid4()
+    h = bearer(tokens.mint(tenant_id=tenant, user_id="alice", roles=["tenant_admin"]))
+    responses = []
+
+    def call(method, path, **kw):
+        r = db_client.request(method, path, headers=kw.pop("headers", h), **kw)
+        responses.append(r)
+        return r
+
+    def connect(name, token, email=fj.EMAIL):
+        body = {
+            "provider": "jira",
+            "display_name": name,
+            "base_url": "https://acme.atlassian.net",
+            "token": token,
+        }
+        return call("POST", "/v1/connections", json=body | ({"email": email} if email else {}))
+
+    ws = call("POST", "/v1/workspaces", json={"slug": "jleak", "name": "Leak"}).json()
+    pid = call("POST", f"/v1/workspaces/{ws['id']}/projects", json={"key": "JLEAK", "name": "Leak"}).json()[
+        "id"
+    ]
+    connect("bad", fj.BAD_TOKEN)
+    connect("wrong email", fj.VALID_TOKEN, email="nobody@acme.example")
+    cid = connect("Jira", fj.VALID_TOKEN).json()["id"]
+    call("GET", f"/v1/connections/{cid}/jira/projects?project_id={pid}")
+    sid = call("PUT", f"/v1/projects/{pid}/sources/jira/{cid}:ABC").json()["id"]
+    call("POST", f"/v1/projects/{pid}/sources/jira/{sid}/discover")
+    call("GET", f"/v1/projects/{pid}/sources/jira/{sid}/schema")
+    call("GET", f"/v1/projects/{pid}/sources/jira/{sid}/issues")
+    call("POST", f"/v1/connections/{cid}/check")
+    call("PUT", f"/v1/connections/{cid}/credential", json={"token": fj.BAD_TOKEN})
+    call("PUT", f"/v1/connections/{cid}/credential", json={"token": fj.VALID_TOKEN})
+    call("GET", f"/v1/projects/{pid}/sources/scope")
+    call("POST", f"/v1/connections/{cid}/revoke")
+
+    secrets_ = {"VALID_TOKEN": fj.VALID_TOKEN, "BAD_TOKEN": fj.BAD_TOKEN}
+    secrets_ |= {
+        f"basic({name})": base64.b64encode(f"{fj.EMAIL}:{value}".encode()).decode()
+        for name, value in list(secrets_.items())
+    }
+    with owner_engine.connect() as conn:
+        for table in TENANT_SCOPED_TABLES:
+            column = "id" if table == "tenants" else "tenant_id"
+            dump = conn.execute(
+                text(
+                    "SELECT coalesce(string_agg(t::text, ' '), '') "
+                    f"FROM (SELECT * FROM {table} WHERE {column}=:t) t"
+                ),
+                {"t": tenant},
+            ).scalar()
+            for name, value in secrets_.items():
+                assert value not in dump, f"{name} found in table {table}"
+                assert value.encode().hex() not in dump, f"{name} (hex) found in table {table}"
+    for r in responses:
+        for name, value in secrets_.items():
+            assert value not in r.text and value not in str(r.headers), f"{name} in response {r.request.url}"
+    for name, value in secrets_.items():
+        assert value not in caplog.text, f"{name} in logs"
+    record("all Jira routes", "Jira token / Basic header leak scan", "none found", "none found")
+
+
+@pytest.mark.parametrize(
+    "site",
+    [
+        "http://acme.atlassian.net",
+        "https://atlassian.net.evil.com",
+        "https://acme.atlassian.net@169.254.169.254",
+        "https://169.254.169.254",
+        "https://localhost",
+        "https://acme.atlassian.net:8443",
+    ],
+)
+def test_jira_site_cannot_be_pointed_at_internal_hosts(db_client, tokens, fake_jira, site):
+    from tests.fakes import jira as fj
+
+    h = bearer(tokens.mint(tenant_id=uuid.uuid4(), user_id="alice", roles=["tenant_admin"]))
+    body = {
+        "provider": "jira",
+        "display_name": "x",
+        "token": fj.VALID_TOKEN,
+        "email": fj.EMAIL,
+        "base_url": site,
+    }
+    r = db_client.post("/v1/connections", json=body, headers=h)
+    record("POST /v1/connections (jira)", f"SSRF site {site}", "422", str(r.status_code))
+    assert r.status_code == 422 and r.json()["code"] == "BASE_URL_NOT_ALLOWED"
+    assert fake_jira.calls == []

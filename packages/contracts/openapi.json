@@ -218,6 +218,209 @@
         "title": "Health",
         "type": "object"
       },
+      "IssueLink": {
+        "properties": {
+          "direction": {
+            "enum": [
+              "outward",
+              "inward"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "relation": {
+            "title": "Relation",
+            "type": "string"
+          },
+          "target_key": {
+            "title": "Target Key",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "direction",
+          "relation",
+          "target_key"
+        ],
+        "title": "IssueLink",
+        "type": "object"
+      },
+      "JiraIssue": {
+        "properties": {
+          "acceptance_criteria": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptance Criteria"
+          },
+          "epic_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Epic Key"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/IssueLink"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "parent_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Key"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "sprint_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sprint Ids",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_raw": {
+            "title": "Status Raw",
+            "type": "string"
+          },
+          "story_points": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Story Points"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "type_raw": {
+            "title": "Type Raw",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "source_id",
+          "key",
+          "type",
+          "type_raw",
+          "status",
+          "status_raw",
+          "summary",
+          "parent_key",
+          "epic_key",
+          "sprint_ids",
+          "story_points",
+          "acceptance_criteria",
+          "labels",
+          "links",
+          "updated_at"
+        ],
+        "title": "JiraIssue",
+        "type": "object"
+      },
+      "JiraIssuePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JiraIssue"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "jira_key": {
+            "title": "Jira Key",
+            "type": "string"
+          },
+          "mapping_version": {
+            "title": "Mapping Version",
+            "type": "integer"
+          },
+          "next_page_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Page Token"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "jira_key",
+          "mapping_version",
+          "items",
+          "next_page_token"
+        ],
+        "title": "JiraIssuePage",
+        "type": "object"
+      },
       "JiraProjectOption": {
         "properties": {
           "id": {
@@ -272,6 +475,51 @@
           "next_page"
         ],
         "title": "JiraProjectOptions",
+        "type": "object"
+      },
+      "JiraScopeItem": {
+        "properties": {
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "jira_key": {
+            "title": "Jira Key",
+            "type": "string"
+          },
+          "jira_project_id": {
+            "title": "Jira Project Id",
+            "type": "string"
+          },
+          "mapping_version": {
+            "title": "Mapping Version",
+            "type": "integer"
+          },
+          "snapshot_version": {
+            "title": "Snapshot Version",
+            "type": "integer"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "connection_id",
+          "base_url",
+          "jira_project_id",
+          "jira_key",
+          "mapping_version",
+          "snapshot_version"
+        ],
+        "title": "JiraScopeItem",
         "type": "object"
       },
       "JiraSource": {
@@ -1399,6 +1647,11 @@
             "title": "Full Name",
             "type": "string"
           },
+          "kind": {
+            "default": "git",
+            "title": "Kind",
+            "type": "string"
+          },
           "reason": {
             "title": "Reason",
             "type": "string"
@@ -1820,6 +2073,13 @@
               "$ref": "#/components/schemas/ScopeExclusion"
             },
             "title": "Excluded",
+            "type": "array"
+          },
+          "jira_projects": {
+            "items": {
+              "$ref": "#/components/schemas/JiraScopeItem"
+            },
+            "title": "Jira Projects",
             "type": "array"
           },
           "project_id": {
@@ -3619,6 +3879,115 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/sources/jira/{source_id}/issues": {
+      "get": {
+        "operationId": "list_jira_issues_v1_projects__project_id__sources_jira__source_id__issues_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page Token"
+            }
+          },
+          {
+            "description": "Only issues updated at or after this time",
+            "in": "query",
+            "name": "updated_since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only issues updated at or after this time",
+              "title": "Updated Since"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JiraIssuePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "problem+json"
+          },
+          "503": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read-only: the Jira project's issues and dependency links, normalised by the mapping (paged)",
+        "tags": [
+          "jira sources"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/sources/jira/{source_id}/mapping": {
       "put": {
         "operationId": "update_mapping_v1_projects__project_id__sources_jira__source_id__mapping_put",
@@ -4040,7 +4409,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "The sync scope indexing may read: selected, readable repositories and branches only",
+        "summary": "The sync scope indexing may read: selected, readable repositories, branches and Jira projects",
         "tags": [
           "sources"
         ]

@@ -69,6 +69,7 @@ ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/v1/projects/{project_id}/sources/jira/{source_id}/discover"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/sources/jira/{source_id}/schema"): "project_scoped",
     ("PUT", "/v1/projects/{project_id}/sources/jira/{source_id}/mapping"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/sources/jira/{source_id}/issues"): "project_scoped",
     # INPROOM-110: unauthenticated, HMAC-signed webhook receiver (covered by test_webhooks_integration.py)
     ("POST", "/v1/hooks/github/{tenant_id}/{connection_id}"): "webhook",
 }

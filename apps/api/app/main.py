@@ -9,6 +9,7 @@ from app.errors import install_error_handlers
 from app.health import router as health_router
 from app.me import router as me_router
 from app.modules.connections import router as connections_router
+from app.modules.jira_issues import router as jira_issues_router
 from app.modules.jira_sources import router as jira_sources_router
 from app.modules.members import router as members_router
 from app.modules.projects import router as projects_router
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
     app.include_router(connections_router)
     app.include_router(sources_router)
     app.include_router(jira_sources_router)
+    app.include_router(jira_issues_router)
     app.include_router(webhooks_router)
     return app
 

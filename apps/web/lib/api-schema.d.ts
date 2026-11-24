@@ -400,6 +400,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/sources/jira/{source_id}/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read-only: the Jira project's issues and dependency links, normalised by the mapping (paged) */
+        get: operations["list_jira_issues_v1_projects__project_id__sources_jira__source_id__issues_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/sources/jira/{source_id}/mapping": {
         parameters: {
             query?: never;
@@ -476,7 +493,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The sync scope indexing may read: selected, readable repositories and branches only */
+        /** The sync scope indexing may read: selected, readable repositories, branches and Jira projects */
         get: operations["sync_scope_v1_projects__project_id__sources_scope_get"];
         put?: never;
         post?: never;
@@ -642,6 +659,69 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** IssueLink */
+        IssueLink: {
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "outward" | "inward";
+            /** Relation */
+            relation: string;
+            /** Target Key */
+            target_key: string;
+            /** Type */
+            type: string;
+        };
+        /** JiraIssue */
+        JiraIssue: {
+            /** Acceptance Criteria */
+            acceptance_criteria: string | null;
+            /** Epic Key */
+            epic_key: string | null;
+            /** Key */
+            key: string;
+            /** Labels */
+            labels: string[];
+            /** Links */
+            links: components["schemas"]["IssueLink"][];
+            /** Parent Key */
+            parent_key: string | null;
+            /** Source Id */
+            source_id: string;
+            /** Sprint Ids */
+            sprint_ids: string[];
+            /** Status */
+            status: string;
+            /** Status Raw */
+            status_raw: string;
+            /** Story Points */
+            story_points: number | null;
+            /** Summary */
+            summary: string;
+            /** Type */
+            type: string;
+            /** Type Raw */
+            type_raw: string;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** JiraIssuePage */
+        JiraIssuePage: {
+            /** Items */
+            items: components["schemas"]["JiraIssue"][];
+            /** Jira Key */
+            jira_key: string;
+            /** Mapping Version */
+            mapping_version: number;
+            /** Next Page Token */
+            next_page_token: string | null;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+        };
         /** JiraProjectOption */
         JiraProjectOption: {
             /** Id */
@@ -659,6 +739,29 @@ export interface components {
             items: components["schemas"]["JiraProjectOption"][];
             /** Next Page */
             next_page: number | null;
+        };
+        /** JiraScopeItem */
+        JiraScopeItem: {
+            /** Base Url */
+            base_url: string;
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            /** Jira Key */
+            jira_key: string;
+            /** Jira Project Id */
+            jira_project_id: string;
+            /** Mapping Version */
+            mapping_version: number;
+            /** Snapshot Version */
+            snapshot_version: number;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
         };
         /** JiraSource */
         JiraSource: {
@@ -1110,6 +1213,11 @@ export interface components {
         ScopeExclusion: {
             /** Full Name */
             full_name: string;
+            /**
+             * Kind
+             * @default git
+             */
+            kind: string;
             /** Reason */
             reason: string;
         };
@@ -1289,6 +1397,8 @@ export interface components {
         SyncScope: {
             /** Excluded */
             excluded: components["schemas"]["ScopeExclusion"][];
+            /** Jira Projects */
+            jira_projects?: components["schemas"]["JiraScopeItem"][];
             /**
              * Project Id
              * Format: uuid
@@ -2656,6 +2766,77 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description problem+json */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_jira_issues_v1_projects__project_id__sources_jira__source_id__issues_get: {
+        parameters: {
+            query?: {
+                page_token?: string | null;
+                /** @description Only issues updated at or after this time */
+                updated_since?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JiraIssuePage"];
+                };
+            };
+            /** @description problem+json */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
             /** @description problem+json */
             502: {

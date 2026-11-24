@@ -19,7 +19,7 @@ from app.authz import authorize
 from app.connectors.base import ProviderError
 from app.connectors.registry import GitTransport, provider_errors, provider_for
 from app.db import tenant_session
-from app.db_schema import outbox_events, project_repositories, source_connections
+from app.db_schema import outbox_events, project_jira_sources, project_repositories, source_connections
 from app.modules import settings as settings_module
 from app.modules import webhooks
 from app.modules.connections import credential_of, load_connection
@@ -94,11 +94,23 @@ class ScopeItem(BaseModel):
 class ScopeExclusion(BaseModel):
     full_name: str
     reason: str
+    kind: str = "git"
+
+
+class JiraScopeItem(BaseModel):
+    source_id: uuid.UUID
+    connection_id: uuid.UUID
+    base_url: str
+    jira_project_id: str
+    jira_key: str
+    mapping_version: int
+    snapshot_version: int
 
 
 class SyncScope(BaseModel):
     project_id: uuid.UUID
     repositories: list[ScopeItem]
+    jira_projects: list[JiraScopeItem] = Field(default_factory=list)
     excluded: list[ScopeExclusion]
 
 
@@ -410,13 +422,35 @@ def _remove_hook_if_unused(
 @router.get(
     "/v1/projects/{project_id}/sources/scope",
     response_model=SyncScope,
-    summary="The sync scope indexing may read: selected, readable repositories and branches only",
+    summary="The sync scope indexing may read: selected, readable repositories, branches and Jira projects",
     responses={404: PROBLEM},
 )
 def sync_scope(request: Request, principal: CurrentPrincipal, project_id: uuid.UUID) -> SyncScope:
     with tenant_session(principal.tenant_id) as conn:
         authorize(conn, principal, request, "project.read", project_id)
         rows = _selected(conn, principal.tenant_id, project_id)
+        jira_rows = [
+            dict(r)
+            for r in conn.execute(
+                select(
+                    project_jira_sources,
+                    source_connections.c.status.label("connection_status"),
+                    source_connections.c.base_url,
+                )
+                .join(
+                    source_connections,
+                    and_(
+                        source_connections.c.tenant_id == project_jira_sources.c.tenant_id,
+                        source_connections.c.id == project_jira_sources.c.connection_id,
+                    ),
+                )
+                .where(
+                    project_jira_sources.c.tenant_id == principal.tenant_id,
+                    project_jira_sources.c.project_id == project_id,
+                )
+                .order_by(project_jira_sources.c.jira_key)
+            ).mappings()
+        ]
     included, excluded = [], []
     for r in rows:
         if r["status"] != "ACTIVE":
@@ -427,4 +461,22 @@ def sync_scope(request: Request, principal: CurrentPrincipal, project_id: uuid.U
             )
         else:
             included.append(ScopeItem.model_validate(r))
-    return SyncScope(project_id=project_id, repositories=included, excluded=excluded)
+    jira = []
+    for r in jira_rows:
+        if r["status"] != "ACTIVE":
+            excluded.append(
+                ScopeExclusion(full_name=r["jira_key"], reason=r["status_reason"] or "paused", kind="jira")
+            )
+        elif r["connection_status"] not in ("ACTIVE", "DEGRADED"):
+            excluded.append(
+                ScopeExclusion(
+                    full_name=r["jira_key"], reason=f"connection {r['connection_status']}", kind="jira"
+                )
+            )
+        else:
+            jira.append(
+                JiraScopeItem(
+                    source_id=r["id"], **{k: r[k] for k in JiraScopeItem.model_fields if k != "source_id"}
+                )
+            )
+    return SyncScope(project_id=project_id, repositories=included, jira_projects=jira, excluded=excluded)

@@ -253,7 +253,11 @@ def test_check_detects_invalid_token_and_lost_access(connected):
     scope = env.scope()
     assert [s["full_name"] for s in scope["repositories"]] == ["acme/web"]
     assert scope["excluded"] == [
-        {"full_name": "acme/api", "reason": "the credential can no longer read this repository"}
+        {
+            "full_name": "acme/api",
+            "reason": "the credential can no longer read this repository",
+            "kind": "git",
+        }
     ]
     env.gh.tokens[VALID_TOKEN].access[1] = dict(FULL)  # access restored
     assert env.client.post(f"/v1/connections/{env.cid}/check", headers=env.h()).json()["status"] == "ACTIVE"
