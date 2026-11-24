@@ -459,7 +459,10 @@ def remove_space(
 ) -> Response:
     connection_id, key = _parse_ref(ref)
     with tenant_session(principal.tenant_id) as conn:
-        authorize(conn, principal, request, "project.source.manage", project_id, lock=True)
+        access = authorize(conn, principal, request, "project.source.manage", project_id, lock=True)
+        if access.project["status"] == "ARCHIVED":
+            # Archived projects are read-only: deselecting would delete the source's catalog/history.
+            raise conflict("PROJECT_ARCHIVED", "Archived projects are read-only; restore the project first")
         found = sources(
             conn, principal.tenant_id, project_id=project_id, connection_id=connection_id, space_key=key
         )

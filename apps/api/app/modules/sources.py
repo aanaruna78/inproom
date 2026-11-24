@@ -376,7 +376,10 @@ def remove_repository(
     repo_id: Annotated[str, Path(pattern=r"^\d{1,20}$")],
 ) -> Response:
     with tenant_session(principal.tenant_id) as conn:
-        authorize(conn, principal, request, "project.source.manage", project_id, lock=True)
+        access = authorize(conn, principal, request, "project.source.manage", project_id, lock=True)
+        if access.project["status"] == "ARCHIVED":
+            # Archived projects are read-only: deselecting would delete the source's catalog/history.
+            raise conflict("PROJECT_ARCHIVED", "Archived projects are read-only; restore the project first")
         removed = conn.execute(
             delete(project_repositories)
             .where(
