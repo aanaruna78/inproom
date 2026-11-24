@@ -18,6 +18,7 @@ from app.db import tenant_session
 from app.db_schema import TENANT_SCOPED_TABLES
 from app.main import create_app
 from tests.auth_helpers import bearer
+from tests.fakes import confluence as fc
 from tests.fakes import jira as fj
 from tests.fakes.github import VALID_TOKEN
 from tests.security.conftest import record
@@ -70,6 +71,12 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/v1/projects/{project_id}/sources/jira/{source_id}/schema"): "project_scoped",
     ("PUT", "/v1/projects/{project_id}/sources/jira/{source_id}/mapping"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/sources/jira/{source_id}/issues"): "project_scoped",
+    # INPROOM-135: Confluence sources
+    ("GET", "/v1/connections/{connection_id}/confluence/spaces"): "connection_scoped",
+    ("GET", "/v1/projects/{project_id}/sources/confluence"): "project_scoped",
+    ("PUT", "/v1/projects/{project_id}/sources/confluence/{ref}"): "project_scoped",
+    ("DELETE", "/v1/projects/{project_id}/sources/confluence/{ref}"): "project_scoped",
+    ("POST", "/v1/projects/{project_id}/sources/confluence/{source_id}/sync"): "project_scoped",
     # INPROOM-110: unauthenticated, HMAC-signed webhook receiver (covered by test_webhooks_integration.py)
     ("POST", "/v1/hooks/github/{tenant_id}/{connection_id}"): "webhook",
 }
@@ -105,6 +112,8 @@ class Tenant:
     connection: dict
     jira: dict
     jira_source: dict
+    confluence: dict
+    confluence_source: dict
 
     def secrets(self) -> list[str]:
         """Identifiers and names that must never appear in another tenant's responses."""
@@ -121,11 +130,14 @@ class Tenant:
             self.jira["id"],
             self.jira["display_name"],
             self.jira_source["id"],
+            self.confluence["id"],
+            self.confluence["display_name"],
+            self.confluence_source["id"],
         ]
 
 
 @pytest.fixture
-def world(db_client, tokens, fake_github, fake_jira):
+def world(db_client, tokens, fake_github, fake_jira, fake_confluence):
     def make(label: str) -> Tenant:
         tid = uuid.uuid4()
         h = bearer(tokens.mint(tenant_id=tid, user_id=f"admin-{label}", roles=["tenant_admin"]))
@@ -165,9 +177,35 @@ def world(db_client, tokens, fake_github, fake_jira):
         ).json()
         source = db_client.put(f"/v1/projects/{pj['id']}/sources/jira/{jira['id']}:ABC", headers=h)
         assert source.status_code == 200, source.text
-        return Tenant(tid, h, ws, pj, conn, jira, source.json())
+        confluence = db_client.post(
+            "/v1/connections",
+            json={
+                "provider": "confluence",
+                "display_name": f"Secret Confluence {label}{suffix}",
+                "base_url": "https://acme.atlassian.net",
+                "email": fc.EMAIL,
+                "token": fc.VALID_TOKEN,
+            },
+            headers=h,
+        ).json()
+        space = db_client.put(
+            f"/v1/projects/{pj['id']}/sources/confluence/{confluence['id']}:ENG",
+            json={"required_labels": ["approved"]},
+            headers=h,
+        )
+        assert space.status_code == 200, space.text
+        return Tenant(tid, h, ws, pj, conn, jira, source.json(), confluence, space.json()["source"])
 
     return make("a"), make("b")
+
+
+def _pick(path: str, t: Tenant) -> dict:
+    """The connection a route acts on (Jira and Confluence routes need their own provider's connection)."""
+    if "/jira" in path:
+        return t.jira
+    if "/confluence" in path:
+        return t.confluence
+    return t.connection
 
 
 def _request(client, method, path_template, tenant_ids: Tenant, headers):
@@ -176,12 +214,21 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         project_id=tenant_ids.project["id"],
         user_id=tenant_ids.project.get("owner_id", "someone"),  # a real member of the victim project
         version=1,
-        connection_id=tenant_ids.jira["id"] if "/jira/" in path_template else tenant_ids.connection["id"],
+        connection_id=_pick(path_template, tenant_ids)["id"],
         repo_id="1",
-        ref=f"{tenant_ids.jira['id']}:ABC",
-        source_id=tenant_ids.jira_source["id"],
+        ref=(
+            f"{tenant_ids.confluence['id']}:ENG"
+            if "/confluence" in path_template
+            else f"{tenant_ids.jira['id']}:ABC"
+        ),
+        source_id=(
+            tenant_ids.confluence_source if "/confluence" in path_template else tenant_ids.jira_source
+        )["id"],
     )
-    if path_template.endswith(("/repositories", "/jira/projects")) and "{connection_id}" in path_template:
+    if (
+        path_template.endswith(("/repositories", "/jira/projects", "/confluence/spaces"))
+        and "{connection_id}" in path_template
+    ):
         path += f"?project_id={tenant_ids.project['id']}"
     kwargs: dict = {"headers": dict(headers)}
     if path_template == "/v1/connections" and method == "POST":
@@ -217,6 +264,8 @@ def _ghost(tenant_id: uuid.UUID) -> Tenant:
         {"id": str(uuid.uuid4()), "version": 1, "key": "GHOST", "name": "Ghost project"},
         {"id": str(uuid.uuid4()), "display_name": "Ghost connection"},
         {"id": str(uuid.uuid4()), "display_name": "Ghost Jira"},
+        {"id": str(uuid.uuid4())},
+        {"id": str(uuid.uuid4()), "display_name": "Ghost Confluence"},
         {"id": str(uuid.uuid4())},
     )
 
@@ -348,7 +397,7 @@ def test_cross_tenant_access_is_masked_audited_and_leak_free(db_client, world, o
     if "{project_id}" in path:
         target = a.project["id"]
     elif "{connection_id}" in path:
-        target = a.jira["id"] if "/jira/" in path else a.connection["id"]
+        target = _pick(path, a)["id"]
     else:
         target = a.workspace["id"]
     with owner_engine.connect() as conn:

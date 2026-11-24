@@ -44,6 +44,149 @@
         "title": "Approvals",
         "type": "object"
       },
+      "ConfluenceSource": {
+        "properties": {
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "capabilities": {
+            "additionalProperties": true,
+            "title": "Capabilities",
+            "type": "object"
+          },
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "connection_name": {
+            "title": "Connection Name",
+            "type": "string"
+          },
+          "connection_status": {
+            "title": "Connection Status",
+            "type": "string"
+          },
+          "filters": {
+            "additionalProperties": true,
+            "title": "Filters",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_sync": {
+            "additionalProperties": true,
+            "title": "Last Sync",
+            "type": "object"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "page_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Page Counts",
+            "type": "object"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "selected_at": {
+            "format": "date-time",
+            "title": "Selected At",
+            "type": "string"
+          },
+          "selected_by": {
+            "title": "Selected By",
+            "type": "string"
+          },
+          "space_id": {
+            "title": "Space Id",
+            "type": "string"
+          },
+          "space_key": {
+            "title": "Space Key",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "connection_id",
+          "connection_name",
+          "connection_status",
+          "base_url",
+          "space_id",
+          "space_key",
+          "name",
+          "filters",
+          "capabilities",
+          "status",
+          "status_reason",
+          "warnings",
+          "page_counts",
+          "last_synced_at",
+          "last_sync",
+          "selected_by",
+          "selected_at",
+          "updated_at",
+          "version"
+        ],
+        "title": "ConfluenceSource",
+        "type": "object"
+      },
       "ConnectionCreate": {
         "properties": {
           "base_url": {
@@ -70,14 +213,15 @@
                 "type": "null"
               }
             ],
-            "description": "Jira Cloud: the Atlassian account email the API token belongs to. Omit for a Jira Data Center personal access token. Not used for GitHub.",
+            "description": "Jira/Confluence Cloud: the Atlassian account email the API token belongs to. Omit for a Data Center personal access token. Not used for GitHub.",
             "title": "Email"
           },
           "provider": {
             "default": "github",
             "enum": [
               "github",
-              "jira"
+              "jira",
+              "confluence"
             ],
             "title": "Provider",
             "type": "string"
@@ -2066,6 +2210,126 @@
         "title": "Sources",
         "type": "object"
       },
+      "SpaceFilters": {
+        "properties": {
+          "include_restricted": {
+            "default": false,
+            "description": "Include pages with read restrictions (flagged; enforced by E03 ACLs)",
+            "title": "Include Restricted",
+            "type": "boolean"
+          },
+          "required_labels": {
+            "description": "A page must carry every label (e.g. approved)",
+            "items": {
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[^\\s,]+$",
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Required Labels",
+            "type": "array"
+          },
+          "root_page_ids": {
+            "description": "Only these page trees",
+            "items": {
+              "pattern": "^\\d{1,20}$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Root Page Ids",
+            "type": "array"
+          }
+        },
+        "title": "SpaceFilters",
+        "type": "object"
+      },
+      "SpaceOption": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "selected": {
+            "title": "Selected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "name",
+          "selected"
+        ],
+        "title": "SpaceOption",
+        "type": "object"
+      },
+      "SpaceOptions": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SpaceOption"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Start"
+          }
+        },
+        "required": [
+          "items",
+          "next_start"
+        ],
+        "title": "SpaceOptions",
+        "type": "object"
+      },
+      "SyncResult": {
+        "properties": {
+          "changed": {
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ConfluenceSource"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source",
+          "counts",
+          "truncated",
+          "changed"
+        ],
+        "title": "SyncResult",
+        "type": "object"
+      },
       "SyncScope": {
         "properties": {
           "excluded": {
@@ -2461,6 +2725,110 @@
         "summary": "Run a health check now (credential validity and granted scopes)",
         "tags": [
           "connections"
+        ]
+      }
+    },
+    "/v1/connections/{connection_id}/confluence/spaces": {
+      "get": {
+        "operationId": "list_space_options_v1_connections__connection_id__confluence_spaces_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project the spaces would be selected into",
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "description": "Project the spaces would be selected into",
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Start",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpaceOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "problem+json"
+          },
+          "503": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Confluence spaces the connection's credential can read, for selecting into a project",
+        "tags": [
+          "confluence sources"
         ]
       }
     },
@@ -3630,6 +3998,269 @@
         "summary": "One settings version and its diff against the previous version",
         "tags": [
           "settings"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sources/confluence": {
+      "get": {
+        "operationId": "list_confluence_sources_v1_projects__project_id__sources_confluence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConfluenceSource"
+                  },
+                  "title": "Response List Confluence Sources V1 Projects  Project Id  Sources Confluence Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Confluence spaces selected for this project, with filters, page counts and last sync",
+        "tags": [
+          "confluence sources"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sources/confluence/{ref}": {
+      "delete": {
+        "operationId": "remove_space_v1_projects__project_id__sources_confluence__ref__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "{connection_id}:{space key}, e.g. 4f1c...:ENG",
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "description": "{connection_id}:{space key}, e.g. 4f1c...:ENG",
+              "pattern": "^[0-9a-fA-F-]{36}:~?[A-Za-z0-9_]{1,100}$",
+              "title": "Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove a Confluence space from this project (its catalog goes with it)",
+        "tags": [
+          "confluence sources"
+        ]
+      },
+      "put": {
+        "operationId": "select_space_v1_projects__project_id__sources_confluence__ref__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "{connection_id}:{space key}, e.g. 4f1c...:ENG",
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "description": "{connection_id}:{space key}, e.g. 4f1c...:ENG",
+              "pattern": "^[0-9a-fA-F-]{36}:~?[A-Za-z0-9_]{1,100}$",
+              "title": "Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SpaceFilters"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          },
+          "502": {
+            "description": "problem+json"
+          },
+          "503": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Select a Confluence space (or change its filters) and sync its page catalog; idempotent",
+        "tags": [
+          "confluence sources"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sources/confluence/{source_id}/sync": {
+      "post": {
+        "operationId": "sync_now_v1_projects__project_id__sources_confluence__source_id__sync_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          },
+          "502": {
+            "description": "problem+json"
+          },
+          "503": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sync the space's page catalog now (versions, restrictions, deletions); unchanged = no writes",
+        "tags": [
+          "confluence sources"
         ]
       }
     },

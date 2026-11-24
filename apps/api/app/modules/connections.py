@@ -21,10 +21,23 @@ from app.authz import deny_not_found, require_tenant
 from app.connectors import vault
 from app.connectors.base import CredentialInvalid, ProviderError
 from app.connectors.health import evaluate
-from app.connectors.registry import Transports, jira_for, provider_errors, provider_for, validate_site
+from app.connectors.registry import (
+    Transports,
+    confluence_for,
+    jira_for,
+    provider_errors,
+    provider_for,
+    validate_site,
+)
 from app.connectors.vault import Secret
 from app.db import tenant_session
-from app.db_schema import outbox_events, project_jira_sources, project_repositories, source_connections
+from app.db_schema import (
+    outbox_events,
+    project_confluence_sources,
+    project_jira_sources,
+    project_repositories,
+    source_connections,
+)
 from app.idempotency import request_fingerprint, run_idempotent
 from app.modules.workspaces import ensure_tenant, is_unique_violation
 
@@ -33,7 +46,7 @@ PROBLEM = {"description": "problem+json"}
 
 
 class ConnectionCreate(BaseModel):
-    provider: Literal["github", "jira"] = "github"
+    provider: Literal["github", "jira", "confluence"] = "github"
     display_name: str = Field(min_length=1, max_length=80)
     base_url: str = Field(
         default="https://api.github.com",
@@ -44,8 +57,8 @@ class ConnectionCreate(BaseModel):
         default=None,
         max_length=254,
         pattern=r"^[^@\s]+@[^@\s]+$",
-        description="Jira Cloud: the Atlassian account email the API token belongs to. Omit for a Jira "
-        "Data Center personal access token. Not used for GitHub.",
+        description="Jira/Confluence Cloud: the Atlassian account email the API token belongs to. Omit for "
+        "a Data Center personal access token. Not used for GitHub.",
     )
     token: SecretStr = Field(
         min_length=20,
@@ -107,11 +120,12 @@ def load_connection(
     return dict(row)
 
 
-KIND = {"github": "git", "jira": "jira"}
+KIND = {"github": "git", "jira": "jira", "confluence": "confluence"}
+ATLASSIAN = ("jira", "confluence")
 
 
 def auth_type_for(provider: str, email: str | None) -> str:
-    if provider == "jira":
+    if provider in ATLASSIAN:
         return "basic_token" if email else "pat"
     return "token"
 
@@ -120,6 +134,8 @@ def adapter_for(row: dict[str, Any], token: Secret, transports: dict[str, Any]):
     """The provider adapter for a connection row (only `whoami` is shared by every provider)."""
     if row["provider"] == "jira":
         return jira_for(row, token, transports)
+    if row["provider"] == "confluence":
+        return confluence_for(row, token, transports)
     return provider_for(row["provider"], row["base_url"], token, transports)
 
 
@@ -200,8 +216,10 @@ def create_connection(
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ):
     require_tenant(principal, "tenant.connection.manage", request, target_type="connection")
-    if payload.email and payload.provider != "jira":
-        raise ApiError(422, "EMAIL_NOT_APPLICABLE", "Unprocessable request", "email is only used for Jira")
+    if payload.email and payload.provider not in ATLASSIAN:
+        raise ApiError(
+            422, "EMAIL_NOT_APPLICABLE", "Unprocessable request", "email is only used for Jira and Confluence"
+        )
     base_url = validate_site(payload.provider, payload.base_url)
     token = Secret(payload.token.get_secret_value())
     draft = {
@@ -330,6 +348,10 @@ def check_connection(
             from app.modules.jira_sources import evaluate_jira  # noqa: PLC0415 (avoids an import cycle)
 
             status, source_issues = evaluate_jira(principal, row, provider)
+        elif row["provider"] == "confluence":
+            from app.modules.confluence_sources import evaluate_confluence  # noqa: PLC0415 (import cycle)
+
+            status, source_issues = evaluate_confluence(principal, row, provider)
         else:
             status, source_issues = evaluate(principal, row, provider)
         issues += source_issues
@@ -421,6 +443,14 @@ def revoke_connection(
             .where(
                 project_jira_sources.c.tenant_id == principal.tenant_id,
                 project_jira_sources.c.connection_id == connection_id,
+            )
+            .values(status="PAUSED", status_reason="connection revoked", updated_at=datetime.now(UTC))
+        )
+        conn.execute(
+            update(project_confluence_sources)
+            .where(
+                project_confluence_sources.c.tenant_id == principal.tenant_id,
+                project_confluence_sources.c.connection_id == connection_id,
             )
             .values(status="PAUSED", status_reason="connection revoked", updated_at=datetime.now(UTC))
         )

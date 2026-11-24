@@ -107,3 +107,17 @@ def fake_jira(db_client, monkeypatch):
     fake = standard()
     db_client.app.dependency_overrides[get_jira_transport] = fake.transport
     return fake
+
+
+@pytest.fixture
+def fake_confluence(db_client, monkeypatch):
+    """The standard fake Confluence (tests/fakes/confluence.py) wired into db_client's app."""
+    from app.config import get_settings
+    from app.connectors.registry import get_confluence_transport
+    from tests.fakes.confluence import standard
+
+    monkeypatch.setenv("INPROOM_CONFLUENCE_ALLOWED_HOSTS", "*.atlassian.net, wiki.corp.example.com")
+    get_settings.cache_clear()
+    fake = standard()
+    db_client.app.dependency_overrides[get_confluence_transport] = fake.transport
+    return fake

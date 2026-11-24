@@ -90,6 +90,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/connections/{connection_id}/confluence/spaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Confluence spaces the connection's credential can read, for selecting into a project */
+        get: operations["list_space_options_v1_connections__connection_id__confluence_spaces_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connections/{connection_id}/credential": {
         parameters: {
             query?: never;
@@ -348,6 +365,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/sources/confluence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Confluence spaces selected for this project, with filters, page counts and last sync */
+        get: operations["list_confluence_sources_v1_projects__project_id__sources_confluence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/sources/confluence/{ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Select a Confluence space (or change its filters) and sync its page catalog; idempotent */
+        put: operations["select_space_v1_projects__project_id__sources_confluence__ref__put"];
+        post?: never;
+        /** Remove a Confluence space from this project (its catalog goes with it) */
+        delete: operations["remove_space_v1_projects__project_id__sources_confluence__ref__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/sources/confluence/{source_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync the space's page catalog now (versions, restrictions, deletions); unchanged = no writes */
+        post: operations["sync_now_v1_projects__project_id__sources_confluence__source_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/sources/jira": {
         parameters: {
             query?: never;
@@ -585,6 +654,76 @@ export interface components {
              */
             self_approval: false;
         };
+        /** ConfluenceSource */
+        ConfluenceSource: {
+            /** Base Url */
+            base_url: string;
+            /** Capabilities */
+            capabilities: {
+                [key: string]: unknown;
+            };
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            /** Connection Name */
+            connection_name: string;
+            /** Connection Status */
+            connection_status: string;
+            /** Filters */
+            filters: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Sync */
+            last_sync: {
+                [key: string]: unknown;
+            };
+            /** Last Synced At */
+            last_synced_at: string | null;
+            /** Name */
+            name: string;
+            /** Page Counts */
+            page_counts: {
+                [key: string]: number;
+            };
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Selected At
+             * Format: date-time
+             */
+            selected_at: string;
+            /** Selected By */
+            selected_by: string;
+            /** Space Id */
+            space_id: string;
+            /** Space Key */
+            space_key: string;
+            /** Status */
+            status: string;
+            /** Status Reason */
+            status_reason: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+            /** Warnings */
+            warnings: {
+                [key: string]: unknown;
+            }[];
+        };
         /** ConnectionCreate */
         ConnectionCreate: {
             /**
@@ -597,7 +736,7 @@ export interface components {
             display_name: string;
             /**
              * Email
-             * @description Jira Cloud: the Atlassian account email the API token belongs to. Omit for a Jira Data Center personal access token. Not used for GitHub.
+             * @description Jira/Confluence Cloud: the Atlassian account email the API token belongs to. Omit for a Data Center personal access token. Not used for GitHub.
              */
             email?: string | null;
             /**
@@ -605,7 +744,7 @@ export interface components {
              * @default github
              * @enum {string}
              */
-            provider: "github" | "jira";
+            provider: "github" | "jira" | "confluence";
             /**
              * Token
              * Format: password
@@ -1393,6 +1532,55 @@ export interface components {
              */
             max_classification: "public" | "internal" | "confidential";
         };
+        /** SpaceFilters */
+        SpaceFilters: {
+            /**
+             * Include Restricted
+             * @description Include pages with read restrictions (flagged; enforced by E03 ACLs)
+             * @default false
+             */
+            include_restricted: boolean;
+            /**
+             * Required Labels
+             * @description A page must carry every label (e.g. approved)
+             */
+            required_labels?: string[];
+            /**
+             * Root Page Ids
+             * @description Only these page trees
+             */
+            root_page_ids?: string[];
+        };
+        /** SpaceOption */
+        SpaceOption: {
+            /** Id */
+            id: string;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Selected */
+            selected: boolean;
+        };
+        /** SpaceOptions */
+        SpaceOptions: {
+            /** Items */
+            items: components["schemas"]["SpaceOption"][];
+            /** Next Start */
+            next_start: number | null;
+        };
+        /** SyncResult */
+        SyncResult: {
+            /** Changed */
+            changed: boolean;
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            source: components["schemas"]["ConfluenceSource"];
+            /** Truncated */
+            truncated: boolean;
+        };
         /** SyncScope */
         SyncScope: {
             /** Excluded */
@@ -1666,6 +1854,77 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    list_space_options_v1_connections__connection_id__confluence_spaces_get: {
+        parameters: {
+            query: {
+                /** @description Project the spaces would be selected into */
+                project_id: string;
+                q?: string | null;
+                start?: number;
+            };
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpaceOptions"];
+                };
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description problem+json */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2566,6 +2825,224 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    list_confluence_sources_v1_projects__project_id__sources_confluence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfluenceSource"][];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    select_space_v1_projects__project_id__sources_confluence__ref__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                /** @description {connection_id}:{space key}, e.g. 4f1c...:ENG */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SpaceFilters"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncResult"];
+                };
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    remove_space_v1_projects__project_id__sources_confluence__ref__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                /** @description {connection_id}:{space key}, e.g. 4f1c...:ENG */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_now_v1_projects__project_id__sources_confluence__source_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncResult"];
+                };
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

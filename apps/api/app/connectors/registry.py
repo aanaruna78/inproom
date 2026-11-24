@@ -16,7 +16,8 @@ from app.connectors.base import (
     ProviderUnavailable,
     RateLimited,
 )
-from app.connectors.egress import EgressDenied, validate_base_url, validate_jira_url
+from app.connectors.confluence import ConfluenceProvider
+from app.connectors.egress import EgressDenied, validate_base_url, validate_confluence_url, validate_jira_url
 from app.connectors.github import GitHubProvider
 from app.connectors.jira import JiraProvider
 from app.connectors.vault import Secret
@@ -34,12 +35,20 @@ def get_jira_transport() -> Transport:
     return None
 
 
+def get_confluence_transport() -> Transport:
+    """Real network by default. Tests override this dependency with the fake Confluence transport."""
+    return None
+
+
 GitTransport = Annotated[Transport, Depends(get_git_transport)]
 JiraTransport = Annotated[Transport, Depends(get_jira_transport)]
+ConfluenceTransport = Annotated[Transport, Depends(get_confluence_transport)]
 
 
-def get_transports(git: GitTransport, jira: JiraTransport) -> dict[str, Transport]:
-    return {"github": git, "jira": jira}
+def get_transports(
+    git: GitTransport, jira: JiraTransport, confluence: ConfluenceTransport
+) -> dict[str, Transport]:
+    return {"github": git, "jira": jira, "confluence": confluence}
 
 
 Transports = Annotated[dict[str, Transport], Depends(get_transports)]
@@ -50,9 +59,13 @@ def _not_allowed(exc: EgressDenied) -> ApiError:
 
 
 def validate_site(provider: str, base_url: str) -> str:
-    """Provider-specific SSRF allowlist (Git hosts vs Jira sites); 422 BASE_URL_NOT_ALLOWED otherwise."""
+    """Provider-specific SSRF allowlist (Git hosts, Jira/Confluence sites); 422 BASE_URL_NOT_ALLOWED."""
     try:
-        return validate_jira_url(base_url) if provider == "jira" else validate_base_url(base_url)
+        if provider == "jira":
+            return validate_jira_url(base_url)
+        if provider == "confluence":
+            return validate_confluence_url(base_url)
+        return validate_base_url(base_url)
     except EgressDenied as exc:
         raise _not_allowed(exc) from exc
 
@@ -88,6 +101,22 @@ def jira_for(row: dict, token: Secret, transports: dict[str, Transport]) -> Jira
     email = row["account_login"] if row["auth_type"] == "basic_token" else None
     try:
         return JiraProvider(row["base_url"], token, email=email, transport=transports["jira"])
+    except EgressDenied as exc:
+        raise _not_allowed(exc) from exc
+
+
+def confluence_for(row: dict, token: Secret, transports: dict[str, Transport]) -> ConfluenceProvider:
+    """The Confluence adapter for a connection row. Cloud authenticates as account_login (the email)."""
+    if row["provider"] != "confluence":
+        raise ApiError(
+            409,
+            "CONNECTION_PROVIDER_MISMATCH",
+            "Conflict",
+            f"This is a {row['provider']} connection; it cannot be used as a Confluence source",
+        )
+    email = row["account_login"] if row["auth_type"] == "basic_token" else None
+    try:
+        return ConfluenceProvider(row["base_url"], token, email=email, transport=transports["confluence"])
     except EgressDenied as exc:
         raise _not_allowed(exc) from exc
 

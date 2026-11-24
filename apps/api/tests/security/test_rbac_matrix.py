@@ -17,6 +17,7 @@ from sqlalchemy import text
 
 from app.authz import policy
 from tests.auth_helpers import bearer
+from tests.fakes import confluence as fc
 from tests.fakes import jira as fj
 from tests.fakes.github import OTHER_TOKEN, VALID_TOKEN
 from tests.security.conftest import record_rbac
@@ -94,6 +95,15 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
         "project.source.manage",
     ),
     ("GET", "/v1/projects/{project_id}/sources/jira/{source_id}/issues"): ("project", "project.read"),
+    # INPROOM-135: Confluence sources
+    ("GET", "/v1/connections/{connection_id}/confluence/spaces"): ("project", "project.source.manage"),
+    ("GET", "/v1/projects/{project_id}/sources/confluence"): ("project", "project.read"),
+    ("PUT", "/v1/projects/{project_id}/sources/confluence/{ref}"): ("project", "project.source.manage"),
+    ("DELETE", "/v1/projects/{project_id}/sources/confluence/{ref}"): ("project", "project.source.manage"),
+    ("POST", "/v1/projects/{project_id}/sources/confluence/{source_id}/sync"): (
+        "project",
+        "project.source.manage",
+    ),
     # HMAC-signed, no user identity: tested in test_webhooks_integration.py
     ("POST", "/v1/hooks/github/{tenant_id}/{connection_id}"): ("webhook", None),
 }
@@ -159,10 +169,12 @@ class World:
     connection: dict
     jira: dict
     jira_source: dict
+    confluence: dict
+    confluence_source: dict
 
 
 @pytest.fixture
-def world(db_client, tokens, fake_github, fake_jira):
+def world(db_client, tokens, fake_github, fake_jira, fake_confluence):
     tenant = uuid.uuid4()
     owner = bearer(tokens.mint(tenant_id=tenant, user_id="owner", roles=["tenant_admin"]))
     ws = db_client.post("/v1/workspaces", json={"slug": "main", "name": "Main"}, headers=owner).json()
@@ -198,7 +210,26 @@ def world(db_client, tokens, fake_github, fake_jira):
     ).json()
     r = db_client.put(f"/v1/projects/{project['id']}/sources/jira/{jira['id']}:ABC", headers=owner)
     assert r.status_code == 200, r.text
-    return World(tenant, ws, project, owner, connection, jira, r.json())
+    jira_source = r.json()
+    # A Confluence connection with ENG (approved pages) selected: DELETE removes ENG, PUT selects HR.
+    confluence = db_client.post(
+        "/v1/connections",
+        json={
+            "provider": "confluence",
+            "display_name": "Confluence",
+            "base_url": "https://acme.atlassian.net",
+            "email": fc.EMAIL,
+            "token": fc.VALID_TOKEN,
+        },
+        headers=owner,
+    ).json()
+    r = db_client.put(
+        f"/v1/projects/{project['id']}/sources/confluence/{confluence['id']}:ENG",
+        json={"required_labels": ["approved"]},
+        headers=owner,
+    )
+    assert r.status_code == 200, r.text
+    return World(tenant, ws, project, owner, connection, jira, jira_source, confluence, r.json()["source"])
 
 
 def _tenant_allows(roles: tuple[str, ...], permission: str) -> bool:
@@ -238,18 +269,33 @@ def _expected(
     return ok if permission in granted else "403"
 
 
+def _pick(path: str, git: dict, jira: dict, confluence: dict) -> dict:
+    """The connection a route acts on: Jira and Confluence routes need their own provider's connection."""
+    if "/jira" in path:
+        return jira
+    if "/confluence" in path:
+        return confluence
+    return git
+
+
 def _call(client, method, path, world: World, headers):
     url = path.format(
         workspace_id=world.workspace["id"],
         project_id=world.project["id"],
         user_id="target",
         version=1,
-        connection_id=world.jira["id"] if "/jira/" in path else world.connection["id"],
+        connection_id=_pick(path, world.connection, world.jira, world.confluence)["id"],
         repo_id="2" if method == "PUT" else "1",
-        ref=f"{world.jira['id']}:{'NOEP' if method == 'PUT' else 'ABC'}",
-        source_id=world.jira_source["id"],
+        ref=(
+            f"{world.confluence['id']}:{'HR' if method == 'PUT' else 'ENG'}"
+            if "/confluence" in path
+            else f"{world.jira['id']}:{'NOEP' if method == 'PUT' else 'ABC'}"
+        ),
+        source_id=(world.confluence_source if "/confluence" in path else world.jira_source)["id"],
     )
-    if path.startswith("/v1/connections/{connection_id}/") and path.endswith(("/repositories", "/projects")):
+    if path.startswith("/v1/connections/{connection_id}/") and path.endswith(
+        ("/repositories", "/projects", "/spaces")
+    ):
         url += f"?project_id={world.project['id']}"
     kwargs: dict = {"headers": dict(headers)}
     if method == "POST" and path == "/v1/connections":
@@ -270,8 +316,8 @@ def _call(client, method, path, world: World, headers):
     elif method == "PUT" and path.endswith("/mapping"):
         kwargs["json"] = {"fields": {"acceptance_criteria": fj.TEAM}}
         kwargs["headers"]["If-Match"] = '"1"'
-    elif method == "PUT" and "/sources/jira/" in path:
-        pass  # selection has no body
+    elif method == "PUT" and ("/sources/jira/" in path or "/sources/confluence/" in path):
+        pass  # selection without a body (Confluence: no filters)
     elif method == "PUT" and path.endswith("/settings"):
         kwargs["json"] = {"settings": {"write_mode": "draft_only"}, "change_note": "matrix"}
         kwargs["headers"]["If-Match"] = '"1"'
