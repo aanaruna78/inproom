@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import {
   reconcileSource,
+  setSourceExcluded,
   removeConfluenceSpace,
   removeJiraProject,
   removeRepository,
@@ -110,7 +111,7 @@ export default async function SourcesPage({
               <tr>
                 <th scope="col">Source</th>
                 <th scope="col">Health</th>
-                <th scope="col">Last success</th>
+                <th scope="col">Data as of</th>
                 <th scope="col">Next check</th>
                 <th scope="col"><span className="sr-only">Actions</span></th>
               </tr>
@@ -122,15 +123,21 @@ export default async function SourcesPage({
                     <strong>{st.name}</strong> <span className="hint">{st.kind}</span>
                   </td>
                   <td>
-                    <span className={`chip ${st.health === "fresh" ? "ACTIVE" : st.health === "failing" ? "INVALID" : "DEGRADED"}`} data-testid="sync-health">
+                    <span
+                      className={`chip ${({ fresh: "ACTIVE", failing: "INVALID", paused: "PAUSED", excluded: "PAUSED" } as Record<string, string>)[st.health] ?? "DEGRADED"}`}
+                      data-testid="sync-health"
+                    >
                       {st.health}
                     </span>
+                    {st.pause_cause === "excluded" && <div className="hint">{st.status_reason}</div>}
+                    {st.health === "paused" && st.status_reason && <div className="hint">{st.status_reason}</div>}
                     {st.running && <span className="chip"> running</span>}
                     {st.queued && <span className="chip"> queued</span>}
                     {st.last_error && st.consecutive_failures > 0 && (
-                      <div className="hint warning">
-                        {(st.last_error as { code?: string }).code} ({st.consecutive_failures} failed attempt
-                        {st.consecutive_failures === 1 ? "" : "s"})
+                      <div className="hint warning" data-testid="sync-error">
+                        {(st.last_error as { title?: string; code?: string }).title ?? (st.last_error as { code?: string }).code}{" "}
+                        ({st.consecutive_failures} failed attempt{st.consecutive_failures === 1 ? "" : "s"}) —{" "}
+                        {(st.last_error as { action?: string }).action}
                       </div>
                     )}
                   </td>
@@ -149,6 +156,20 @@ export default async function SourcesPage({
                         testId="reconcile"
                         submitLabel="Reconcile now"
                         hidden={{ project_id: p.id, kind: st.kind, source_id: st.source_id }}
+                        fields={[]}
+                      />
+                    )}
+                    {canManage && (
+                      <ActionForm
+                        action={setSourceExcluded}
+                        testId={st.pause_cause === "excluded" ? "include" : "exclude"}
+                        submitLabel={st.pause_cause === "excluded" ? "Include again" : "Exclude"}
+                        hidden={{
+                          project_id: p.id,
+                          kind: st.kind,
+                          source_id: st.source_id,
+                          action: st.pause_cause === "excluded" ? "include" : "exclude",
+                        }}
                         fields={[]}
                       />
                     )}

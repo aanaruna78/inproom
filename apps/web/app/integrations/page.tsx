@@ -7,6 +7,8 @@ import {
   revokeConnection,
   rotateConnection,
 } from "@/app/actions";
+import Link from "next/link";
+
 import { ActionForm } from "@/components/ActionForm";
 import { apiClient } from "@/lib/api";
 
@@ -20,6 +22,8 @@ export default async function IntegrationsPage() {
   // UI convenience only: the API enforces tenant.connection.manage.
   const isAdmin = (me.data?.roles ?? []).includes("tenant_admin");
   const items = connections.data ?? [];
+  // Admin-only rollup (INPROOM-146); viewers simply don't get the panel.
+  const attention = isAdmin ? ((await api.GET("/v1/connections/attention")).data ?? []) : [];
 
   return (
     <main>
@@ -27,6 +31,32 @@ export default async function IntegrationsPage() {
       <p className="crumbs">
         Git providers, Jira and Confluence sites connected to this tenant. Projects choose their sources from these.
       </p>
+      {attention.length > 0 && (
+        <section className="card wide attention" aria-labelledby="attention" data-testid="needs-attention">
+          <h2 id="attention">Needs attention</h2>
+          <ul className="issues">
+            {attention.map((a) => (
+              <li key={a.connection_id} className="problem" data-testid="attention-item" aria-label={a.display_name}>
+                <Link href={`/integrations/${a.connection_id}`}>
+                  <strong>{a.display_name}</strong>
+                </Link>{" "}
+                <span className={`chip ${a.status}`}>{a.status}</span>
+                {a.affected_sources > 0 && <span className="hint"> · {a.affected_sources} source(s) affected</span>}
+                <ul>
+                  {(a.problems as { code: string; title?: string; action?: string; source?: string; project?: string }[])
+                    .slice(0, 4)
+                    .map((p, n) => (
+                      <li key={n}>
+                        <strong>{p.title ?? p.code}</strong>
+                        {p.source && <> · {p.project}/{p.source}</>} — {p.action}
+                      </li>
+                    ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <div className="grid">
         <section className="card" aria-labelledby="connections">
           <h2 id="connections">Connections</h2>
@@ -36,7 +66,8 @@ export default async function IntegrationsPage() {
             return (
               <article key={c.id} className="connection" data-testid="connection" aria-label={c.display_name}>
                 <h3>
-                  {c.display_name} <span className={`chip ${c.status}`}>{c.status}</span>
+                  <Link href={`/integrations/${c.id}`}>{c.display_name}</Link>{" "}
+                  <span className={`chip ${c.status}`}>{c.status}</span>
                 </h3>
                 <dl className="facts">
                   <dt>Provider</dt><dd>{c.provider} · <code>{c.base_url}</code></dd>

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { rediscoverJira, saveJiraMapping } from "@/app/actions";
 import { ActionForm } from "@/components/ActionForm";
+import { FreshnessBanner } from "@/components/FreshnessBanner";
 import { apiClient } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -40,11 +41,12 @@ export default async function JiraSourcePage({ params }: { params: Promise<{ pro
   const api = await apiClient(`/projects/${projectId}/sources/jira/${sourceId}`);
   const path = { params: { path: { project_id: projectId } } };
   const sourcePath = { params: { path: { project_id: projectId, source_id: sourceId } } };
-  const [project, perms, sources, schemaRes] = await Promise.all([
+  const [project, perms, sources, schemaRes, syncStatus] = await Promise.all([
     api.GET("/v1/projects/{project_id}", path),
     api.GET("/v1/projects/{project_id}/permissions/me", path),
     api.GET("/v1/projects/{project_id}/sources/jira", path),
     api.GET("/v1/projects/{project_id}/sources/jira/{source_id}/schema", sourcePath),
+    api.GET("/v1/projects/{project_id}/sources/sync-status", { params: { path: { project_id: projectId } } }),
   ]);
   const source = sources.data?.find((s) => s.id === sourceId);
   if (!project.data || !perms.data || !source || !schemaRes.data) notFound();
@@ -83,6 +85,10 @@ export default async function JiraSourcePage({ params }: { params: Promise<{ pro
         <Link href={`/projects/${p.id}`}>{p.key}</Link> / <Link href={`/projects/${p.id}/sources`}>Sources</Link> /{" "}
         {source.jira_key}
       </p>
+      {(() => {
+        const st = syncStatus.data?.sources.find((x) => x.source_id === sourceId);
+        return <FreshnessBanner health={st?.health} dataAsOf={st?.data_as_of} reason={st?.status_reason} />;
+      })()}
       <div className="grid">
         <section className="card" aria-labelledby="overview">
           <h2 id="overview">Overview</h2>

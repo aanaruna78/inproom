@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { syncConfluenceSpace } from "@/app/actions";
 import { ActionForm } from "@/components/ActionForm";
+import { FreshnessBanner } from "@/components/FreshnessBanner";
 import { apiClient } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -22,13 +23,14 @@ export default async function ConfluenceSpacePage({
   const filter = STATUSES.includes(status as Status) ? (status as Status) : undefined;
   const api = await apiClient(`/projects/${projectId}/sources/confluence/${sourceId}`);
   const path = { params: { path: { project_id: projectId } } };
-  const [project, perms, sources, catalog] = await Promise.all([
+  const [project, perms, sources, catalog, syncStatus] = await Promise.all([
     api.GET("/v1/projects/{project_id}", path),
     api.GET("/v1/projects/{project_id}/permissions/me", path),
     api.GET("/v1/projects/{project_id}/sources/confluence", path),
     api.GET("/v1/projects/{project_id}/sources/confluence/{source_id}/pages", {
       params: { path: { project_id: projectId, source_id: sourceId }, query: { status: filter, cursor } },
     }),
+    api.GET("/v1/projects/{project_id}/sources/sync-status", { params: { path: { project_id: projectId } } }),
   ]);
   const source = sources.data?.find((s) => s.id === sourceId);
   if (!project.data || !perms.data || !source || !catalog.data) notFound();
@@ -47,6 +49,10 @@ export default async function ConfluenceSpacePage({
         <Link href={`/projects/${p.id}`}>{p.key}</Link> / <Link href={`/projects/${p.id}/sources`}>Sources</Link> /{" "}
         {source.space_key}
       </p>
+      {(() => {
+        const st = syncStatus.data?.sources.find((x) => x.source_id === sourceId);
+        return <FreshnessBanner health={st?.health} dataAsOf={st?.data_as_of} reason={st?.status_reason} />;
+      })()}
       <section className="card wide" aria-labelledby="catalog">
         <h2 id="catalog">Page catalog</h2>
         <p className="hint">

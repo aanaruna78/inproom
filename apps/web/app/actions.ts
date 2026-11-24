@@ -245,6 +245,7 @@ export async function checkConnection(_prev: FormState, form: FormData): Promise
   });
   if (error || !data) return problemState(error, response.status);
   revalidatePath("/integrations");
+  revalidatePath(`/integrations/${id}`);
   return { status: "success", message: `Health: ${data.health?.status ?? data.status}.` };
 }
 
@@ -257,7 +258,15 @@ export async function rotateConnection(_prev: FormState, form: FormData): Promis
   });
   if (error || !data) return problemState(error, response.status);
   revalidatePath("/integrations");
-  return { status: "success", message: `Token rotated (${data.credential_fingerprint}).` };
+  revalidatePath(`/integrations/${id}`);
+  // Reauthorization (INPROOM-146): the API checked health and resumed what it could.
+  const names = (xs: { name?: unknown; project_key?: unknown }[]) => xs.map((x) => `${x.project_key}/${x.name}`).join(", ");
+  const resumed = (data.resumed ?? []) as { name?: unknown; project_key?: unknown }[];
+  const blocked = (data.still_blocked ?? []) as { name?: unknown; project_key?: unknown }[];
+  let message = `Token rotated (${data.credential_fingerprint}); connection is ${data.status}.`;
+  if (resumed.length) message += ` Resumed ${resumed.length}: ${names(resumed)}.`;
+  if (blocked.length) message += ` Still blocked ${blocked.length}: ${names(blocked)}.`;
+  return { status: "success", message };
 }
 
 export async function revokeConnection(_prev: FormState, form: FormData): Promise<FormState> {
@@ -271,6 +280,7 @@ export async function revokeConnection(_prev: FormState, form: FormData): Promis
   });
   if (error || !data) return problemState(error, response.status);
   revalidatePath("/integrations");
+  revalidatePath(`/integrations/${id}`);
   return { status: "success", message: "Connection revoked; its stored token was destroyed." };
 }
 
@@ -529,4 +539,45 @@ export async function generateWebhookSecret(_prev: FormState, form: FormData): P
     status: "success",
     message: `Webhook URL: ${data.url ?? `<your INPROOM URL>${data.path}`} · Secret (copy it now, it will not be shown again): ${data.secret} · Signature header: ${data.signature_header}`,
   };
+}
+
+// ---------------------------------------------------------------- health + exclusion (INPROOM-147 / INPROOM-26)
+
+export async function setSourceExcluded(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const kind = String(form.get("kind")) as "git" | "jira" | "confluence";
+  const exclude = String(form.get("action")) === "exclude";
+  const api = await apiClient(`/projects/${projectId}/sources`);
+  const path = { params: { path: { project_id: projectId, kind, source_id: String(form.get("source_id")) } } };
+  const { data, error, response } = exclude
+    ? await api.POST("/v1/projects/{project_id}/sources/{kind}/{source_id}/exclude", path)
+    : await api.POST("/v1/projects/{project_id}/sources/{kind}/{source_id}/include", path);
+  if (error || !data) return problemState(error, response.status);
+  revalidatePath(`/projects/${projectId}/sources`);
+  return {
+    status: "success",
+    message: exclude
+      ? "Excluded from the sync scope. Its catalog and history are kept; include it again any time."
+      : "Included again; a reconcile is queued to catch up.",
+  };
+}
+
+export async function adoptSources(_prev: FormState, form: FormData): Promise<FormState> {
+  const target = String(form.get("target_connection_id"));
+  const from = String(form.get("from_connection_id"));
+  if (!target) return { status: "error", message: "Choose the connection that should take over.", field: "target_connection_id" };
+  const api = await apiClient("/integrations");
+  const { data, error, response } = await api.POST("/v1/connections/{connection_id}/adopt", {
+    params: { path: { connection_id: target } },
+    body: { from_connection_id: from },
+  });
+  if (error || !data) return problemState(error, response.status);
+  revalidatePath("/integrations");
+  revalidatePath(`/integrations/${from}`);
+  revalidatePath(`/integrations/${target}`);
+  const list = (xs: { project_key: string; name: string }[]) => xs.map((x) => `${x.project_key}/${x.name}`).join(", ");
+  let message = `Adopted ${data.adopted.length}${data.adopted.length ? `: ${list(data.adopted)}` : ""}.`;
+  if (data.still_blocked.length) message += ` Still blocked ${data.still_blocked.length}: ${list(data.still_blocked)}.`;
+  if (data.kept_excluded.length) message += ` Kept excluded ${data.kept_excluded.length}.`;
+  return { status: "success", message };
 }
