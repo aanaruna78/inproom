@@ -78,6 +78,11 @@ CATALOG: dict[str, tuple[str, str, str]] = {
         "The token can write, but INPROOM only reads here.",
         "Replace it with a read-only token (least privilege).",
     ),
+    "STALE": (
+        "Data is stale",
+        "No successful sync for more than 3 sync intervals.",
+        "Use Reconcile now; if it fails, check the connection.",
+    ),
     "SYNC_TRUNCATED": (
         "Too many pages",
         "The space has more pages than one sync reads, so part of it was not synced.",

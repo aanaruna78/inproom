@@ -56,6 +56,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/connections/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Connections and sources that need an admin: invalid, degraded, failing, stale or paused */
+        get: operations["attention_v1_connections_attention_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connections/{connection_id}": {
         parameters: {
             query?: never;
@@ -67,6 +84,23 @@ export interface paths {
         get: operations["get_connection_v1_connections__connection_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connections/{connection_id}/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move a revoked connection's sources to this connection (same provider and site), verifying each */
+        post: operations["adopt_v1_connections__connection_id__adopt_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -124,6 +158,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/connections/{connection_id}/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What disconnecting (revoking) this connection would stop: projects, sources and webhooks */
+        get: operations["impact_v1_connections__connection_id__impact_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connections/{connection_id}/jira/projects": {
         parameters: {
             query?: never;
@@ -169,6 +220,23 @@ export interface paths {
         put?: never;
         /** Revoke: destroy the stored credential and pause every source (repository or Jira project) on it */
         post: operations["revoke_connection_v1_connections__connection_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connections/{connection_id}/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every source using this connection, across projects, with freshness and problems */
+        get: operations["list_connection_sources_v1_connections__connection_id__sources_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -816,6 +884,27 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdoptRequest */
+        AdoptRequest: {
+            /**
+             * From Connection Id
+             * Format: uuid
+             */
+            from_connection_id: string;
+        };
+        /** AdoptResult */
+        AdoptResult: {
+            /** Adopted */
+            adopted: components["schemas"]["ConnectionSource"][];
+            /** Kept Excluded */
+            kept_excluded: components["schemas"]["ConnectionSource"][];
+            /** Skipped */
+            skipped: {
+                [key: string]: unknown;
+            }[];
+            /** Still Blocked */
+            still_blocked: components["schemas"]["ConnectionSource"][];
+        };
         /** Approvals */
         Approvals: {
             /**
@@ -840,6 +929,26 @@ export interface components {
              * @constant
              */
             self_approval: false;
+        };
+        /** AttentionItem */
+        AttentionItem: {
+            /** Affected Sources */
+            affected_sources: number;
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            /** Display Name */
+            display_name: string;
+            /** Problems */
+            problems: {
+                [key: string]: unknown;
+            }[];
+            /** Provider */
+            provider: string;
+            /** Status */
+            status: string;
         };
         /** ConfluenceScopeItem */
         ConfluenceScopeItem: {
@@ -973,6 +1082,41 @@ export interface components {
              */
             token: string;
         };
+        /** ConnectionSource */
+        ConnectionSource: {
+            /** Data As Of */
+            data_as_of: string | null;
+            /** Freshness */
+            freshness: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Pause Cause */
+            pause_cause: string | null;
+            /** Problem */
+            problem?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Key */
+            project_key: string;
+            /** Project Name */
+            project_name: string;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Status */
+            status: string;
+            /** Status Reason */
+            status_reason: string | null;
+        };
         /** CredentialRotate */
         CredentialRotate: {
             /**
@@ -1018,6 +1162,28 @@ export interface components {
             status: string;
             /** Version */
             version: string;
+        };
+        /** Impact */
+        Impact: {
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            /** Display Name */
+            display_name: string;
+            /** Projects */
+            projects: number;
+            /** Sources */
+            sources: components["schemas"]["ConnectionSource"][];
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: string;
+            /** Webhooks */
+            webhooks: {
+                [key: string]: number;
+            };
         };
         /** IssueLink */
         IssueLink: {
@@ -1639,6 +1805,63 @@ export interface components {
             };
             /** Status */
             status: string;
+        };
+        /**
+         * ReauthorizedConnection
+         * @description The rotated connection plus what the immediate health check resumed or found still blocked.
+         */
+        ReauthorizedConnection: {
+            /** Account Login */
+            account_login: string | null;
+            /** Auth Type */
+            auth_type: string;
+            /** Base Url */
+            base_url: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Credential Fingerprint */
+            credential_fingerprint: string | null;
+            /** Display Name */
+            display_name: string;
+            /** Granted Scopes */
+            granted_scopes: string[];
+            /** Health */
+            health: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Last Checked At */
+            last_checked_at: string | null;
+            /** Provider */
+            provider: string;
+            /** Resumed */
+            resumed?: {
+                [key: string]: unknown;
+            }[];
+            /** Status */
+            status: string;
+            /** Still Blocked */
+            still_blocked?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
         };
         /** ReconcileRequest */
         ReconcileRequest: {
@@ -2282,6 +2505,33 @@ export interface operations {
             };
         };
     };
+    attention_v1_connections_attention_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttentionItem"][];
+                };
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_connection_v1_connections__connection_id__get: {
         parameters: {
             query?: never;
@@ -2317,6 +2567,76 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    adopt_v1_connections__connection_id__adopt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdoptRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdoptResult"];
+                };
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description problem+json */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2465,7 +2785,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SourceConnection"];
+                    "application/json": components["schemas"]["ReauthorizedConnection"];
                 };
             };
             /** @description problem+json */
@@ -2495,6 +2815,51 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    impact_v1_connections__connection_id__impact_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Impact"];
+                };
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -2658,6 +3023,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceConnection"];
+                };
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_connection_sources_v1_connections__connection_id__sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionSource"][];
                 };
             };
             /** @description problem+json */

@@ -414,9 +414,16 @@ def run_health_check(
     return updated
 
 
+class ReauthorizedConnection(SourceConnection):
+    """The rotated connection plus what the immediate health check resumed or found still blocked."""
+
+    resumed: list[dict[str, Any]] = Field(default_factory=list)
+    still_blocked: list[dict[str, Any]] = Field(default_factory=list)
+
+
 @router.put(
     "/v1/connections/{connection_id}/credential",
-    response_model=SourceConnection,
+    response_model=ReauthorizedConnection,
     summary="Rotate the token (validated first; the old token is kept if the new one is rejected)",
     responses={403: PROBLEM, 404: PROBLEM, 409: PROBLEM, 422: PROBLEM},
 )
@@ -426,7 +433,7 @@ def rotate_credential(
     transports: Transports,
     connection_id: uuid.UUID,
     payload: Annotated[CredentialRotate, Body()],
-) -> SourceConnection:
+) -> ReauthorizedConnection:
     require_tenant(
         principal, "tenant.connection.manage", request, target_type="connection", target_id=str(connection_id)
     )
@@ -452,7 +459,20 @@ def rotate_credential(
             last_checked_at=datetime.now(UTC),
         )
         _event(conn, principal, request, "connection.rotated", updated, {"account": account.login})
-    return SourceConnection.model_validate(updated)
+    # Reauthorization (INPROOM-146): check now, resume access-paused sources that pass, reconcile them.
+    from app.modules.connection_health import resume_after_reauthorization  # noqa: PLC0415 (import cycle)
+
+    resumed, blocked = resume_after_reauthorization(principal, connection_id, transports, request)
+    with tenant_session(principal.tenant_id) as conn:
+        current = load_connection(conn, principal, request, connection_id, "tenant.connection.manage")
+
+    def brief(s: dict[str, Any]) -> dict[str, Any]:
+        keep = ("kind", "source_id", "name", "project_key", "status_reason", "problem")
+        return {k: (str(s[k]) if k == "source_id" else s[k]) for k in keep}
+
+    return ReauthorizedConnection.model_validate(
+        current | {"resumed": [brief(s) for s in resumed], "still_blocked": [brief(s) for s in blocked]}
+    )
 
 
 @router.post(
@@ -528,7 +548,10 @@ def revoke_connection(
             credential_fingerprint=None,
             health=_health("REVOKED", [{"code": "REVOKED", "message": "Credential destroyed"}]),
         )
-        _event(conn, principal, request, "connection.revoked", updated)
+        from app.modules.connection_health import skip_queued_jobs  # noqa: PLC0415 (import cycle)
+
+        skipped = skip_queued_jobs(conn, principal.tenant_id, row)
+        _event(conn, principal, request, "connection.revoked", updated, {"queued_jobs_skipped": skipped})
     return SourceConnection.model_validate(updated)
 
 

@@ -93,6 +93,11 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/v1/projects/{project_id}/sources/sync-status"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/sources/jobs"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile"): "project_scoped",
+    # INPROOM-146
+    ("GET", "/v1/connections/attention"): "tenant_collection",
+    ("GET", "/v1/connections/{connection_id}/sources"): "connection_scoped",
+    ("GET", "/v1/connections/{connection_id}/impact"): "connection_scoped",
+    ("POST", "/v1/connections/{connection_id}/adopt"): "connection_scoped",
     # INPROOM-145
     ("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/exclude"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/include"): "project_scoped",
@@ -220,7 +225,7 @@ def _pick(path: str, t: Tenant) -> dict:
     """The connection a route acts on (Jira and Confluence routes need their own provider's connection)."""
     if "/jira" in path:
         return t.jira
-    if "/confluence" in path or path.endswith("/webhook-secret"):
+    if "/confluence" in path or path.endswith(("/webhook-secret", "/adopt")):
         return t.confluence
     return t.connection
 
@@ -260,6 +265,8 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         kwargs["json"] = {"branches": ["main"]}
     elif method == "PUT" and "/members/" in path_template:
         kwargs["json"] = {"roles": ["viewer"]}
+    elif method == "POST" and path_template.endswith("/adopt"):
+        kwargs["json"] = {"from_connection_id": tenant_ids.connection["id"]}
     elif method == "PUT" and path_template.endswith("/mapping"):
         kwargs["json"] = {"fields": {}}
         kwargs["headers"]["If-Match"] = '"1"'

@@ -126,6 +126,11 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
         "project",
         "project.source.manage",
     ),
+    # INPROOM-146
+    ("GET", "/v1/connections/attention"): ("tenant", "tenant.connection.manage"),
+    ("GET", "/v1/connections/{connection_id}/sources"): ("connection", "tenant.connection.manage"),
+    ("GET", "/v1/connections/{connection_id}/impact"): ("connection", "tenant.connection.manage"),
+    ("POST", "/v1/connections/{connection_id}/adopt"): ("connection", "tenant.connection.manage"),
     # INPROOM-145
     ("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/exclude"): (
         "project",
@@ -143,6 +148,9 @@ TESTED = [r for r, (level, _) in ROUTE_RULES.items() if level not in ("public", 
 SUCCESS = {"GET": "200", "PATCH": "200", "PUT": "200", "DELETE": "204", "POST": "200"}
 # Routes whose success is 202 Accepted (work queued, not done): INPROOM-144 reconcile-now.
 ACCEPTED = {("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile")}
+# Authorized callers reach a business rule instead of success: adopt needs a REVOKED same-site connection,
+# which the shared world does not have, so 409 ADOPT_NOT_ALLOWED is the authorized outcome (INPROOM-146).
+BUSINESS_RULE = {("POST", "/v1/connections/{connection_id}/adopt"): "409"}
 
 # actor -> (token roles, project membership role or None, same tenant?)
 ACTORS: dict[str, tuple[tuple[str, ...], str | None, bool]] = {
@@ -304,7 +312,7 @@ def _pick(path: str, git: dict, jira: dict, confluence: dict) -> dict:
     """The connection a route acts on: Jira and Confluence routes need their own provider's connection."""
     if "/jira" in path:
         return jira
-    if "/confluence" in path or path.endswith("/webhook-secret"):
+    if "/confluence" in path or path.endswith(("/webhook-secret", "/adopt")):
         return confluence
     return git
 
@@ -348,6 +356,8 @@ def _call(client, method, path, world: World, headers):
     elif method == "PATCH":
         kwargs["json"] = {"name": "Renamed"}
         kwargs["headers"]["If-Match"] = f'"{world.project["version"]}"'
+    elif method == "POST" and path.endswith("/adopt"):
+        kwargs["json"] = {"from_connection_id": world.connection["id"]}
     elif method == "PUT" and path.endswith("/mapping"):
         kwargs["json"] = {"fields": {"acceptance_criteria": fj.TEAM}}
         kwargs["headers"]["If-Match"] = '"1"'
@@ -391,6 +401,8 @@ def test_route_x_role(db_client, tokens, world, owner_engine, method, path, acto
     expected = _expected(method, level, permission, roles, member, same)
     if expected == "200" and (method, path) in ACCEPTED:
         expected = "202"
+    if expected in ("200", "201") and (method, path) in BUSINESS_RULE:
+        expected = BUSINESS_RULE[(method, path)]
     r = _call(db_client, method, path, world, headers)
     record_rbac(f"{method} {path}", actor, expected, str(r.status_code))
     assert str(r.status_code) == expected, (actor, r.text)

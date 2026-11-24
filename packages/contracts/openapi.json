@@ -1,6 +1,61 @@
 {
   "components": {
     "schemas": {
+      "AdoptRequest": {
+        "properties": {
+          "from_connection_id": {
+            "format": "uuid",
+            "title": "From Connection Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_connection_id"
+        ],
+        "title": "AdoptRequest",
+        "type": "object"
+      },
+      "AdoptResult": {
+        "properties": {
+          "adopted": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionSource"
+            },
+            "title": "Adopted",
+            "type": "array"
+          },
+          "kept_excluded": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionSource"
+            },
+            "title": "Kept Excluded",
+            "type": "array"
+          },
+          "skipped": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Skipped",
+            "type": "array"
+          },
+          "still_blocked": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionSource"
+            },
+            "title": "Still Blocked",
+            "type": "array"
+          }
+        },
+        "required": [
+          "adopted",
+          "still_blocked",
+          "kept_excluded",
+          "skipped"
+        ],
+        "title": "AdoptResult",
+        "type": "object"
+      },
       "Approvals": {
         "additionalProperties": false,
         "properties": {
@@ -42,6 +97,49 @@
           }
         },
         "title": "Approvals",
+        "type": "object"
+      },
+      "AttentionItem": {
+        "properties": {
+          "affected_sources": {
+            "title": "Affected Sources",
+            "type": "integer"
+          },
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "problems": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "connection_id",
+          "display_name",
+          "provider",
+          "status",
+          "problems",
+          "affected_sources"
+        ],
+        "title": "AttentionItem",
         "type": "object"
       },
       "ConfluenceScopeItem": {
@@ -319,6 +417,105 @@
         "title": "ConnectionCreate",
         "type": "object"
       },
+      "ConnectionSource": {
+        "properties": {
+          "data_as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data As Of"
+          },
+          "freshness": {
+            "title": "Freshness",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pause_cause": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Cause"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_key": {
+            "title": "Project Key",
+            "type": "string"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          }
+        },
+        "required": [
+          "kind",
+          "source_id",
+          "name",
+          "project_id",
+          "project_key",
+          "project_name",
+          "status",
+          "status_reason",
+          "pause_cause",
+          "freshness",
+          "data_as_of"
+        ],
+        "title": "ConnectionSource",
+        "type": "object"
+      },
       "CredentialRotate": {
         "properties": {
           "token": {
@@ -436,6 +633,56 @@
           "version"
         ],
         "title": "Health",
+        "type": "object"
+      },
+      "Impact": {
+        "properties": {
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "projects": {
+            "title": "Projects",
+            "type": "integer"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "webhooks": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Webhooks",
+            "type": "object"
+          }
+        },
+        "required": [
+          "connection_id",
+          "display_name",
+          "status",
+          "projects",
+          "sources",
+          "webhooks",
+          "summary"
+        ],
+        "title": "Impact",
         "type": "object"
       },
       "IssueLink": {
@@ -2139,6 +2386,140 @@
         "title": "Readiness",
         "type": "object"
       },
+      "ReauthorizedConnection": {
+        "description": "The rotated connection plus what the immediate health check resumed or found still blocked.",
+        "properties": {
+          "account_login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Login"
+          },
+          "auth_type": {
+            "title": "Auth Type",
+            "type": "string"
+          },
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "credential_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Fingerprint"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "granted_scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Granted Scopes",
+            "type": "array"
+          },
+          "health": {
+            "additionalProperties": true,
+            "title": "Health",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "resumed": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Resumed",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "still_blocked": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Still Blocked",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "kind",
+          "display_name",
+          "base_url",
+          "auth_type",
+          "account_login",
+          "granted_scopes",
+          "credential_fingerprint",
+          "status",
+          "health",
+          "last_checked_at",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "version"
+        ],
+        "title": "ReauthorizedConnection",
+        "type": "object"
+      },
       "ReconcileRequest": {
         "properties": {
           "full": {
@@ -3553,6 +3934,39 @@
         ]
       }
     },
+    "/v1/connections/attention": {
+      "get": {
+        "operationId": "attention_v1_connections_attention_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AttentionItem"
+                  },
+                  "title": "Response Attention V1 Connections Attention Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Connections and sources that need an admin: invalid, degraded, failing, stale or paused",
+        "tags": [
+          "connections"
+        ]
+      }
+    },
     "/v1/connections/{connection_id}": {
       "get": {
         "operationId": "get_connection_v1_connections__connection_id__get",
@@ -3599,6 +4013,79 @@
           }
         ],
         "summary": "One connection with its latest health report",
+        "tags": [
+          "connections"
+        ]
+      }
+    },
+    "/v1/connections/{connection_id}/adopt": {
+      "post": {
+        "operationId": "adopt_v1_connections__connection_id__adopt_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdoptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdoptResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "problem+json"
+          },
+          "503": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Move a revoked connection's sources to this connection (same provider and site), verifying each",
         "tags": [
           "connections"
         ]
@@ -3802,7 +4289,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SourceConnection"
+                  "$ref": "#/components/schemas/ReauthorizedConnection"
                 }
               }
             },
@@ -3827,6 +4314,60 @@
           }
         ],
         "summary": "Rotate the token (validated first; the old token is kept if the new one is rejected)",
+        "tags": [
+          "connections"
+        ]
+      }
+    },
+    "/v1/connections/{connection_id}/impact": {
+      "get": {
+        "operationId": "impact_v1_connections__connection_id__impact_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Impact"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "What disconnecting (revoking) this connection would stop: projects, sources and webhooks",
         "tags": [
           "connections"
         ]
@@ -4089,6 +4630,64 @@
           }
         ],
         "summary": "Revoke: destroy the stored credential and pause every source (repository or Jira project) on it",
+        "tags": [
+          "connections"
+        ]
+      }
+    },
+    "/v1/connections/{connection_id}/sources": {
+      "get": {
+        "operationId": "list_connection_sources_v1_connections__connection_id__sources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectionSource"
+                  },
+                  "title": "Response List Connection Sources V1 Connections  Connection Id  Sources Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Every source using this connection, across projects, with freshness and problems",
         "tags": [
           "connections"
         ]

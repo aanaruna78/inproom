@@ -10,6 +10,7 @@ from app.health import router as health_router
 from app.me import router as me_router
 from app.modules.confluence_pages import router as confluence_pages_router
 from app.modules.confluence_sources import router as confluence_sources_router
+from app.modules.connection_health import router as connection_health_router
 from app.modules.connections import router as connections_router
 from app.modules.jira_issues import router as jira_issues_router
 from app.modules.jira_sources import router as jira_sources_router
@@ -48,6 +49,8 @@ def create_app() -> FastAPI:
     app.include_router(projects_router)
     app.include_router(members_router)
     app.include_router(settings_router)
+    # before connections: /v1/connections/attention must not be read as /v1/connections/{connection_id}
+    app.include_router(connection_health_router)
     app.include_router(connections_router)
     app.include_router(sources_router)
     app.include_router(jira_sources_router)
