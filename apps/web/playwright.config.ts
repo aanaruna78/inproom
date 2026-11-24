@@ -26,12 +26,23 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
+      // Test-only fake Jira (apps/api/tests/fakes/jira.py) so E2E never touches a real Jira site.
+      command: "cd ../api && uv run python -m tests.fakes.jira --port 18091",
+      url: "http://localhost:18091/_fake/health",
+      reuseExistingServer: true,
+      timeout: 30_000,
+    },
+    {
       command: "cd ../api && uv run uvicorn app.main:app --port 8000",
       url: "http://localhost:8000/healthz",
       reuseExistingServer: true,
       timeout: 60_000,
-      // The API may call the local fake provider (exact origin allowlisted for E2E only).
-      env: { ...(process.env as Record<string, string>), INPROOM_GIT_ALLOWED_HOSTS: "api.github.com,http://localhost:18090" },
+      // The API may call the local fake providers (exact origins allowlisted for E2E only).
+      env: {
+        ...(process.env as Record<string, string>),
+        INPROOM_GIT_ALLOWED_HOSTS: "api.github.com,http://localhost:18090",
+        INPROOM_JIRA_ALLOWED_HOSTS: "*.atlassian.net,http://localhost:18091",
+      },
     },
     {
       command: "npm run build && npm run start -- --port 3000",

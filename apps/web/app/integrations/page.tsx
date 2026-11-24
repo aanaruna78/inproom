@@ -1,10 +1,16 @@
-import { checkConnection, createConnection, revokeConnection, rotateConnection } from "@/app/actions";
+import {
+  checkConnection,
+  createConnection,
+  createJiraConnection,
+  revokeConnection,
+  rotateConnection,
+} from "@/app/actions";
 import { ActionForm } from "@/components/ActionForm";
 import { apiClient } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-type Issue = { code: string; message: string; repository?: string; severity?: string };
+type Issue = { code: string; message: string; repository?: string; project?: string; severity?: string };
 
 export default async function IntegrationsPage() {
   const api = await apiClient("/integrations");
@@ -16,11 +22,13 @@ export default async function IntegrationsPage() {
   return (
     <main>
       <h1>Integrations</h1>
-      <p className="crumbs">Git providers connected to this tenant. Projects choose repositories from these.</p>
+      <p className="crumbs">
+        Git providers and Jira sites connected to this tenant. Projects choose repositories and Jira projects from these.
+      </p>
       <div className="grid">
         <section className="card" aria-labelledby="connections">
           <h2 id="connections">Connections</h2>
-          {items.length === 0 && <p className="empty">No Git provider connected yet.</p>}
+          {items.length === 0 && <p className="empty">Nothing connected yet.</p>}
           {items.map((c) => {
             const issues = ((c.health?.issues ?? []) as Issue[]) || [];
             return (
@@ -31,7 +39,14 @@ export default async function IntegrationsPage() {
                 <dl className="facts">
                   <dt>Provider</dt><dd>{c.provider} · <code>{c.base_url}</code></dd>
                   <dt>Account</dt><dd>{c.account_login ?? "—"}</dd>
-                  <dt>Scopes</dt><dd>{c.granted_scopes.length ? c.granted_scopes.join(", ") : "fine-grained (per repository)"}</dd>
+                  <dt>Scopes</dt>
+                  <dd>
+                    {c.provider === "jira"
+                      ? "checked per Jira project (Browse required; write access is reported, never used)"
+                      : c.granted_scopes.length
+                        ? c.granted_scopes.join(", ")
+                        : "fine-grained (per repository)"}
+                  </dd>
                   <dt>Token</dt><dd data-testid="fingerprint">{c.credential_fingerprint ?? "destroyed"}</dd>
                   <dt>Last check</dt>
                   <dd>{c.last_checked_at ? new Date(c.last_checked_at).toLocaleString("en-GB", { timeZone: "UTC" }) + " UTC" : "—"}</dd>
@@ -41,7 +56,7 @@ export default async function IntegrationsPage() {
                     {issues.map((i, n) => (
                       <li key={n} className={i.severity === "warning" ? "warning" : "problem"}>
                         <strong>{i.code}</strong>
-                        {i.repository && <> · {i.repository}</>} — {i.message}
+                        {(i.repository ?? i.project) && <> · {i.repository ?? i.project}</>} — {i.message}
                       </li>
                     ))}
                   </ul>
@@ -65,7 +80,7 @@ export default async function IntegrationsPage() {
                         {
                           name: "confirm",
                           label: "Type REVOKE to confirm",
-                          hint: "Destroys the stored token and pauses every repository using it.",
+                          hint: "Destroys the stored token and pauses every repository or Jira project using it.",
                           required: true,
                         },
                       ]}
@@ -108,6 +123,41 @@ export default async function IntegrationsPage() {
             </p>
           )}
         </section>
+        {isAdmin && (
+          <section className="card" aria-labelledby="connect-jira">
+            <h2 id="connect-jira">Connect Jira</h2>
+            <ActionForm
+              action={createJiraConnection}
+              testId="connect-jira"
+              submitLabel="Connect Jira"
+              fields={[
+                { name: "display_name", label: "Name", required: true, maxLength: 80, defaultValue: "Jira" },
+                {
+                  name: "base_url",
+                  label: "Site URL",
+                  type: "url",
+                  required: true,
+                  placeholder: "https://your-site.atlassian.net",
+                  hint: "Jira Cloud site, or your Data Center base URL. Only allowlisted hosts are accepted.",
+                },
+                {
+                  name: "email",
+                  label: "Account email",
+                  maxLength: 254,
+                  hint: "Jira Cloud: the Atlassian account the token belongs to. Leave empty for a Data Center personal access token.",
+                },
+                {
+                  name: "token",
+                  label: "API token",
+                  type: "password",
+                  required: true,
+                  minLength: 20,
+                  hint: "A token for an account that can browse the projects INPROOM should read. Stored encrypted; never shown again.",
+                },
+              ]}
+            />
+          </section>
+        )}
       </div>
     </main>
   );

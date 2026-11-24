@@ -317,3 +317,104 @@ export async function removeRepository(_prev: FormState, form: FormData): Promis
   revalidatePath(`/projects/${projectId}/sources`);
   return { status: "success", message: "Repository removed from the project." };
 }
+
+// ---------------------------------------------------------------- Jira (INPROOM-133 / story INPROOM-23)
+// The API token goes straight to the API and is never echoed back in form state.
+
+export async function createJiraConnection(_prev: FormState, form: FormData): Promise<FormState> {
+  const submitted = values(form, ["display_name", "base_url", "email"]);
+  const api = await apiClient("/integrations");
+  const { data, error, response } = await api.POST("/v1/connections", {
+    body: {
+      provider: "jira",
+      display_name: submitted.display_name,
+      base_url: submitted.base_url,
+      email: submitted.email.trim() || null,
+      token: String(form.get("token") ?? ""),
+    },
+    params: { header: { "Idempotency-Key": String(form.get("idempotency_key")) } },
+  });
+  if (error || !data) {
+    const state = problemState(error, response.status, submitted);
+    state.field = state.code === "BASE_URL_NOT_ALLOWED" ? "base_url" : state.code === "CREDENTIAL_INVALID" ? "token" : undefined;
+    return state;
+  }
+  revalidatePath("/integrations");
+  return { status: "success", message: `Connected ${data.display_name} as ${data.account_login}.` };
+}
+
+export async function selectJiraProject(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const ref = `${String(form.get("connection_id"))}:${String(form.get("jira_key"))}`;
+  const api = await apiClient(`/projects/${projectId}/sources`);
+  const { data, error, response } = await api.PUT("/v1/projects/{project_id}/sources/jira/{ref}", {
+    params: { path: { project_id: projectId, ref } },
+  });
+  if (error || !data) return problemState(error, response.status);
+  revalidatePath(`/projects/${projectId}/sources`);
+  const warnings = data.warnings.map((w) => (w as { code: string }).code);
+  return {
+    status: "success",
+    message: `${data.jira_key} selected (schema v${data.snapshot_version})${warnings.length ? `; warnings: ${warnings.join(", ")}` : ""}.`,
+  };
+}
+
+export async function removeJiraProject(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const ref = `${String(form.get("connection_id"))}:${String(form.get("jira_key"))}`;
+  const api = await apiClient(`/projects/${projectId}/sources`);
+  const { error, response } = await api.DELETE("/v1/projects/{project_id}/sources/jira/{ref}", {
+    params: { path: { project_id: projectId, ref } },
+  });
+  if (error || response.status !== 204) return problemState(error, response.status);
+  revalidatePath(`/projects/${projectId}/sources`);
+  return { status: "success", message: "Jira project removed from the project." };
+}
+
+export async function rediscoverJira(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const sourceId = String(form.get("source_id"));
+  const api = await apiClient(`/projects/${projectId}/sources`);
+  const { data, error, response } = await api.POST("/v1/projects/{project_id}/sources/jira/{source_id}/discover", {
+    params: { path: { project_id: projectId, source_id: sourceId } },
+  });
+  if (error || !data) return problemState(error, response.status);
+  revalidatePath(`/projects/${projectId}/sources/jira/${sourceId}`);
+  if (!data.changed) return { status: "success", message: `No schema change (still v${data.snapshot_version}).` };
+  const sections = Object.keys(data.diff).join(", ");
+  return { status: "success", message: `Schema changed: now v${data.snapshot_version} (${sections}).` };
+}
+
+const AUTO = "__auto__";
+const NONE = "__none__";
+
+export async function saveJiraMapping(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const sourceId = String(form.get("source_id"));
+  // Issue type and status overrides are not edited here; keep the ones already saved.
+  const kept = JSON.parse(String(form.get("kept_overrides") ?? "{}")) as {
+    issue_types?: Record<string, string>;
+    statuses?: Record<string, string>;
+  };
+  const fields: Record<string, string | null> = {};
+  for (const name of ["story_points", "sprint", "epic_link", "acceptance_criteria"]) {
+    const choice = String(form.get(name) ?? AUTO);
+    if (choice === NONE) fields[name] = null;
+    else if (choice !== AUTO) fields[name] = choice;
+  }
+  const api = await apiClient(`/projects/${projectId}/sources`);
+  const { data, error, response } = await api.PUT("/v1/projects/{project_id}/sources/jira/{source_id}/mapping", {
+    params: {
+      path: { project_id: projectId, source_id: sourceId },
+      header: { "If-Match": `"${String(form.get("mapping_version"))}"` },
+    },
+    body: {
+      fields: fields as never,
+      issue_types: (kept.issue_types ?? {}) as never,
+      statuses: (kept.statuses ?? {}) as never,
+    },
+  });
+  if (error || !data) return problemState(error, response.status);
+  revalidatePath(`/projects/${projectId}/sources/jira/${sourceId}`);
+  return { status: "success", message: `Mapping saved (version ${data.mapping_version}).` };
+}
