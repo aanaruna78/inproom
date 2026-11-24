@@ -98,6 +98,16 @@ class GitHubProvider:
     def get_repository(self, repo_id: str) -> Repository:
         return self._repo(self._request("GET", f"/repositories/{int(repo_id)}").json())
 
+    def branch_head(self, repo_id: str, branch: str) -> str | None:
+        """The branch's head commit SHA, or None if the branch does not exist (INPROOM-142)."""
+        try:
+            data = self._request(
+                "GET", f"/repositories/{int(repo_id)}/branches/{quote(branch, safe='')}"
+            ).json()
+        except NotFoundOrNoAccess:
+            return None
+        return (data.get("commit") or {}).get("sha")
+
     def branch_exists(self, repo_id: str, branch: str) -> bool:
         try:
             self._request("GET", f"/repositories/{int(repo_id)}/branches/{quote(branch, safe='')}")

@@ -212,7 +212,7 @@ def _warnings(mapping_warnings: list[dict], capabilities: dict[str, Any], write_
 def _emit(
     conn: Connection,
     principal: Principal,
-    request: Request,
+    trace_id: str | None,
     action: str,
     source: dict[str, Any],
     extra: dict[str, Any] | None = None,
@@ -230,7 +230,7 @@ def _emit(
         action,
         "project_jira_source",
         str(source["id"]),
-        trace_id=request.state.trace_id,
+        trace_id=trace_id,
         payload=payload,
         project_id=source["project_id"],
     )
@@ -401,7 +401,7 @@ def select_jira_project(
                 _emit(
                     conn,
                     principal,
-                    request,
+                    request.state.trace_id,
                     "source.jira.discovered",
                     source,
                     {"changed": changed, "diff": change},
@@ -427,7 +427,7 @@ def select_jira_project(
             _emit(
                 conn,
                 principal,
-                request,
+                request.state.trace_id,
                 "source.jira.selected",
                 source,
                 {"write_capable": capabilities["write_capable"]},
@@ -467,7 +467,14 @@ def remove_jira_project(
                 project_jira_sources.c.id == found[0]["id"],
             )
         )
-        _emit(conn, principal, request, "source.jira.removed", found[0], outbox="source.jira.removed")
+        _emit(
+            conn,
+            principal,
+            request.state.trace_id,
+            "source.jira.removed",
+            found[0],
+            outbox="source.jira.removed",
+        )
     return Response(status_code=204)
 
 
@@ -499,7 +506,7 @@ def rediscover(
         _emit(
             conn,
             principal,
-            request,
+            request.state.trace_id,
             "source.jira.discovered",
             source,
             {"changed": changed, "diff": change},
@@ -589,7 +596,7 @@ def update_mapping(
             _emit(
                 conn,
                 principal,
-                request,
+                request.state.trace_id,
                 "source.jira.mapping.updated",
                 source,
                 {"overrides": overrides, "mapping_version": source["mapping_version"] + 1},

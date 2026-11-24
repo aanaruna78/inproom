@@ -152,3 +152,17 @@ def test_jobs_and_state_are_tenant_scoped(selected, make_tenant):
         assert conn.execute(text("SELECT count(*) FROM source_sync_state")).scalar() == 0
     assert worker.claim("w2", other) is None  # the tenant filter never hands out someone else's job
     assert e.q("SELECT count(*) FROM sync_jobs WHERE tenant_id=:t AND status='SUCCEEDED'") == 1
+
+
+def test_confluence_edit_and_deletion_recovered_once(selected):
+    """INPROOM-142: Confluence edits and deletions with no webhook are recovered once by the scheduler."""
+    e = selected
+    run(e)
+    e.conf.edit(101, "<p>edited, no webhook</p>")
+    e.conf.pages[102].status = "trashed"
+    make_due(e)
+    counts = run(e)["result"]["counts"]
+    assert (counts["updated"], counts["deleted"]) == (1, 1)
+    make_due(e)
+    assert run(e)["result"]["changed"] is False
+    assert e.events("source.confluence.page.changed") == 4 and e.events("source.confluence.page.deleted") == 1
