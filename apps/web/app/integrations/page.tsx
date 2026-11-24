@@ -1,5 +1,6 @@
 import {
   checkConnection,
+  createConfluenceConnection,
   createConnection,
   createJiraConnection,
   revokeConnection,
@@ -10,7 +11,7 @@ import { apiClient } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-type Issue = { code: string; message: string; repository?: string; project?: string; severity?: string };
+type Issue = { code: string; message: string; repository?: string; project?: string; space?: string; severity?: string };
 
 export default async function IntegrationsPage() {
   const api = await apiClient("/integrations");
@@ -23,7 +24,7 @@ export default async function IntegrationsPage() {
     <main>
       <h1>Integrations</h1>
       <p className="crumbs">
-        Git providers and Jira sites connected to this tenant. Projects choose repositories and Jira projects from these.
+        Git providers, Jira and Confluence sites connected to this tenant. Projects choose their sources from these.
       </p>
       <div className="grid">
         <section className="card" aria-labelledby="connections">
@@ -43,7 +44,9 @@ export default async function IntegrationsPage() {
                   <dd>
                     {c.provider === "jira"
                       ? "checked per Jira project (Browse required; write access is reported, never used)"
-                      : c.granted_scopes.length
+                      : c.provider === "confluence"
+                        ? "checked per space (read required; edit access is reported, never used)"
+                        : c.granted_scopes.length
                         ? c.granted_scopes.join(", ")
                         : "fine-grained (per repository)"}
                   </dd>
@@ -56,7 +59,7 @@ export default async function IntegrationsPage() {
                     {issues.map((i, n) => (
                       <li key={n} className={i.severity === "warning" ? "warning" : "problem"}>
                         <strong>{i.code}</strong>
-                        {(i.repository ?? i.project) && <> · {i.repository ?? i.project}</>} — {i.message}
+                        {(i.repository ?? i.project ?? i.space) && <> · {i.repository ?? i.project ?? i.space}</>} — {i.message}
                       </li>
                     ))}
                   </ul>
@@ -153,6 +156,41 @@ export default async function IntegrationsPage() {
                   required: true,
                   minLength: 20,
                   hint: "A token for an account that can browse the projects INPROOM should read. Stored encrypted; never shown again.",
+                },
+              ]}
+            />
+          </section>
+        )}
+        {isAdmin && (
+          <section className="card" aria-labelledby="connect-confluence">
+            <h2 id="connect-confluence">Connect Confluence</h2>
+            <ActionForm
+              action={createConfluenceConnection}
+              testId="connect-confluence"
+              submitLabel="Connect Confluence"
+              fields={[
+                { name: "display_name", label: "Name", required: true, maxLength: 80, defaultValue: "Confluence" },
+                {
+                  name: "base_url",
+                  label: "Site URL",
+                  type: "url",
+                  required: true,
+                  placeholder: "https://your-site.atlassian.net",
+                  hint: "Confluence Cloud site (INPROOM adds /wiki), or your Data Center base URL. Only allowlisted hosts are accepted.",
+                },
+                {
+                  name: "email",
+                  label: "Account email",
+                  maxLength: 254,
+                  hint: "Confluence Cloud: the Atlassian account the token belongs to. Leave empty for a Data Center personal access token.",
+                },
+                {
+                  name: "token",
+                  label: "API token",
+                  type: "password",
+                  required: true,
+                  minLength: 20,
+                  hint: "A token for an account that can read the spaces INPROOM should use. Stored encrypted; never shown again.",
                 },
               ]}
             />

@@ -112,3 +112,6 @@ code.branch { margin-right: 4px; }
 ul.options { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 12px; }
 ul.options > li { border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
 li.excluded { color: var(--muted); }
+.tabs { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
+.tabs a[aria-current="page"] { font-weight: 700; text-decoration: none; }
+.page-text { white-space: pre-wrap; word-break: break-word; max-height: 480px; overflow: auto; }

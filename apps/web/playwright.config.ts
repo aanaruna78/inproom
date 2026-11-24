@@ -33,6 +33,13 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
+      // Test-only fake Confluence (apps/api/tests/fakes/confluence.py).
+      command: "cd ../api && uv run python -m tests.fakes.confluence --port 18092",
+      url: "http://localhost:18092/_fake/health",
+      reuseExistingServer: true,
+      timeout: 30_000,
+    },
+    {
       command: "cd ../api && uv run uvicorn app.main:app --port 8000",
       url: "http://localhost:8000/healthz",
       reuseExistingServer: true,
@@ -42,6 +49,7 @@ export default defineConfig({
         ...(process.env as Record<string, string>),
         INPROOM_GIT_ALLOWED_HOSTS: "api.github.com,http://localhost:18090",
         INPROOM_JIRA_ALLOWED_HOSTS: "*.atlassian.net,http://localhost:18091",
+        INPROOM_CONFLUENCE_ALLOWED_HOSTS: "*.atlassian.net,http://localhost:18092",
       },
     },
     {

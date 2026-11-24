@@ -418,3 +418,84 @@ export async function saveJiraMapping(_prev: FormState, form: FormData): Promise
   revalidatePath(`/projects/${projectId}/sources/jira/${sourceId}`);
   return { status: "success", message: `Mapping saved (version ${data.mapping_version}).` };
 }
+
+// ---------------------------------------------------------------- Confluence (INPROOM-137 / story INPROOM-24)
+
+export async function createConfluenceConnection(_prev: FormState, form: FormData): Promise<FormState> {
+  const submitted = values(form, ["display_name", "base_url", "email"]);
+  const api = await apiClient("/integrations");
+  const { data, error, response } = await api.POST("/v1/connections", {
+    body: {
+      provider: "confluence",
+      display_name: submitted.display_name,
+      base_url: submitted.base_url,
+      email: submitted.email.trim() || null,
+      token: String(form.get("token") ?? ""),
+    },
+    params: { header: { "Idempotency-Key": String(form.get("idempotency_key")) } },
+  });
+  if (error || !data) {
+    const state = problemState(error, response.status, submitted);
+    state.field = state.code === "BASE_URL_NOT_ALLOWED" ? "base_url" : state.code === "CREDENTIAL_INVALID" ? "token" : undefined;
+    return state;
+  }
+  revalidatePath("/integrations");
+  return { status: "success", message: `Connected ${data.display_name} as ${data.account_login}.` };
+}
+
+function list(value: FormDataEntryValue | null): string[] {
+  return String(value ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+function syncSummary(counts: Record<string, number>, truncated: boolean): string {
+  const parts = Object.entries(counts)
+    .filter(([, n]) => n > 0)
+    .map(([k, n]) => `${n} ${k}`);
+  return `${parts.join(", ") || "nothing to do"}${truncated ? " (truncated: narrow the filters)" : ""}`;
+}
+
+export async function selectConfluenceSpace(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const ref = `${String(form.get("connection_id"))}:${String(form.get("space_key"))}`;
+  const submitted = values(form, ["root_page_ids", "required_labels"]);
+  const api = await apiClient(`/projects/${projectId}/sources`);
+  const { data, error, response } = await api.PUT("/v1/projects/{project_id}/sources/confluence/{ref}", {
+    params: { path: { project_id: projectId, ref } },
+    body: {
+      root_page_ids: list(form.get("root_page_ids")),
+      required_labels: list(form.get("required_labels")),
+      include_restricted: form.get("include_restricted") === "on",
+    },
+  });
+  if (error || !data) return problemState(error, response.status, submitted);
+  revalidatePath(`/projects/${projectId}/sources`);
+  return { status: "success", message: `${data.source.space_key} synced: ${syncSummary(data.counts, data.truncated)}.` };
+}
+
+export async function removeConfluenceSpace(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const ref = `${String(form.get("connection_id"))}:${String(form.get("space_key"))}`;
+  const api = await apiClient(`/projects/${projectId}/sources`);
+  const { error, response } = await api.DELETE("/v1/projects/{project_id}/sources/confluence/{ref}", {
+    params: { path: { project_id: projectId, ref } },
+  });
+  if (error || response.status !== 204) return problemState(error, response.status);
+  revalidatePath(`/projects/${projectId}/sources`);
+  return { status: "success", message: "Space removed from the project; its catalog was deleted." };
+}
+
+export async function syncConfluenceSpace(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const sourceId = String(form.get("source_id"));
+  const api = await apiClient(`/projects/${projectId}/sources`);
+  const { data, error, response } = await api.POST("/v1/projects/{project_id}/sources/confluence/{source_id}/sync", {
+    params: { path: { project_id: projectId, source_id: sourceId } },
+  });
+  if (error || !data) return problemState(error, response.status);
+  revalidatePath(`/projects/${projectId}/sources`);
+  revalidatePath(`/projects/${projectId}/sources/confluence/${sourceId}`);
+  return { status: "success", message: `Synced: ${syncSummary(data.counts, data.truncated)}.` };
+}

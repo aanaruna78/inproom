@@ -1,30 +1,56 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { removeJiraProject, removeRepository, selectJiraProject, selectRepository } from "@/app/actions";
+import {
+  removeConfluenceSpace,
+  removeJiraProject,
+  removeRepository,
+  selectConfluenceSpace,
+  selectJiraProject,
+  selectRepository,
+  syncConfluenceSpace,
+} from "@/app/actions";
 import { ActionForm } from "@/components/ActionForm";
 import { apiClient } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
+
+type Filters = { root_page_ids?: string[]; required_labels?: string[]; include_restricted?: boolean };
+
+function describeFilters(f: Filters): string {
+  const parts = [];
+  if (f.root_page_ids?.length) parts.push(`trees ${f.root_page_ids.join(", ")}`);
+  if (f.required_labels?.length) parts.push(`labels ${f.required_labels.join(", ")}`);
+  if (f.include_restricted) parts.push("restricted included");
+  return parts.length ? parts.join(" · ") : "whole space";
+}
 
 export default async function SourcesPage({
   params,
   searchParams,
 }: {
   params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ connection?: string; q?: string; jira_connection?: string; jq?: string }>;
+  searchParams: Promise<{
+    connection?: string;
+    q?: string;
+    jira_connection?: string;
+    jq?: string;
+    confluence_connection?: string;
+    cq?: string;
+  }>;
 }) {
   const { projectId } = await params;
-  const { connection: chosen, q, jira_connection: jiraChosen, jq } = await searchParams;
+  const { connection: chosen, q, jira_connection: jiraChosen, jq, confluence_connection: confChosen, cq } = await searchParams;
   const api = await apiClient(`/projects/${projectId}/sources`);
   const path = { params: { path: { project_id: projectId } } };
-  const [project, perms, selected, scope, connections, jiraSources] = await Promise.all([
+  const [project, perms, selected, scope, connections, jiraSources, confSources] = await Promise.all([
     api.GET("/v1/projects/{project_id}", path),
     api.GET("/v1/projects/{project_id}/permissions/me", path),
     api.GET("/v1/projects/{project_id}/sources/repositories", path),
     api.GET("/v1/projects/{project_id}/sources/scope", path),
     api.GET("/v1/connections"),
     api.GET("/v1/projects/{project_id}/sources/jira", path),
+    api.GET("/v1/projects/{project_id}/sources/confluence", path),
   ]);
   if (!project.data || !perms.data || !selected.data || !scope.data) notFound();
   const p = project.data;
@@ -41,6 +67,16 @@ export default async function SourcesPage({
         })
       : null;
   const jira = jiraSources.data ?? [];
+  const confUsable = active.filter((c) => c.provider === "confluence");
+  const confConnectionId = confChosen ?? confUsable[0]?.id;
+  const spaceOptions =
+    canManage && confConnectionId
+      ? await api.GET("/v1/connections/{connection_id}/confluence/spaces", {
+          params: { path: { connection_id: confConnectionId }, query: { project_id: projectId, q: cq || undefined } },
+        })
+      : null;
+  const spaces = confSources.data ?? [];
+  const chosenFilters = new Map(spaces.map((sp) => [sp.space_id, sp.filters as Filters]));
   const connectionId = chosen ?? usable[0]?.id;
   const options =
     canManage && connectionId
@@ -115,6 +151,11 @@ export default async function SourcesPage({
             {scope.data.repositories.map((s) => (
               <li key={`${s.connection_id}/${s.provider_repo_id}`}>
                 {s.full_name}: {s.branches.join(", ")}
+              </li>
+            ))}
+            {(scope.data.confluence_spaces ?? []).map((c) => (
+              <li key={c.source_id}>
+                Confluence {c.space_key}: {c.page_count} pages ({describeFilters(c.filters as Filters)})
               </li>
             ))}
             {(scope.data.jira_projects ?? []).map((j) => (
@@ -279,6 +320,151 @@ export default async function SourcesPage({
                     )}
                   </li>
                 ))}
+              </ul>
+            </>
+          )}
+        </section>
+        <section className="card" aria-labelledby="confluence-selected">
+          <h2 id="confluence-selected">Confluence spaces</h2>
+          {spaces.length === 0 ? (
+            <p className="empty">No Confluence spaces selected. INPROOM reads nothing from Confluence for this project.</p>
+          ) : (
+            <table data-testid="selected-spaces">
+              <thead>
+                <tr>
+                  <th scope="col">Space</th>
+                  <th scope="col">Pages</th>
+                  <th scope="col">Status</th>
+                  <th scope="col"><span className="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {spaces.map((sp) => {
+                  const warnings = sp.warnings as { code: string; message: string }[];
+                  const last = sp.last_sync as { truncated?: boolean };
+                  return (
+                    <tr key={sp.id} data-testid="selected-space" aria-label={sp.space_key}>
+                      <td>
+                        <Link href={`/projects/${p.id}/sources/confluence/${sp.id}`}>
+                          <strong>{sp.space_key}</strong> · {sp.name}
+                        </Link>
+                        <div className="hint">
+                          via {sp.connection_name} · {describeFilters(sp.filters as Filters)}
+                        </div>
+                        {warnings.length > 0 && (
+                          <ul className="issues" data-testid="space-warnings">
+                            {warnings.map((w) => (
+                              <li key={w.code} className="warning">
+                                <strong>{w.code}</strong> — {w.message}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </td>
+                      <td data-testid="space-counts">
+                        {sp.page_counts.CURRENT} in scope
+                        <div className="hint">
+                          {sp.page_counts.RESTRICTED} restricted · {sp.page_counts.EXCLUDED} excluded ·{" "}
+                          {sp.page_counts.DELETED} deleted{last.truncated ? " · truncated" : ""}
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`chip ${sp.status}`}>{sp.status}</span>
+                        {sp.status_reason && <div className="hint">{sp.status_reason}</div>}
+                        <div className="hint">
+                          last sync{" "}
+                          {sp.last_synced_at
+                            ? new Date(sp.last_synced_at).toLocaleString("en-GB", { timeZone: "UTC" }) + " UTC"
+                            : "never"}
+                        </div>
+                      </td>
+                      <td>
+                        {canManage && sp.status === "ACTIVE" && (
+                          <ActionForm
+                            action={syncConfluenceSpace}
+                            testId="sync-space"
+                            submitLabel="Sync now"
+                            hidden={{ project_id: p.id, source_id: sp.id }}
+                            fields={[]}
+                          />
+                        )}
+                        {canManage && (
+                          <ActionForm
+                            action={removeConfluenceSpace}
+                            testId="remove-space"
+                            submitLabel="Remove"
+                            hidden={{ project_id: p.id, connection_id: sp.connection_id, space_key: sp.space_key }}
+                            fields={[]}
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </section>
+        <section className="card" aria-labelledby="confluence-add">
+          <h2 id="confluence-add">Add Confluence spaces</h2>
+          {!canManage ? (
+            <p className="empty" data-testid="confluence-read-only">Only project admins can change this project&apos;s sources.</p>
+          ) : confUsable.length === 0 ? (
+            <p className="empty">
+              No active Confluence connection. A tenant admin can connect one under <Link href="/integrations">Integrations</Link>.
+            </p>
+          ) : (
+            <>
+              <form className="stack" method="get">
+                <label>
+                  Confluence connection
+                  <select name="confluence_connection" defaultValue={confConnectionId}>
+                    {confUsable.map((c) => (
+                      <option key={c.id} value={c.id}>{c.display_name} ({c.base_url})</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Search spaces
+                  <input name="cq" defaultValue={cq ?? ""} placeholder="key or name contains…" />
+                </label>
+                <button type="submit">Show spaces</button>
+              </form>
+              {spaceOptions?.error && <p className="alert error">{(spaceOptions.error as { detail?: string }).detail}</p>}
+              <ul className="options" data-testid="space-options">
+                {(spaceOptions?.data?.items ?? []).map((o) => {
+                  const current = chosenFilters.get(o.id) ?? {};
+                  return (
+                    <li key={o.id} data-testid="space-option" aria-label={o.key}>
+                      <strong>{o.key}</strong> · {o.name} {o.selected && <span className="chip ACTIVE">selected</span>}
+                      <ActionForm
+                        action={selectConfluenceSpace}
+                        testId={`select-space-${o.key}`}
+                        submitLabel={o.selected ? "Update filters and sync" : "Select and sync"}
+                        hidden={{ project_id: p.id, connection_id: confConnectionId!, space_key: o.key }}
+                        fields={[
+                          {
+                            name: "required_labels",
+                            label: "Required labels (comma-separated)",
+                            defaultValue: (current.required_labels ?? []).join(", "),
+                            hint: "Only pages carrying every label, e.g. approved. Empty = all pages.",
+                          },
+                          {
+                            name: "root_page_ids",
+                            label: "Page trees (root page ids, comma-separated)",
+                            defaultValue: (current.root_page_ids ?? []).join(", "),
+                          },
+                          {
+                            name: "include_restricted",
+                            label: "Include pages with read restrictions (flagged)",
+                            type: "checkbox",
+                            defaultValue: current.include_restricted ? "on" : "",
+                          },
+                        ]}
+                      />
+                    </li>
+                  );
+                })}
               </ul>
             </>
           )}
