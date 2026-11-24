@@ -1,6 +1,7 @@
 """`python -m app.worker`: run the source sync worker and scheduler (INPROOM-141 / story INPROOM-25).
 
-Options: --poll SECONDS (idle wait, default 5), --tick SECONDS (scheduler cadence, default 15), --once.
+Options: --poll SECONDS (idle wait, default 5), --tick SECONDS (scheduler cadence, default 15), --once,
+--tenant UUID (only schedule and run that tenant's jobs: for draining one tenant, debugging and tests).
 Stops cleanly on SIGTERM/SIGINT after the current job. Safe to run several copies (leases + SKIP LOCKED).
 """
 
@@ -10,6 +11,7 @@ import os
 import signal
 import socket
 import time
+import uuid
 
 from app.sync.worker import run_once, schedule_tick
 
@@ -26,6 +28,7 @@ def main() -> None:
     parser.add_argument("--poll", type=float, default=5.0, help="seconds to wait when there is no work")
     parser.add_argument("--tick", type=float, default=15.0, help="seconds between scheduler ticks")
     parser.add_argument("--once", action="store_true", help="process at most one job and exit")
+    parser.add_argument("--tenant", type=uuid.UUID, default=None, help="only this tenant's jobs")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     signal.signal(signal.SIGTERM, _stop)
@@ -34,9 +37,9 @@ def main() -> None:
     last_tick = 0.0
     while not stopping:
         if time.monotonic() - last_tick >= args.tick:
-            schedule_tick()
+            schedule_tick(args.tenant)
             last_tick = time.monotonic()
-        did = run_once(worker_id, schedule=False)
+        did = run_once(worker_id, schedule=False, tenant=args.tenant)
         if args.once:
             break
         if did is None:

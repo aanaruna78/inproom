@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import {
+  reconcileSource,
   removeConfluenceSpace,
   removeJiraProject,
   removeRepository,
@@ -43,7 +44,7 @@ export default async function SourcesPage({
   const { connection: chosen, q, jira_connection: jiraChosen, jq, confluence_connection: confChosen, cq } = await searchParams;
   const api = await apiClient(`/projects/${projectId}/sources`);
   const path = { params: { path: { project_id: projectId } } };
-  const [project, perms, selected, scope, connections, jiraSources, confSources] = await Promise.all([
+  const [project, perms, selected, scope, connections, jiraSources, confSources, syncStatus] = await Promise.all([
     api.GET("/v1/projects/{project_id}", path),
     api.GET("/v1/projects/{project_id}/permissions/me", path),
     api.GET("/v1/projects/{project_id}/sources/repositories", path),
@@ -51,6 +52,7 @@ export default async function SourcesPage({
     api.GET("/v1/connections"),
     api.GET("/v1/projects/{project_id}/sources/jira", path),
     api.GET("/v1/projects/{project_id}/sources/confluence", path),
+    api.GET("/v1/projects/{project_id}/sources/sync-status", path),
   ]);
   if (!project.data || !perms.data || !selected.data || !scope.data) notFound();
   const p = project.data;
@@ -93,6 +95,70 @@ export default async function SourcesPage({
         <Link href={`/workspaces/${p.workspace_id}/projects`}>Projects</Link> /{" "}
         <Link href={`/projects/${p.id}`}>{p.key}</Link> / Sources
       </p>
+      <section className="card wide" aria-labelledby="sync-status">
+        <h2 id="sync-status">Sync status</h2>
+        <p className="hint">
+          A background worker re-checks every source about every{" "}
+          {Math.round((syncStatus.data?.interval_seconds ?? 900) / 60)} minutes, and immediately when a webhook arrives.
+          Stale = no successful check for 3 intervals.
+        </p>
+        {(syncStatus.data?.sources ?? []).length === 0 ? (
+          <p className="empty">No sources selected yet.</p>
+        ) : (
+          <table data-testid="sync-status">
+            <thead>
+              <tr>
+                <th scope="col">Source</th>
+                <th scope="col">Health</th>
+                <th scope="col">Last success</th>
+                <th scope="col">Next check</th>
+                <th scope="col"><span className="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {(syncStatus.data?.sources ?? []).map((st) => (
+                <tr key={st.source_id} data-testid="sync-row" aria-label={`${st.kind} ${st.name}`}>
+                  <td>
+                    <strong>{st.name}</strong> <span className="hint">{st.kind}</span>
+                  </td>
+                  <td>
+                    <span className={`chip ${st.health === "fresh" ? "ACTIVE" : st.health === "failing" ? "INVALID" : "DEGRADED"}`} data-testid="sync-health">
+                      {st.health}
+                    </span>
+                    {st.running && <span className="chip"> running</span>}
+                    {st.queued && <span className="chip"> queued</span>}
+                    {st.last_error && st.consecutive_failures > 0 && (
+                      <div className="hint warning">
+                        {(st.last_error as { code?: string }).code} ({st.consecutive_failures} failed attempt
+                        {st.consecutive_failures === 1 ? "" : "s"})
+                      </div>
+                    )}
+                  </td>
+                  <td data-testid="sync-last-success">
+                    {st.last_success_at
+                      ? new Date(st.last_success_at).toLocaleString("en-GB", { timeZone: "UTC" }) + " UTC"
+                      : "never"}
+                  </td>
+                  <td>
+                    {st.next_due_at ? new Date(st.next_due_at).toLocaleString("en-GB", { timeZone: "UTC" }) + " UTC" : "—"}
+                  </td>
+                  <td>
+                    {canManage && st.source_status === "ACTIVE" && (
+                      <ActionForm
+                        action={reconcileSource}
+                        testId="reconcile"
+                        submitLabel="Reconcile now"
+                        hidden={{ project_id: p.id, kind: st.kind, source_id: st.source_id }}
+                        fields={[]}
+                      />
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
       <div className="grid">
         <section className="card" aria-labelledby="selected">
           <h2 id="selected">Selected repositories</h2>

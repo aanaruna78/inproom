@@ -89,6 +89,10 @@ ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/v1/hooks/confluence/{tenant_id}/{connection_id}"): "webhook",
     # INPROOM-143
     ("POST", "/v1/connections/{connection_id}/webhook-secret"): "connection_scoped",
+    # INPROOM-144
+    ("GET", "/v1/projects/{project_id}/sources/sync-status"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/sources/jobs"): "project_scoped",
+    ("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile"): "project_scoped",
 }
 
 SCOPED = [
@@ -232,9 +236,12 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
             else f"{tenant_ids.jira['id']}:ABC"
         ),
         source_id=(
-            tenant_ids.confluence_source if "/confluence" in path_template else tenant_ids.jira_source
+            tenant_ids.confluence_source
+            if ("/confluence" in path_template or "{kind}" in path_template)
+            else tenant_ids.jira_source
         )["id"],
         page_id="101",
+        kind="confluence",
     )
     if (
         path_template.endswith(("/repositories", "/jira/projects", "/confluence/spaces"))

@@ -499,3 +499,34 @@ export async function syncConfluenceSpace(_prev: FormState, form: FormData): Pro
   revalidatePath(`/projects/${projectId}/sources/confluence/${sourceId}`);
   return { status: "success", message: `Synced: ${syncSummary(data.counts, data.truncated)}.` };
 }
+
+// ---------------------------------------------------------------- sync status + webhooks (INPROOM-144 / INPROOM-25)
+
+export async function reconcileSource(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const kind = String(form.get("kind")) as "git" | "jira" | "confluence";
+  const api = await apiClient(`/projects/${projectId}/sources`);
+  const { data, error, response } = await api.POST("/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile", {
+    params: { path: { project_id: projectId, kind, source_id: String(form.get("source_id")) } },
+  });
+  if (error || !data) return problemState(error, response.status);
+  revalidatePath(`/projects/${projectId}/sources`);
+  return {
+    status: "success",
+    message: data.triggers > 1 ? `Already queued (${data.triggers} requests share one job).` : "Reconcile queued.",
+  };
+}
+
+export async function generateWebhookSecret(_prev: FormState, form: FormData): Promise<FormState> {
+  const id = String(form.get("connection_id"));
+  const api = await apiClient("/integrations");
+  const { data, error, response } = await api.POST("/v1/connections/{connection_id}/webhook-secret", {
+    params: { path: { connection_id: id } },
+  });
+  if (error || !data) return problemState(error, response.status);
+  // Shown once, in this response only: it is never stored in the page or retrievable again.
+  return {
+    status: "success",
+    message: `Webhook URL: ${data.url ?? `<your INPROOM URL>${data.path}`} · Secret (copy it now, it will not be shown again): ${data.secret} · Signature header: ${data.signature_header}`,
+  };
+}

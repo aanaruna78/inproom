@@ -17,6 +17,7 @@ from app.modules.members import router as members_router
 from app.modules.projects import router as projects_router
 from app.modules.settings import router as settings_router
 from app.modules.sources import router as sources_router
+from app.modules.sync_status import router as sync_status_router
 from app.modules.webhooks import router as webhooks_router
 from app.modules.workspaces import router as workspaces_router
 
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(jira_issues_router)
     app.include_router(confluence_sources_router)
     app.include_router(confluence_pages_router)
+    app.include_router(sync_status_router)
     app.include_router(webhooks_router)
     return app
 

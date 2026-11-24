@@ -622,6 +622,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/sources/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recent sync jobs for this project (newest first) */
+        get: operations["list_jobs_v1_projects__project_id__sources_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/sources/repositories": {
         parameters: {
             query?: never;
@@ -668,6 +685,40 @@ export interface paths {
         get: operations["sync_scope_v1_projects__project_id__sources_scope_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/sources/sync-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Freshness of every selected source: last success, next due, failures, queued/running */
+        get: operations["sync_status_v1_projects__project_id__sources_sync_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reconcile one source now (coalesced with a job already queued for it) */
+        post: operations["reconcile_now_v1_projects__project_id__sources__kind___source_id__reconcile_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1541,6 +1592,15 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** ReconcileRequest */
+        ReconcileRequest: {
+            /**
+             * Full
+             * @description Also re-check deletions/schema (Jira) and access
+             * @default false
+             */
+            full: boolean;
+        };
         /** RepositoryOption */
         RepositoryOption: {
             /** Default Branch */
@@ -1762,6 +1822,41 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** SourceSyncStatus */
+        SourceSyncStatus: {
+            /** Consecutive Failures */
+            consecutive_failures: number;
+            /**
+             * Health
+             * @enum {string}
+             */
+            health: "fresh" | "stale" | "failing";
+            /** Kind */
+            kind: string;
+            /** Last Attempt At */
+            last_attempt_at: string | null;
+            /** Last Error */
+            last_error: {
+                [key: string]: unknown;
+            } | null;
+            /** Last Success At */
+            last_success_at: string | null;
+            /** Name */
+            name: string;
+            /** Next Due At */
+            next_due_at: string | null;
+            /** Queued */
+            queued: boolean;
+            /** Running */
+            running: boolean;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Source Status */
+            source_status: string;
+        };
         /** Sources */
         Sources: {
             /** Allowed Kinds */
@@ -1815,6 +1910,53 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** SyncJob */
+        SyncJob: {
+            /** Attempts */
+            attempts: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error: {
+                [key: string]: unknown;
+            } | null;
+            /** Mode */
+            mode: string;
+            /** Reason */
+            reason: string;
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            };
+            /**
+             * Run After
+             * Format: date-time
+             */
+            run_after: string;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Source Kind */
+            source_kind: string;
+            /** Started At */
+            started_at: string | null;
+            /** Status */
+            status: string;
+            /** Triggers */
+            triggers: number;
+        };
         /** SyncResult */
         SyncResult: {
             /** Changed */
@@ -1842,6 +1984,18 @@ export interface components {
             project_id: string;
             /** Repositories */
             repositories: components["schemas"]["ScopeItem"][];
+        };
+        /** SyncStatus */
+        SyncStatus: {
+            /** Interval Seconds */
+            interval_seconds: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Sources */
+            sources: components["schemas"]["SourceSyncStatus"][];
         };
         /** ValidationError */
         ValidationError: {
@@ -4037,6 +4191,46 @@ export interface operations {
             };
         };
     };
+    list_jobs_v1_projects__project_id__sources_jobs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncJob"][];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_project_repositories_v1_projects__project_id__sources_repositories_get: {
         parameters: {
             query?: never;
@@ -4212,6 +4406,95 @@ export interface operations {
             };
             /** @description problem+json */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_status_v1_projects__project_id__sources_sync_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncStatus"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_now_v1_projects__project_id__sources__kind___source_id__reconcile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                kind: "git" | "jira" | "confluence";
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReconcileRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncJob"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -119,12 +119,21 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("POST", "/v1/hooks/confluence/{tenant_id}/{connection_id}"): ("webhook", None),
     # INPROOM-143
     ("POST", "/v1/connections/{connection_id}/webhook-secret"): ("connection", "tenant.connection.manage"),
+    # INPROOM-144
+    ("GET", "/v1/projects/{project_id}/sources/sync-status"): ("project", "project.read"),
+    ("GET", "/v1/projects/{project_id}/sources/jobs"): ("project", "project.read"),
+    ("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile"): (
+        "project",
+        "project.source.manage",
+    ),
 }
 # Audit action recorded for a denial when it differs from the permission (listing projects of a workspace
 # the caller cannot see is audited as a project read).
 AUDIT_ACTION = {("GET", "/v1/workspaces/{workspace_id}/projects"): "project.read"}
 TESTED = [r for r, (level, _) in ROUTE_RULES.items() if level not in ("public", "self", "webhook")]
 SUCCESS = {"GET": "200", "PATCH": "200", "PUT": "200", "DELETE": "204", "POST": "200"}
+# Routes whose success is 202 Accepted (work queued, not done): INPROOM-144 reconcile-now.
+ACCEPTED = {("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile")}
 
 # actor -> (token roles, project membership role or None, same tenant?)
 ACTORS: dict[str, tuple[tuple[str, ...], str | None, bool]] = {
@@ -304,8 +313,11 @@ def _call(client, method, path, world: World, headers):
             if "/confluence" in path
             else f"{world.jira['id']}:{'NOEP' if method == 'PUT' else 'ABC'}"
         ),
-        source_id=(world.confluence_source if "/confluence" in path else world.jira_source)["id"],
+        source_id=(
+            world.confluence_source if ("/confluence" in path or "{kind}" in path) else world.jira_source
+        )["id"],
         page_id="101",
+        kind="confluence",
     )
     if path.startswith("/v1/connections/{connection_id}/") and path.endswith(
         ("/repositories", "/projects", "/spaces")
@@ -368,6 +380,8 @@ def test_route_x_role(db_client, tokens, world, owner_engine, method, path, acto
         assert r.status_code == 200, r.text
 
     expected = _expected(method, level, permission, roles, member, same)
+    if expected == "200" and (method, path) in ACCEPTED:
+        expected = "202"
     r = _call(db_client, method, path, world, headers)
     record_rbac(f"{method} {path}", actor, expected, str(r.status_code))
     assert str(r.status_code) == expected, (actor, r.text)

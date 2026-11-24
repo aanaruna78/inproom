@@ -2105,6 +2105,18 @@
         "title": "Readiness",
         "type": "object"
       },
+      "ReconcileRequest": {
+        "properties": {
+          "full": {
+            "default": false,
+            "description": "Also re-check deletions/schema (Jira) and access",
+            "title": "Full",
+            "type": "boolean"
+          }
+        },
+        "title": "ReconcileRequest",
+        "type": "object"
+      },
       "RepositoryOption": {
         "properties": {
           "default_branch": {
@@ -2618,6 +2630,112 @@
         "title": "SourceConnection",
         "type": "object"
       },
+      "SourceSyncStatus": {
+        "properties": {
+          "consecutive_failures": {
+            "title": "Consecutive Failures",
+            "type": "integer"
+          },
+          "health": {
+            "enum": [
+              "fresh",
+              "stale",
+              "failing"
+            ],
+            "title": "Health",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Due At"
+          },
+          "queued": {
+            "title": "Queued",
+            "type": "boolean"
+          },
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_status": {
+            "title": "Source Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "source_id",
+          "name",
+          "source_status",
+          "health",
+          "last_success_at",
+          "last_attempt_at",
+          "next_due_at",
+          "consecutive_failures",
+          "last_error",
+          "queued",
+          "running"
+        ],
+        "title": "SourceSyncStatus",
+        "type": "object"
+      },
       "Sources": {
         "additionalProperties": false,
         "properties": {
@@ -2744,6 +2862,113 @@
         "title": "SpaceOptions",
         "type": "object"
       },
+      "SyncJob": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "result": {
+            "additionalProperties": true,
+            "title": "Result",
+            "type": "object"
+          },
+          "run_after": {
+            "format": "date-time",
+            "title": "Run After",
+            "type": "string"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_kind": {
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "triggers": {
+            "title": "Triggers",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "source_kind",
+          "source_id",
+          "reason",
+          "mode",
+          "status",
+          "attempts",
+          "triggers",
+          "run_after",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "last_error",
+          "result"
+        ],
+        "title": "SyncJob",
+        "type": "object"
+      },
       "SyncResult": {
         "properties": {
           "changed": {
@@ -2816,6 +3041,33 @@
           "excluded"
         ],
         "title": "SyncScope",
+        "type": "object"
+      },
+      "SyncStatus": {
+        "properties": {
+          "interval_seconds": {
+            "title": "Interval Seconds",
+            "type": "integer"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceSyncStatus"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project_id",
+          "interval_seconds",
+          "sources"
+        ],
+        "title": "SyncStatus",
         "type": "object"
       },
       "ValidationError": {
@@ -5727,6 +5979,73 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/sources/jobs": {
+      "get": {
+        "operationId": "list_jobs_v1_projects__project_id__sources_jobs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SyncJob"
+                  },
+                  "title": "Response List Jobs V1 Projects  Project Id  Sources Jobs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Recent sync jobs for this project (newest first)",
+        "tags": [
+          "sync"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/sources/repositories": {
       "get": {
         "operationId": "list_project_repositories_v1_projects__project_id__sources_repositories_get",
@@ -5981,6 +6300,152 @@
         "summary": "The sync scope indexing may read: selected, readable repositories, Jira projects and spaces",
         "tags": [
           "sources"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sources/sync-status": {
+      "get": {
+        "operationId": "sync_status_v1_projects__project_id__sources_sync_status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Freshness of every selected source: last success, next due, failures, queued/running",
+        "tags": [
+          "sync"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile": {
+      "post": {
+        "operationId": "reconcile_now_v1_projects__project_id__sources__kind___source_id__reconcile_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "git",
+                "jira",
+                "confluence"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReconcileRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reconcile one source now (coalesced with a job already queued for it)",
+        "tags": [
+          "sync"
         ]
       }
     },

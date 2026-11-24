@@ -82,7 +82,7 @@ def provider_for(
             f"This is a {provider} connection; it cannot be used as a Git source",
         )
     if isinstance(transport, dict):
-        transport = transport["github"]
+        transport = transport.get("github")
     try:
         return GitHubProvider(base_url, token, transport=transport)
     except EgressDenied as exc:
@@ -100,7 +100,7 @@ def jira_for(row: dict, token: Secret, transports: dict[str, Transport]) -> Jira
         )
     email = row["account_login"] if row["auth_type"] == "basic_token" else None
     try:
-        return JiraProvider(row["base_url"], token, email=email, transport=transports["jira"])
+        return JiraProvider(row["base_url"], token, email=email, transport=transports.get("jira"))
     except EgressDenied as exc:
         raise _not_allowed(exc) from exc
 
@@ -116,7 +116,7 @@ def confluence_for(row: dict, token: Secret, transports: dict[str, Transport]) -
         )
     email = row["account_login"] if row["auth_type"] == "basic_token" else None
     try:
-        return ConfluenceProvider(row["base_url"], token, email=email, transport=transports["confluence"])
+        return ConfluenceProvider(row["base_url"], token, email=email, transport=transports.get("confluence"))
     except EgressDenied as exc:
         raise _not_allowed(exc) from exc
 

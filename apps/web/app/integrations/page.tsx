@@ -3,6 +3,7 @@ import {
   createConfluenceConnection,
   createConnection,
   createJiraConnection,
+  generateWebhookSecret,
   revokeConnection,
   rotateConnection,
 } from "@/app/actions";
@@ -63,6 +64,23 @@ export default async function IntegrationsPage() {
                       </li>
                     ))}
                   </ul>
+                )}
+                {isAdmin && c.status !== "REVOKED" && (c.provider === "jira" || c.provider === "confluence") && (
+                  <details className="webhook-setup" data-testid="webhook-setup">
+                    <summary>Webhook setup (optional, for near-real-time updates)</summary>
+                    <p className="hint">
+                      Without a webhook INPROOM still picks up changes on its regular schedule. To be notified
+                      immediately, add a webhook in {c.provider === "jira" ? "Jira" : "Confluence"} administration with the
+                      URL and secret generated here. Generating again replaces the previous secret.
+                    </p>
+                    <ActionForm
+                      action={generateWebhookSecret}
+                      testId="webhook-secret"
+                      submitLabel="Generate webhook secret"
+                      hidden={{ connection_id: c.id }}
+                      fields={[]}
+                    />
+                  </details>
                 )}
                 {isAdmin && c.status !== "REVOKED" && (
                   <div className="actions">
