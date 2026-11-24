@@ -104,6 +104,15 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
         "project",
         "project.source.manage",
     ),
+    ("GET", "/v1/projects/{project_id}/sources/confluence/{source_id}/pages"): ("project", "project.read"),
+    ("GET", "/v1/projects/{project_id}/sources/confluence/{source_id}/pages/{page_id}"): (
+        "project",
+        "project.read",
+    ),
+    ("GET", "/v1/projects/{project_id}/sources/confluence/{source_id}/pages/{page_id}/content"): (
+        "project",
+        "project.read",
+    ),
     # HMAC-signed, no user identity: tested in test_webhooks_integration.py
     ("POST", "/v1/hooks/github/{tenant_id}/{connection_id}"): ("webhook", None),
 }
@@ -292,6 +301,7 @@ def _call(client, method, path, world: World, headers):
             else f"{world.jira['id']}:{'NOEP' if method == 'PUT' else 'ABC'}"
         ),
         source_id=(world.confluence_source if "/confluence" in path else world.jira_source)["id"],
+        page_id="101",
     )
     if path.startswith("/v1/connections/{connection_id}/") and path.endswith(
         ("/repositories", "/projects", "/spaces")

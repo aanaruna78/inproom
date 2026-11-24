@@ -77,6 +77,12 @@ ROUTES: dict[tuple[str, str], str] = {
     ("PUT", "/v1/projects/{project_id}/sources/confluence/{ref}"): "project_scoped",
     ("DELETE", "/v1/projects/{project_id}/sources/confluence/{ref}"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/sources/confluence/{source_id}/sync"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/sources/confluence/{source_id}/pages"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/sources/confluence/{source_id}/pages/{page_id}"): "project_scoped",
+    (
+        "GET",
+        "/v1/projects/{project_id}/sources/confluence/{source_id}/pages/{page_id}/content",
+    ): "project_scoped",
     # INPROOM-110: unauthenticated, HMAC-signed webhook receiver (covered by test_webhooks_integration.py)
     ("POST", "/v1/hooks/github/{tenant_id}/{connection_id}"): "webhook",
 }
@@ -224,6 +230,7 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         source_id=(
             tenant_ids.confluence_source if "/confluence" in path_template else tenant_ids.jira_source
         )["id"],
+        page_id="101",
     )
     if (
         path_template.endswith(("/repositories", "/jira/projects", "/confluence/spaces"))

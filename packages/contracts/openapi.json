@@ -44,6 +44,65 @@
         "title": "Approvals",
         "type": "object"
       },
+      "ConfluenceScopeItem": {
+        "properties": {
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "filters": {
+            "additionalProperties": true,
+            "title": "Filters",
+            "type": "object"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "page_count": {
+            "title": "Page Count",
+            "type": "integer"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "space_id": {
+            "title": "Space Id",
+            "type": "string"
+          },
+          "space_key": {
+            "title": "Space Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "connection_id",
+          "base_url",
+          "space_id",
+          "space_key",
+          "filters",
+          "page_count",
+          "last_synced_at"
+        ],
+        "title": "ConfluenceScopeItem",
+        "type": "object"
+      },
       "ConfluenceSource": {
         "properties": {
           "base_url": {
@@ -1074,6 +1133,391 @@
           "approval_scopes"
         ],
         "title": "MyPermissions",
+        "type": "object"
+      },
+      "PageCatalog": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PageSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "space_key": {
+            "title": "Space Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "space_key",
+          "items",
+          "next_cursor"
+        ],
+        "title": "PageCatalog",
+        "type": "object"
+      },
+      "PageContent": {
+        "properties": {
+          "attachments": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "current_version": {
+            "title": "Current Version",
+            "type": "integer"
+          },
+          "page_id": {
+            "title": "Page Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page_id",
+          "title",
+          "version",
+          "current_version",
+          "content_sha256",
+          "text",
+          "attachments"
+        ],
+        "title": "PageContent",
+        "type": "object"
+      },
+      "PageDetail": {
+        "properties": {
+          "ancestors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ancestors",
+            "type": "array"
+          },
+          "attachments": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "current_version": {
+            "title": "Current Version",
+            "type": "integer"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "last_modified_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Modified At"
+          },
+          "page_id": {
+            "title": "Page Id",
+            "type": "string"
+          },
+          "parent_page_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Page Id"
+          },
+          "restricted": {
+            "title": "Restricted",
+            "type": "boolean"
+          },
+          "restrictions": {
+            "additionalProperties": true,
+            "title": "Restrictions",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/PageVersionInfo"
+            },
+            "title": "Versions",
+            "type": "array"
+          },
+          "web_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Web Url"
+          }
+        },
+        "required": [
+          "page_id",
+          "title",
+          "status",
+          "status_reason",
+          "current_version",
+          "parent_page_id",
+          "ancestors",
+          "labels",
+          "restricted",
+          "author",
+          "last_modified_at",
+          "content_sha256",
+          "restrictions",
+          "attachments",
+          "web_url",
+          "versions"
+        ],
+        "title": "PageDetail",
+        "type": "object"
+      },
+      "PageSummary": {
+        "properties": {
+          "ancestors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ancestors",
+            "type": "array"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
+          },
+          "current_version": {
+            "title": "Current Version",
+            "type": "integer"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "last_modified_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Modified At"
+          },
+          "page_id": {
+            "title": "Page Id",
+            "type": "string"
+          },
+          "parent_page_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Page Id"
+          },
+          "restricted": {
+            "title": "Restricted",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_id",
+          "title",
+          "status",
+          "status_reason",
+          "current_version",
+          "parent_page_id",
+          "ancestors",
+          "labels",
+          "restricted",
+          "author",
+          "last_modified_at"
+        ],
+        "title": "PageSummary",
+        "type": "object"
+      },
+      "PageVersionInfo": {
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "seen_at": {
+            "format": "date-time",
+            "title": "Seen At",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "content_sha256",
+          "title",
+          "author",
+          "created_at",
+          "message",
+          "seen_at"
+        ],
+        "title": "PageVersionInfo",
         "type": "object"
       },
       "Page_DirectoryUser_": {
@@ -2332,6 +2776,13 @@
       },
       "SyncScope": {
         "properties": {
+          "confluence_spaces": {
+            "items": {
+              "$ref": "#/components/schemas/ConfluenceScopeItem"
+            },
+            "title": "Confluence Spaces",
+            "type": "array"
+          },
           "excluded": {
             "items": {
               "$ref": "#/components/schemas/ScopeExclusion"
@@ -4198,6 +4649,265 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/sources/confluence/{source_id}/pages": {
+      "get": {
+        "operationId": "list_pages_v1_projects__project_id__sources_confluence__source_id__pages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(CURRENT|RESTRICTED|EXCLUDED|DELETED)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageCatalog"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The space's page catalog (status, version, labels, restricted flag), keyset-paged",
+        "tags": [
+          "confluence sources"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sources/confluence/{source_id}/pages/{page_id}": {
+      "get": {
+        "operationId": "get_page_v1_projects__project_id__sources_confluence__source_id__pages__page_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{1,20}$",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "One catalogued page: versions seen, ACL metadata (own + inherited), attachments",
+        "tags": [
+          "confluence sources"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sources/confluence/{source_id}/pages/{page_id}/content": {
+      "get": {
+        "operationId": "get_page_content_v1_projects__project_id__sources_confluence__source_id__pages__page_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{1,20}$",
+              "title": "Page Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageContent"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          },
+          "502": {
+            "description": "problem+json"
+          },
+          "503": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read-through: an in-scope page's text for the current (or an earlier) version",
+        "tags": [
+          "confluence sources"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/sources/confluence/{source_id}/sync": {
       "post": {
         "operationId": "sync_now_v1_projects__project_id__sources_confluence__source_id__sync_post",
@@ -5040,7 +5750,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "The sync scope indexing may read: selected, readable repositories, branches and Jira projects",
+        "summary": "The sync scope indexing may read: selected, readable repositories, Jira projects and spaces",
         "tags": [
           "sources"
         ]

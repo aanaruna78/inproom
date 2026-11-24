@@ -207,3 +207,97 @@ def test_jira_site_cannot_be_pointed_at_internal_hosts(db_client, tokens, fake_j
     record("POST /v1/connections (jira)", f"SSRF site {site}", "422", str(r.status_code))
     assert r.status_code == 422 and r.json()["code"] == "BASE_URL_NOT_ALLOWED"
     assert fake_jira.calls == []
+
+
+# ------------------------------------------------ Confluence (INPROOM-136; story INPROOM-24 AC 1, 7, 8)
+
+
+def test_no_confluence_token_leaks_anywhere(db_client, tokens, fake_confluence, owner_engine, caplog):
+    """Drive every Confluence flow (good and bad credentials, sync, reads, rotate, revoke), then search every
+    table row, response and log line, including the Basic auth header form (base64 of email:token)."""
+    import base64
+
+    from tests.fakes import confluence as fc
+
+    caplog.set_level(logging.DEBUG)
+    tenant = uuid.uuid4()
+    h = bearer(tokens.mint(tenant_id=tenant, user_id="alice", roles=["tenant_admin"]))
+    responses = []
+
+    def call(method, path, **kw):
+        r = db_client.request(method, path, headers=kw.pop("headers", h), **kw)
+        responses.append(r)
+        return r
+
+    def connect(name, token, email=fc.EMAIL):
+        body = {"provider": "confluence", "display_name": name, "base_url": "https://acme.atlassian.net"}
+        return call("POST", "/v1/connections", json=body | {"token": token, "email": email})
+
+    ws = call("POST", "/v1/workspaces", json={"slug": "cleak", "name": "Leak"}).json()
+    pid = call("POST", f"/v1/workspaces/{ws['id']}/projects", json={"key": "CLEAK", "name": "Leak"}).json()[
+        "id"
+    ]
+    connect("bad", fc.BAD_TOKEN)
+    connect("wrong email", fc.VALID_TOKEN, email="nobody@acme.example")
+    cid = connect("Confluence", fc.VALID_TOKEN).json()["id"]
+    call("GET", f"/v1/connections/{cid}/confluence/spaces?project_id={pid}")
+    sid = call(
+        "PUT", f"/v1/projects/{pid}/sources/confluence/{cid}:ENG", json={"required_labels": ["approved"]}
+    )
+    sid = sid.json()["source"]["id"]
+    base = f"/v1/projects/{pid}/sources/confluence/{sid}"
+    call("POST", f"{base}/sync")
+    call("GET", f"{base}/pages")
+    call("GET", f"{base}/pages/101")
+    call("GET", f"{base}/pages/101/content")
+    call("POST", f"/v1/connections/{cid}/check")
+    call("PUT", f"/v1/connections/{cid}/credential", json={"token": fc.BAD_TOKEN})
+    call("PUT", f"/v1/connections/{cid}/credential", json={"token": fc.VALID_TOKEN})
+    call("GET", f"/v1/projects/{pid}/sources/scope")
+    call("POST", f"/v1/connections/{cid}/revoke")
+
+    secrets_ = {"VALID_TOKEN": fc.VALID_TOKEN, "BAD_TOKEN": fc.BAD_TOKEN}
+    secrets_ |= {
+        f"basic({name})": base64.b64encode(f"{fc.EMAIL}:{value}".encode()).decode()
+        for name, value in list(secrets_.items())
+    }
+    with owner_engine.connect() as conn:
+        for table in TENANT_SCOPED_TABLES:
+            column = "id" if table == "tenants" else "tenant_id"
+            dump = conn.execute(
+                text(
+                    "SELECT coalesce(string_agg(t::text, ' '), '') "
+                    f"FROM (SELECT * FROM {table} WHERE {column}=:t) t"
+                ),
+                {"t": tenant},
+            ).scalar()
+            for name, value in secrets_.items():
+                assert value not in dump, f"{name} found in table {table}"
+                assert value.encode().hex() not in dump, f"{name} (hex) found in table {table}"
+    for r in responses:
+        for name, value in secrets_.items():
+            assert value not in r.text and value not in str(r.headers), f"{name} in response {r.request.url}"
+    for name, value in secrets_.items():
+        assert value not in caplog.text, f"{name} in logs"
+    record("all Confluence routes", "Confluence token / Basic header leak scan", "none found", "none found")
+
+
+@pytest.mark.parametrize(
+    "site",
+    [
+        "http://acme.atlassian.net",
+        "https://atlassian.net.evil.com",
+        "https://acme.atlassian.net@169.254.169.254",
+        "https://169.254.169.254",
+        "https://acme.atlassian.net:8443",
+    ],
+)
+def test_confluence_site_cannot_be_pointed_at_internal_hosts(db_client, tokens, fake_confluence, site):
+    from tests.fakes import confluence as fc
+
+    h = bearer(tokens.mint(tenant_id=uuid.uuid4(), user_id="alice", roles=["tenant_admin"]))
+    body = {"provider": "confluence", "display_name": "x", "token": fc.VALID_TOKEN, "email": fc.EMAIL}
+    r = db_client.post("/v1/connections", json=body | {"base_url": site}, headers=h)
+    record("POST /v1/connections (confluence)", f"SSRF site {site}", "422", str(r.status_code))
+    assert r.status_code == 422 and r.json()["code"] == "BASE_URL_NOT_ALLOWED"
+    assert fake_confluence.calls == []

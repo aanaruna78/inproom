@@ -10,7 +10,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, Path, Query, Request, Response
 from pydantic import AfterValidator, BaseModel, Field
-from sqlalchemy import Connection, and_, delete, insert, select, update
+from sqlalchemy import Connection, and_, delete, func, insert, select, update
 
 from app import audit
 from app.api_errors import ApiError, conflict
@@ -19,7 +19,14 @@ from app.authz import authorize
 from app.connectors.base import ProviderError
 from app.connectors.registry import GitTransport, provider_errors, provider_for
 from app.db import tenant_session
-from app.db_schema import outbox_events, project_jira_sources, project_repositories, source_connections
+from app.db_schema import (
+    confluence_pages,
+    outbox_events,
+    project_confluence_sources,
+    project_jira_sources,
+    project_repositories,
+    source_connections,
+)
 from app.modules import settings as settings_module
 from app.modules import webhooks
 from app.modules.connections import credential_of, load_connection
@@ -107,10 +114,22 @@ class JiraScopeItem(BaseModel):
     snapshot_version: int
 
 
+class ConfluenceScopeItem(BaseModel):
+    source_id: uuid.UUID
+    connection_id: uuid.UUID
+    base_url: str
+    space_id: str
+    space_key: str
+    filters: dict
+    page_count: int
+    last_synced_at: datetime | None
+
+
 class SyncScope(BaseModel):
     project_id: uuid.UUID
     repositories: list[ScopeItem]
     jira_projects: list[JiraScopeItem] = Field(default_factory=list)
+    confluence_spaces: list[ConfluenceScopeItem] = Field(default_factory=list)
     excluded: list[ScopeExclusion]
 
 
@@ -422,7 +441,7 @@ def _remove_hook_if_unused(
 @router.get(
     "/v1/projects/{project_id}/sources/scope",
     response_model=SyncScope,
-    summary="The sync scope indexing may read: selected, readable repositories, branches and Jira projects",
+    summary="The sync scope indexing may read: selected, readable repositories, Jira projects and spaces",
     responses={404: PROBLEM},
 )
 def sync_scope(request: Request, principal: CurrentPrincipal, project_id: uuid.UUID) -> SyncScope:
@@ -449,6 +468,38 @@ def sync_scope(request: Request, principal: CurrentPrincipal, project_id: uuid.U
                     project_jira_sources.c.project_id == project_id,
                 )
                 .order_by(project_jira_sources.c.jira_key)
+            ).mappings()
+        ]
+        current = (
+            select(func.count())
+            .where(
+                confluence_pages.c.tenant_id == project_confluence_sources.c.tenant_id,
+                confluence_pages.c.source_id == project_confluence_sources.c.id,
+                confluence_pages.c.status == "CURRENT",
+            )
+            .scalar_subquery()
+        )
+        confluence_rows = [
+            dict(r)
+            for r in conn.execute(
+                select(
+                    project_confluence_sources,
+                    current.label("page_count"),
+                    source_connections.c.status.label("connection_status"),
+                    source_connections.c.base_url,
+                )
+                .join(
+                    source_connections,
+                    and_(
+                        source_connections.c.tenant_id == project_confluence_sources.c.tenant_id,
+                        source_connections.c.id == project_confluence_sources.c.connection_id,
+                    ),
+                )
+                .where(
+                    project_confluence_sources.c.tenant_id == principal.tenant_id,
+                    project_confluence_sources.c.project_id == project_id,
+                )
+                .order_by(project_confluence_sources.c.space_key)
             ).mappings()
         ]
     included, excluded = [], []
@@ -479,4 +530,31 @@ def sync_scope(request: Request, principal: CurrentPrincipal, project_id: uuid.U
                     source_id=r["id"], **{k: r[k] for k in JiraScopeItem.model_fields if k != "source_id"}
                 )
             )
-    return SyncScope(project_id=project_id, repositories=included, jira_projects=jira, excluded=excluded)
+    spaces = []
+    for r in confluence_rows:
+        if r["status"] != "ACTIVE":
+            excluded.append(
+                ScopeExclusion(
+                    full_name=r["space_key"], reason=r["status_reason"] or "paused", kind="confluence"
+                )
+            )
+        elif r["connection_status"] not in ("ACTIVE", "DEGRADED"):
+            excluded.append(
+                ScopeExclusion(
+                    full_name=r["space_key"], reason=f"connection {r['connection_status']}", kind="confluence"
+                )
+            )
+        else:
+            spaces.append(
+                ConfluenceScopeItem(
+                    source_id=r["id"],
+                    **{k: r[k] for k in ConfluenceScopeItem.model_fields if k != "source_id"},
+                )
+            )
+    return SyncScope(
+        project_id=project_id,
+        repositories=included,
+        jira_projects=jira,
+        confluence_spaces=spaces,
+        excluded=excluded,
+    )
