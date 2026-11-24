@@ -1,7 +1,7 @@
 """QA probes for INPROOM-24 (build/qa/INPROOM-24/test_probes.py at fe4e876), committed as regressions.
 
 Unfixed cases are strict xfails naming their defect, so each fix must flip them to passing:
-- INPROOM-139: live content must be revalidated against the current approved scope;
+- INPROOM-139: live content must be revalidated against the current approved scope (fixed);
 - INPROOM-140: archived projects must not allow space removal (fixed; also for repositories and Jira).
 One probe is adapted (see test_unchanged_sync_writes_no_catalog_rows_or_page_events) because AC3 was
 clarified rather than changed: an unchanged sync records when it ran (source sync timestamp + one audit row)
@@ -16,17 +16,16 @@ env = helpers.env
 selected = helpers.selected
 
 pytestmark = pytest.mark.integration
-INPROOM_139 = pytest.mark.xfail(strict=True, reason="INPROOM-139: live content not revalidated")
 
 
 @pytest.mark.parametrize(
     "change",
     [
-        pytest.param("own_restriction", marks=INPROOM_139),
-        pytest.param("inherited_restriction", marks=INPROOM_139),
-        pytest.param("label_removed", marks=INPROOM_139),
-        pytest.param("archived", marks=INPROOM_139),
-        pytest.param("draft", marks=INPROOM_139),
+        "own_restriction",
+        "inherited_restriction",
+        "label_removed",
+        "archived",
+        "draft",
     ],
 )
 def test_live_content_revalidates_approved_scope(selected, change):
@@ -46,7 +45,6 @@ def test_live_content_revalidates_approved_scope(selected, change):
     ), f"{change}: expected content refusal, got {r.status_code}; version={r.json().get('version')}"
 
 
-@INPROOM_139
 def test_restriction_after_last_sync_cannot_be_bypassed_with_old_version(selected):
     e = selected
     e.conf.pages[101].groups = ["bots"]
@@ -147,3 +145,31 @@ def test_archived_project_keeps_git_and_jira_selections(db_client, tokens, fake_
         assert r.status_code == 409 and r.json()["code"] == "PROJECT_ARCHIVED", path
     assert len(db_client.get(f"/v1/projects/{pid}/sources/repositories", headers=h).json()) == 1
     assert len(db_client.get(f"/v1/projects/{pid}/sources/jira", headers=h).json()) == 1
+
+
+@pytest.mark.parametrize("change", ["tree_moved", "space_moved"])
+def test_live_content_revalidates_tree_and_space(selected, change):
+    """INPROOM-139 extras: page-tree filter changes and a move to another space are caught live too."""
+    e = selected
+    e.select(filters={"root_page_ids": ["102"]})  # Runbooks tree: 102 (+ notes 200-202)
+    if change == "tree_moved":
+        e.conf.pages[200].parent = 100  # note 200 moved out of the Runbooks tree
+        page = 200
+    else:
+        e.conf.pages[102].space = "HR"
+        page = 102
+    r = e.client.get(f"/v1/projects/{e.pid}/sources/confluence/{e.sid}/pages/{page}/content", headers=e.h())
+    assert r.status_code in (404, 409), f"{change}: got {r.status_code}"
+
+
+def test_included_restricted_pages_stay_readable_live(selected):
+    """INPROOM-139 positive case: with include_restricted, a restricted page is still served."""
+    e = selected
+    e.select(filters={"required_labels": ["approved"], "include_restricted": True})
+    e.conf.pages[101].groups = ["bots"]
+    r = e.client.get(f"/v1/projects/{e.pid}/sources/confluence/{e.sid}/pages/104/content", headers=e.h())
+    assert r.status_code == 200, r.text
+    r = e.client.get(
+        f"/v1/projects/{e.pid}/sources/confluence/{e.sid}/pages/101/content?version=1", headers=e.h()
+    )
+    assert r.status_code == 200 and r.json()["version"] == 1

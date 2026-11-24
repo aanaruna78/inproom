@@ -20,10 +20,13 @@ from sqlalchemy import BigInteger, cast, select
 from app.api_errors import ApiError, conflict
 from app.auth import CurrentPrincipal
 from app.authz import authorize
+from app.connectors.base import NotFoundOrNoAccess
+from app.connectors.confluence import LivePage
 from app.connectors.registry import Transports, confluence_for, provider_errors
 from app.db import tenant_session
 from app.db_schema import confluence_page_versions, confluence_pages
 from app.modules.confluence_sources import source_of
+from app.modules.confluence_sync import Filters, in_filters
 from app.modules.connections import credential_of, load_connection
 
 router = APIRouter(tags=["confluence sources"])
@@ -194,6 +197,26 @@ def _page(conn, tenant_id: uuid.UUID, source_id: uuid.UUID, page_id: str) -> dic
     return dict(row)
 
 
+def _require_live_eligibility(live: LivePage, source: dict[str, Any]) -> None:
+    filters = Filters.of(source["filters"])
+    if live.space_id != source["space_id"]:
+        raise ApiError(
+            404, "PAGE_NOT_IN_SPACE", "Not found", "This page is no longer in the selected space; sync again"
+        )
+    if live.status != "current":
+        raise conflict("PAGE_OUT_OF_SCOPE", f"This page is now {live.status} in Confluence; it is not read")
+    if not in_filters(live.id, live.ancestors, live.labels, filters):
+        raise conflict(
+            "PAGE_OUT_OF_SCOPE",
+            "This page no longer matches the space filters (labels or page tree changed); it is not read",
+        )
+    if live.restricted and not filters.include_restricted:
+        raise conflict(
+            "PAGE_RESTRICTED",
+            "This page now has read restrictions (own or inherited) and the space excludes restricted pages",
+        )
+
+
 # ---------------------------------------------------------------- routes
 
 
@@ -315,8 +338,21 @@ def get_page_content(
         if connection["status"] not in ("ACTIVE", "DEGRADED"):
             raise conflict("CONNECTION_NOT_ACTIVE", f"Connection is {connection['status']}")
         token = credential_of(conn, principal, connection)
-    with provider_errors(("PAGE_NOT_ACCESSIBLE", "Confluence no longer returns this page to the credential")):
-        body = confluence_for(connection, token, transports).get_page(page_id, version)
+    provider = confluence_for(connection, token, transports)
+    try:
+        with provider_errors():
+            # INPROOM-139: the catalog may be stale (restrictions, labels, tree or status change between
+            # syncs). Revalidate the page's CURRENT eligibility live and fail closed before returning any
+            # body, including historical versions, served only while the page itself is still eligible.
+            _require_live_eligibility(provider.live_page(page_id), source)
+            body = provider.get_page(page_id, version)
+    except NotFoundOrNoAccess as exc:
+        raise ApiError(
+            404,
+            "PAGE_NOT_ACCESSIBLE",
+            "Not found",
+            "Confluence no longer returns this page to the credential",
+        ) from exc
     if body.space_id != source["space_id"]:
         # The page moved to another space after the last sync: never serve content from outside the selection.
         raise ApiError(

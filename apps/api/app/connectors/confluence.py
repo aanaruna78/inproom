@@ -97,6 +97,24 @@ class PageVersion:
     message: str | None
 
 
+@dataclass(frozen=True)
+class LivePage:
+    """A page's current eligibility facts, read live (INPROOM-139) to fail closed before serving content."""
+
+    id: str
+    status: str
+    space_id: str
+    labels: list[str]
+    ancestors: list[str]
+    restrictions: dict[str, list[str]]  # own read restrictions
+    inherited: list[dict[str, Any]]  # [{"page_id", "users", "groups"}] from restricted ancestors
+
+    @property
+    def restricted(self) -> bool:
+        own = self.restrictions["users"] or self.restrictions["groups"]
+        return bool(own or self.inherited)
+
+
 @dataclass
 class PageListing:
     pages: list[PageMeta] = field(default_factory=list)
@@ -410,3 +428,41 @@ class ConfluenceProvider:
                 for v in items
             ]
         return sorted(out, key=lambda v: v.number)
+
+    def live_page(self, page_id: str) -> LivePage:
+        """Current status, space, labels, ancestors and own + inherited read restrictions of one page."""
+        if self.cloud:
+            data = self._get(f"{self.v2}/pages/{int(page_id)}", **{"include-labels": "true"})
+            labels = [lbl["name"] for lbl in (data.get("labels") or {}).get("results", [])]
+            ancestors = [
+                str(a["id"])
+                for a in self._all(f"{self.v2}/pages/{int(page_id)}/ancestors", {"limit": PAGE_SIZE}, 5)
+                if a.get("type", "page") == "page"
+            ]
+            space_id, own = str(data.get("spaceId", "")), self.restrictions(page_id)
+        else:
+            data = self._get(
+                f"{self.v1}/content/{int(page_id)}",
+                expand="space,ancestors,metadata.labels,restrictions.read.restrictions.user,"
+                "restrictions.read.restrictions.group",
+            )
+            labels = [
+                lbl["name"] for lbl in ((data.get("metadata") or {}).get("labels") or {}).get("results", [])
+            ]
+            ancestors = [str(a["id"]) for a in data.get("ancestors") or []]
+            space_id = str((data.get("space") or {}).get("id", ""))
+            own = self._acl(((data.get("restrictions") or {}).get("read") or {}).get("restrictions") or {})
+        inherited = []
+        for ancestor in ancestors:
+            acl = self.restrictions(ancestor)
+            if acl["users"] or acl["groups"]:
+                inherited.append({"page_id": ancestor, **acl})
+        return LivePage(
+            id=str(data["id"]),
+            status=data.get("status", "current"),
+            space_id=space_id,
+            labels=sorted(labels),
+            ancestors=ancestors,
+            restrictions=own,
+            inherited=inherited,
+        )

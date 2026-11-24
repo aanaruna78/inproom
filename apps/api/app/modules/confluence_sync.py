@@ -74,10 +74,14 @@ def acl(page: PageMeta, by_id: dict[str, PageMeta]) -> dict[str, Any]:
     }
 
 
+def in_filters(page_id: str, ancestors: list[str], labels: list[str], filters: Filters) -> bool:
+    in_tree = not filters.root_page_ids or any(p in filters.root_page_ids for p in [page_id, *ancestors])
+    present = {label.lower() for label in labels}
+    return in_tree and all(label in present for label in filters.required_labels)
+
+
 def matches(page: PageMeta, filters: Filters) -> bool:
-    in_tree = not filters.root_page_ids or any(p in filters.root_page_ids for p in [page.id, *page.ancestors])
-    labels = {label.lower() for label in page.labels}
-    return in_tree and all(label in labels for label in filters.required_labels)
+    return in_filters(page.id, page.ancestors, page.labels, filters)
 
 
 def desired(page: PageMeta, by_id: dict[str, PageMeta], filters: Filters) -> dict[str, Any]:
