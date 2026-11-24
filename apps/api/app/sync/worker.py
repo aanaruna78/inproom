@@ -82,7 +82,10 @@ def schedule_tick(tenant: uuid.UUID | None = None) -> dict[str, int]:
         f=settings.sync_full_interval_seconds,
         t=tenant,
     )[0][0]
-    return {"recovered": recovered, "queued": queued}
+    checks = _maintenance(
+        "SELECT enqueue_due_health_checks(:i, :t)", i=settings.health_interval_seconds, t=tenant
+    )[0][0]
+    return {"recovered": recovered, "queued": queued, "health_checks": checks}
 
 
 def claim(worker_id: str, tenant: uuid.UUID | None = None) -> tuple[uuid.UUID, uuid.UUID] | None:
@@ -126,6 +129,11 @@ def run_job(job_id: uuid.UUID, tenant: uuid.UUID, transports: dict[str, Any] | N
         code = "CREDENTIAL_INVALID" if isinstance(exc, CredentialInvalid) else "SOURCE_NOT_ACCESSIBLE"
         with tenant_session(tenant) as conn:
             queue.fail(conn, job, _error(code, exc))
+            if code == "CREDENTIAL_INVALID":
+                # Surface it now (INPROOM-145): the connection needs reauthorization, whatever job noticed.
+                from app.sync.handlers import invalidate_connection  # noqa: PLC0415
+
+                invalidate_connection(conn, job, ctx.trace_id)
         outcome = {"status": "FAILED", "error": code}
     except PermanentFailure as exc:
         with tenant_session(tenant) as conn:

@@ -35,10 +35,11 @@ def test_status_moves_from_stale_to_fresh_to_failing(selected):
     assert (before["kind"], before["name"], before["health"], before["last_success_at"]) == (
         "confluence",
         "ENG",
-        "stale",
+        "never",  # INPROOM-145: never synced is distinguished from stale
         None,
     )
-    run(e)
+    while run(e):  # the tick also queues an hourly connection health check (INPROOM-145): drain both
+        pass
     [fresh] = status(e)
     assert fresh["health"] == "fresh" and fresh["last_success_at"] and not fresh["queued"]
     e.conf.failures = ["500"] * 3

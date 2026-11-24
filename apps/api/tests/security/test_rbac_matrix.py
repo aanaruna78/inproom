@@ -126,6 +126,15 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
         "project",
         "project.source.manage",
     ),
+    # INPROOM-145
+    ("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/exclude"): (
+        "project",
+        "project.source.manage",
+    ),
+    ("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/include"): (
+        "project",
+        "project.source.manage",
+    ),
 }
 # Audit action recorded for a denial when it differs from the permission (listing projects of a workspace
 # the caller cannot see is audited as a project read).

@@ -708,6 +708,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/sources/{kind}/{source_id}/exclude": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exclude a source from the sync scope (history kept; only 'include' brings it back). Idempotent */
+        post: operations["exclude_source_v1_projects__project_id__sources__kind___source_id__exclude_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/sources/{kind}/{source_id}/include": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Include an excluded source again and queue a reconcile to catch up. Idempotent */
+        post: operations["include_source_v1_projects__project_id__sources__kind___source_id__include_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile": {
         parameters: {
             query?: never;
@@ -816,10 +850,17 @@ export interface components {
              * Format: uuid
              */
             connection_id: string;
+            /** Data As Of */
+            data_as_of?: string | null;
             /** Filters */
             filters: {
                 [key: string]: unknown;
             };
+            /**
+             * Freshness
+             * @default never
+             */
+            freshness: string;
             /** Last Synced At */
             last_synced_at: string | null;
             /** Page Count */
@@ -1068,6 +1109,13 @@ export interface components {
              * Format: uuid
              */
             connection_id: string;
+            /** Data As Of */
+            data_as_of?: string | null;
+            /**
+             * Freshness
+             * @default never
+             */
+            freshness: string;
             /** Jira Key */
             jira_key: string;
             /** Jira Project Id */
@@ -1656,6 +1704,15 @@ export interface components {
         };
         /** ScopeExclusion */
         ScopeExclusion: {
+            /** Cause */
+            cause?: string | null;
+            /** Data As Of */
+            data_as_of?: string | null;
+            /**
+             * Freshness
+             * @default paused
+             */
+            freshness: string;
             /** Full Name */
             full_name: string;
             /**
@@ -1677,6 +1734,13 @@ export interface components {
              * Format: uuid
              */
             connection_id: string;
+            /** Data As Of */
+            data_as_of?: string | null;
+            /**
+             * Freshness
+             * @default never
+             */
+            freshness: string;
             /** Full Name */
             full_name: string;
             /** Provider */
@@ -1822,15 +1886,37 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** SourceExclusion */
+        SourceExclusion: {
+            /** Excluded At */
+            excluded_at: string | null;
+            /** Excluded By */
+            excluded_by: string | null;
+            /** Job Id */
+            job_id?: string | null;
+            /** Kind */
+            kind: string;
+            /** Pause Cause */
+            pause_cause: string | null;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Status */
+            status: string;
+        };
         /** SourceSyncStatus */
         SourceSyncStatus: {
             /** Consecutive Failures */
             consecutive_failures: number;
+            /** Data As Of */
+            data_as_of: string | null;
             /**
              * Health
              * @enum {string}
              */
-            health: "fresh" | "stale" | "failing";
+            health: "fresh" | "stale" | "failing" | "never" | "excluded" | "paused";
             /** Kind */
             kind: string;
             /** Last Attempt At */
@@ -1845,6 +1931,8 @@ export interface components {
             name: string;
             /** Next Due At */
             next_due_at: string | null;
+            /** Pause Cause */
+            pause_cause: string | null;
             /** Queued */
             queued: boolean;
             /** Running */
@@ -1856,6 +1944,8 @@ export interface components {
             source_id: string;
             /** Source Status */
             source_status: string;
+            /** Status Reason */
+            status_reason: string | null;
         };
         /** Sources */
         Sources: {
@@ -4444,6 +4534,100 @@ export interface operations {
             };
             /** @description problem+json */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exclude_source_v1_projects__project_id__sources__kind___source_id__exclude_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                kind: "git" | "jira" | "confluence";
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceExclusion"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    include_source_v1_projects__project_id__sources__kind___source_id__include_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                kind: "git" | "jira" | "confluence";
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceExclusion"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

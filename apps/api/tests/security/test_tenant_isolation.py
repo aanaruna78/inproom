@@ -93,6 +93,9 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/v1/projects/{project_id}/sources/sync-status"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/sources/jobs"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile"): "project_scoped",
+    # INPROOM-145
+    ("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/exclude"): "project_scoped",
+    ("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/include"): "project_scoped",
 }
 
 SCOPED = [

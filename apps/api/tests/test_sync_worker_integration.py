@@ -13,6 +13,7 @@ from app.db import get_engine, tenant_session
 from app.sync import queue, worker
 from tests import test_confluence_sources_integration as helpers
 from tests.fakes import confluence as fc
+from tests.sync_helpers import run_sync
 
 env = helpers.env
 selected = helpers.selected
@@ -20,7 +21,7 @@ pytestmark = pytest.mark.integration
 
 
 def run(e, **kw):
-    return worker.run_once("w1", transports={"confluence": e.conf.transport()}, tenant=e.tenant, **kw)
+    return run_sync({"confluence": e.conf.transport()}, e.tenant, worker_id="w1", **kw)
 
 
 def job(e):

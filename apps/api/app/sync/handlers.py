@@ -14,7 +14,14 @@ from app.connectors import vault
 from app.connectors.base import NotFoundOrNoAccess
 from app.connectors.registry import confluence_for, jira_for, provider_for
 from app.db import tenant_session
-from app.db_schema import outbox_events, project_repositories, projects, source_connections
+from app.db_schema import (
+    outbox_events,
+    project_confluence_sources,
+    project_repositories,
+    projects,
+    source_connections,
+)
+from app.modules import connections as connections_module
 from app.modules import jira_schema, jira_sources
 from app.modules import settings as settings_module
 from app.modules.confluence_sources import apply_sync, sources
@@ -263,3 +270,74 @@ def jira(ctx: JobContext) -> dict[str, Any]:
         }
         queue.succeed(conn, ctx.job, result, watermark)
     return result
+
+
+# ---------------------------------------------------------------- connection health (INPROOM-145)
+
+SOURCE_TABLES = {
+    "git": project_repositories,
+    "jira": jira_sources.project_jira_sources,
+    "confluence": project_confluence_sources,
+}
+
+
+@handler("connection")
+def connection_health(ctx: JobContext) -> dict[str, Any]:
+    """Scheduled health check: the same check as "Check now", audited only when something changed."""
+    with tenant_session(ctx.tenant) as conn:
+        row = (
+            conn.execute(
+                select(source_connections.c.status).where(source_connections.c.id == ctx.job["source_id"])
+            )
+            .mappings()
+            .first()
+        )
+    if row is None or row["status"] == "REVOKED":
+        raise SkipJob("connection revoked or gone")
+    updated = connections_module.run_health_check(
+        ctx.principal, ctx.job["source_id"], ctx.transports, ctx.trace_id
+    )
+    result = {"status": updated["status"], "issues": [i["code"] for i in updated["health"].get("issues", [])]}
+    with tenant_session(ctx.tenant) as conn:
+        queue.succeed(conn, ctx.job, result)
+    return result
+
+
+def invalidate_connection(conn, job: dict[str, Any], trace_id: str) -> None:
+    """A provider rejected the credential during a job: mark the connection INVALID now (once)."""
+    if job["source_kind"] == "connection":
+        connection_id = job["source_id"]
+    else:
+        table = SOURCE_TABLES[job["source_kind"]]
+        found = conn.execute(select(table.c.connection_id).where(table.c.id == job["source_id"])).first()
+        if found is None:
+            return
+        connection_id = found.connection_id
+    current = (
+        conn.execute(
+            select(source_connections).where(source_connections.c.id == connection_id).with_for_update()
+        )
+        .mappings()
+        .first()
+    )
+    if current is None or current["status"] in ("INVALID", "REVOKED"):
+        return
+    issue = {
+        "code": "CREDENTIAL_INVALID",
+        "message": "The provider rejected the credential during a sync. Reauthorize the connection.",
+    }
+    updated = connections_module._update(
+        conn,
+        queue.system_principal(job["tenant_id"]),
+        connection_id,
+        status="INVALID",
+        health=connections_module._health("INVALID", [issue]),
+    )
+    connections_module._event(
+        conn,
+        queue.system_principal(job["tenant_id"]),
+        trace_id,
+        "connection.invalidated",
+        updated,
+        {"detected_by": f"{job['source_kind']} sync job {job['id']}"},
+    )

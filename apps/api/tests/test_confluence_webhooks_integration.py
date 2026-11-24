@@ -9,10 +9,9 @@ import uuid
 import pytest
 
 from app.config import get_settings
-from app.sync import worker
 from tests import test_confluence_sources_integration as helpers
 from tests.fakes.github import VALID_TOKEN
-from tests.sync_helpers import due
+from tests.sync_helpers import due, run_sync
 
 env = helpers.env
 selected = helpers.selected
@@ -47,22 +46,32 @@ def page_event(page=101, space="ENG"):
 
 def test_deliveries_dedup_coalesce_and_emit_each_change_once(hooked):
     e = hooked
-    worker.run_once("w", transports={"confluence": e.conf.transport()}, tenant=e.tenant)  # baseline
+    run_sync({"confluence": e.conf.transport()}, e.tenant)  # baseline
     e.conf.edit(101, "<p>webhook-announced edit</p>")
     first = deliver(e, page_event(), delivery="c-1")
     assert first.status_code == 202 and first.json()["projects"] == 1
     assert deliver(e, page_event(), delivery="c-1").json()["status"] == "duplicate"
     for n in range(2, 6):  # four more distinct deliveries while the job is still queued
         assert deliver(e, page_event(), delivery=f"c-{n}").status_code == 202
-    assert e.q("SELECT count(*) FROM sync_jobs WHERE tenant_id=:t AND status='QUEUED'") == 1
-    assert e.q("SELECT triggers FROM sync_jobs WHERE tenant_id=:t AND status='QUEUED'") == 5
+    assert (
+        e.q(
+            "SELECT count(*) FROM sync_jobs "
+            "WHERE tenant_id=:t AND status='QUEUED' AND source_kind='confluence'"
+        )
+        == 1
+    )
+    assert (
+        e.q(
+            "SELECT triggers FROM sync_jobs "
+            "WHERE tenant_id=:t AND status='QUEUED' AND source_kind='confluence'"
+        )
+        == 5
+    )
     no_id = deliver(e, page_event(page=102))  # no identifier header: the signed body identifies it
     assert no_id.status_code == 202 and no_id.json()["delivery_id"].startswith("sha256:")
     assert deliver(e, page_event(page=102)).json()["status"] == "duplicate"
     due(e.tenant)
-    done = worker.run_once(
-        "w", transports={"confluence": e.conf.transport()}, schedule=False, tenant=e.tenant
-    )
+    done = run_sync({"confluence": e.conf.transport()}, e.tenant, schedule=False)
     assert done["reason"] == "webhook" and done["result"]["counts"]["updated"] == 1
     assert e.events("source.confluence.page.changed") == 4  # 3 at selection + the edit, once
     other_space = deliver(e, page_event(space="HR"), delivery="c-9")

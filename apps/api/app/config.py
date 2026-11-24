@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     sync_interval_seconds: int = 900
     sync_full_interval_seconds: int = 86400
     sync_lease_seconds: int = 300
+    # Scheduled connection health checks (INPROOM-145).
+    health_interval_seconds: int = 3600
     # Public base URL used in webhook registrations; unset => webhooks are not registered.
     public_url: str | None = None
 

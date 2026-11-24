@@ -33,3 +33,15 @@ def payloads(e, kind):
                 {"t": e.tenant, "k": kind},
             )
         ]
+
+
+def run_sync(transports, tenant, schedule=True, worker_id="w"):
+    """Like worker.run_once, but also processes any connection health-check jobs (INPROOM-145) the scheduler
+    queued alongside, returning the first source-sync result (or None when nothing else is runnable)."""
+    from app.sync import worker
+
+    while True:
+        out = worker.run_once(worker_id, transports=transports, schedule=schedule, tenant=tenant)
+        schedule = False
+        if out is None or out["source_kind"] != "connection":
+            return out

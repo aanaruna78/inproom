@@ -252,13 +252,14 @@ def test_check_detects_invalid_token_and_lost_access(connected):
     assert ("REPOSITORY_NOT_ACCESSIBLE", "acme/api") in codes and ("EXCESS_PRIVILEGE", "acme/web") in codes
     scope = env.scope()
     assert [s["full_name"] for s in scope["repositories"]] == ["acme/web"]
-    assert scope["excluded"] == [
-        {
-            "full_name": "acme/api",
-            "reason": "the credential can no longer read this repository",
-            "kind": "git",
-        }
-    ]
+    [excluded] = scope["excluded"]
+    assert {k: excluded[k] for k in ("full_name", "reason", "kind", "cause", "freshness")} == {
+        "full_name": "acme/api",
+        "reason": "the credential can no longer read this repository",
+        "kind": "git",
+        "cause": "access",  # INPROOM-145: a health check pause is an access pause
+        "freshness": "paused",
+    }
     env.gh.tokens[VALID_TOKEN].access[1] = dict(FULL)  # access restored
     assert env.client.post(f"/v1/connections/{env.cid}/check", headers=env.h()).json()["status"] == "ACTIVE"
     assert {s["full_name"] for s in env.scope()["repositories"]} == {"acme/api", "acme/web"}

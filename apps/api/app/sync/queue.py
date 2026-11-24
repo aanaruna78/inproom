@@ -28,7 +28,7 @@ SYSTEM_ACTOR = "system:sync-worker"
 MAX_ATTEMPTS = 6
 BASE_BACKOFF_S = 30
 MAX_BACKOFF_S = 1800
-KINDS = ("git", "jira", "confluence")
+KINDS = ("git", "jira", "confluence", "connection")
 
 
 class LostLease(Exception):
@@ -136,13 +136,22 @@ def succeed(
         "last_success_at": now,
         "consecutive_failures": 0,
         "last_error": None,
-        "next_due_at": now + timedelta(seconds=get_settings().sync_interval_seconds),
+        "next_due_at": now + timedelta(seconds=_interval(job)),
     }
     if new_watermark is not None:
         values["watermark"] = new_watermark
     if job["mode"] == "full":
         values["last_full_at"] = now
     _state(conn, job, **values)
+
+
+def _interval(job: dict[str, Any]) -> int:
+    settings = get_settings()
+    return (
+        settings.health_interval_seconds
+        if job["source_kind"] == "connection"
+        else settings.sync_interval_seconds
+    )
 
 
 def skip(conn: Connection, job: dict[str, Any], reason: str) -> None:

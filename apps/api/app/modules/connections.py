@@ -164,8 +164,9 @@ def _health(status: str, issues: list[dict[str, Any]], reachable: bool = True) -
 
 
 def _event(
-    conn: Connection, principal: Principal, request: Request, action: str, row: dict, extra=None
+    conn: Connection, principal: Principal, request: Request | str | None, action: str, row: dict, extra=None
 ) -> None:
+    """Audit + outbox for a connection change. `request` may be a Request or a trace id (worker)."""
     payload = {"connection_id": str(row["id"]), "provider": row["provider"], "status": row["status"]} | (
         extra or {}
     )
@@ -175,7 +176,7 @@ def _event(
         action,
         "connection",
         str(row["id"]),
-        trace_id=request.state.trace_id,
+        trace_id=request.state.trace_id if isinstance(request, Request) else request,
         payload=payload,
     )
     conn.execute(insert(outbox_events).values(tenant_id=principal.tenant_id, type=action, payload=payload))
@@ -339,7 +340,35 @@ def check_connection(
         principal, "tenant.connection.manage", request, target_type="connection", target_id=str(connection_id)
     )
     with tenant_session(principal.tenant_id) as conn:
-        row = load_connection(conn, principal, request, connection_id, "tenant.connection.manage")
+        load_connection(conn, principal, request, connection_id, "tenant.connection.manage")
+    return SourceConnection.model_validate(
+        run_health_check(principal, connection_id, transports, request, always_record=True)
+    )
+
+
+def run_health_check(
+    principal: Principal,
+    connection_id: uuid.UUID,
+    transports: dict[str, Any],
+    trace: Request | str | None,
+    always_record: bool = False,
+) -> dict[str, Any]:
+    """Credential + per-source health (INPROOM-109/26). Used by `/check` and by scheduled health jobs.
+
+    Provider calls first, outside any transaction; then one update. A person's check is always audited; a
+    scheduled one only when the status or the set of issue codes changed, so hourly checks of a healthy
+    connection add no events (just last_checked_at / health)."""
+    with tenant_session(principal.tenant_id) as conn:
+        row = dict(
+            conn.execute(
+                select(source_connections).where(
+                    source_connections.c.tenant_id == principal.tenant_id,
+                    source_connections.c.id == connection_id,
+                )
+            )
+            .mappings()
+            .one()
+        )
         token = credential_of(conn, principal, row)
     provider = adapter_for(row, token, transports)
 
@@ -357,8 +386,17 @@ def check_connection(
             status, source_issues = evaluate(principal, row, provider)
         issues += source_issues
     with tenant_session(principal.tenant_id) as conn:
-        current = load_connection(
-            conn, principal, request, connection_id, "tenant.connection.manage", lock=True
+        current = dict(
+            conn.execute(
+                select(source_connections)
+                .where(
+                    source_connections.c.tenant_id == principal.tenant_id,
+                    source_connections.c.id == connection_id,
+                )
+                .with_for_update()
+            )
+            .mappings()
+            .one()
         )
         values: dict[str, Any] = {"last_checked_at": datetime.now(UTC)}
         if status != "UNKNOWN" and current["status"] != "REVOKED":
@@ -367,10 +405,13 @@ def check_connection(
         if account is not None:
             values |= {"account_login": _login(current, account), "granted_scopes": account.scopes}
         updated = _update(conn, principal, connection_id, **values)
-        _event(
-            conn, principal, request, "connection.checked", updated, {"issues": [i["code"] for i in issues]}
-        )
-    return SourceConnection.model_validate(updated)
+        before = sorted(i.get("code", "") for i in (current["health"] or {}).get("issues", []))
+        changed = updated["status"] != current["status"] or sorted(i["code"] for i in issues) != before
+        if always_record or changed:
+            _event(
+                conn, principal, trace, "connection.checked", updated, {"issues": [i["code"] for i in issues]}
+            )
+    return updated
 
 
 @router.put(
@@ -436,24 +477,48 @@ def revoke_connection(
             .where(
                 project_repositories.c.tenant_id == principal.tenant_id,
                 project_repositories.c.connection_id == connection_id,
+                project_repositories.c.pause_cause.is_distinct_from(
+                    "excluded"
+                ),  # a person's exclusion stays as is
             )
-            .values(status="PAUSED", status_reason="connection revoked", updated_at=datetime.now(UTC))
+            .values(
+                status="PAUSED",
+                status_reason="connection revoked",
+                pause_cause="connection_revoked",
+                updated_at=datetime.now(UTC),
+            )
         )
         conn.execute(
             update(project_jira_sources)
             .where(
                 project_jira_sources.c.tenant_id == principal.tenant_id,
                 project_jira_sources.c.connection_id == connection_id,
+                project_jira_sources.c.pause_cause.is_distinct_from(
+                    "excluded"
+                ),  # a person's exclusion stays as is
             )
-            .values(status="PAUSED", status_reason="connection revoked", updated_at=datetime.now(UTC))
+            .values(
+                status="PAUSED",
+                status_reason="connection revoked",
+                pause_cause="connection_revoked",
+                updated_at=datetime.now(UTC),
+            )
         )
         conn.execute(
             update(project_confluence_sources)
             .where(
                 project_confluence_sources.c.tenant_id == principal.tenant_id,
                 project_confluence_sources.c.connection_id == connection_id,
+                project_confluence_sources.c.pause_cause.is_distinct_from(
+                    "excluded"
+                ),  # a person's exclusion stays as is
             )
-            .values(status="PAUSED", status_reason="connection revoked", updated_at=datetime.now(UTC))
+            .values(
+                status="PAUSED",
+                status_reason="connection revoked",
+                pause_cause="connection_revoked",
+                updated_at=datetime.now(UTC),
+            )
         )
         updated = _update(
             conn,

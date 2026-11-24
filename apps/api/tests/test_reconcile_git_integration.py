@@ -3,9 +3,8 @@ webhook at all (missed deliveries are recovered by the scheduler), and never re-
 
 import pytest
 
-from app.sync import worker
 from tests import test_connections_integration as helpers
-from tests.sync_helpers import due, events, payloads
+from tests.sync_helpers import due, events, payloads, run_sync
 
 pytestmark = pytest.mark.integration
 env = helpers.env
@@ -17,7 +16,7 @@ def test_git_heads_change_once_without_webhooks(connected):
     assert e.select("1", ["main", "release/1.0"]).status_code == 200
 
     def run(**kw):
-        return worker.run_once("w", transports={"github": e.gh.transport()}, tenant=e.tenant, **kw)
+        return run_sync({"github": e.gh.transport()}, e.tenant, **kw)
 
     first = run()
     assert first["status"] == "SUCCEEDED" and first["result"]["changed_branches"] == ["main", "release/1.0"]

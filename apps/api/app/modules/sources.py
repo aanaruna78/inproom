@@ -26,10 +26,12 @@ from app.db_schema import (
     project_jira_sources,
     project_repositories,
     source_connections,
+    source_sync_state,
 )
 from app.modules import settings as settings_module
 from app.modules import webhooks
 from app.modules.connections import credential_of, load_connection
+from app.sync.freshness import freshness
 
 router = APIRouter(tags=["sources"])
 PROBLEM = {"description": "problem+json"}
@@ -96,12 +98,17 @@ class ScopeItem(BaseModel):
     provider_repo_id: str
     full_name: str
     branches: list[str]
+    freshness: str = "never"
+    data_as_of: datetime | None = None
 
 
 class ScopeExclusion(BaseModel):
     full_name: str
     reason: str
     kind: str = "git"
+    cause: str | None = None  # access | connection_revoked | excluded (INPROOM-145)
+    freshness: str = "paused"
+    data_as_of: datetime | None = None
 
 
 class JiraScopeItem(BaseModel):
@@ -112,6 +119,8 @@ class JiraScopeItem(BaseModel):
     jira_key: str
     mapping_version: int
     snapshot_version: int
+    freshness: str = "never"
+    data_as_of: datetime | None = None
 
 
 class ConfluenceScopeItem(BaseModel):
@@ -123,6 +132,8 @@ class ConfluenceScopeItem(BaseModel):
     filters: dict
     page_count: int
     last_synced_at: datetime | None
+    freshness: str = "never"
+    data_as_of: datetime | None = None
 
 
 class SyncScope(BaseModel):
@@ -303,7 +314,15 @@ def select_repository(
             "permissions": repo.permissions,
             "status": "ACTIVE",
             "status_reason": None,
+            "pause_cause": None,
         } | webhook
+        if existing is not None and existing["pause_cause"] == "excluded":
+            # Re-selecting updates branches but never re-includes an excluded source: only "include" does.
+            values |= {
+                "status": "PAUSED",
+                "status_reason": existing["status_reason"],
+                "pause_cause": "excluded",
+            }
         if existing is None:
             conn.execute(
                 insert(project_repositories).values(
@@ -505,55 +524,44 @@ def sync_scope(request: Request, principal: CurrentPrincipal, project_id: uuid.U
                 .order_by(project_confluence_sources.c.space_key)
             ).mappings()
         ]
-    included, excluded = [], []
-    for r in rows:
-        if r["status"] != "ACTIVE":
-            excluded.append(ScopeExclusion(full_name=r["full_name"], reason=r["status_reason"] or "paused"))
-        elif r["connection_status"] not in ("ACTIVE", "DEGRADED"):
-            excluded.append(
-                ScopeExclusion(full_name=r["full_name"], reason=f"connection {r['connection_status']}")
-            )
-        else:
-            included.append(ScopeItem.model_validate(r))
-    jira = []
-    for r in jira_rows:
-        if r["status"] != "ACTIVE":
-            excluded.append(
-                ScopeExclusion(full_name=r["jira_key"], reason=r["status_reason"] or "paused", kind="jira")
-            )
-        elif r["connection_status"] not in ("ACTIVE", "DEGRADED"):
-            excluded.append(
-                ScopeExclusion(
-                    full_name=r["jira_key"], reason=f"connection {r['connection_status']}", kind="jira"
+        states = {
+            (r["source_kind"], r["source_id"]): dict(r)
+            for r in conn.execute(
+                select(source_sync_state).where(source_sync_state.c.project_id == project_id)
+            ).mappings()
+        }
+
+    def fresh(kind: str, r: dict) -> dict:
+        state = states.get((kind, r["id"]))
+        return {
+            "freshness": freshness(r["status"], r.get("pause_cause"), r["connection_status"], state),
+            "data_as_of": (state or {}).get("last_success_at"),
+        }
+
+    included, excluded, jira, spaces = [], [], [], []
+    for kind, items, name, model, bucket in (
+        ("git", rows, "full_name", ScopeItem, included),
+        ("jira", jira_rows, "jira_key", JiraScopeItem, jira),
+        ("confluence", confluence_rows, "space_key", ConfluenceScopeItem, spaces),
+    ):
+        for r in items:
+            extra = fresh(kind, r)
+            if r["status"] != "ACTIVE" or r["connection_status"] not in ("ACTIVE", "DEGRADED"):
+                reason = (
+                    (r["status_reason"] or "paused")
+                    if r["status"] != "ACTIVE"
+                    else f"connection {r['connection_status']}"
                 )
-            )
-        else:
-            jira.append(
-                JiraScopeItem(
-                    source_id=r["id"], **{k: r[k] for k in JiraScopeItem.model_fields if k != "source_id"}
+                excluded.append(
+                    ScopeExclusion(
+                        full_name=r[name], reason=reason, kind=kind, cause=r.get("pause_cause"), **extra
+                    )
                 )
-            )
-    spaces = []
-    for r in confluence_rows:
-        if r["status"] != "ACTIVE":
-            excluded.append(
-                ScopeExclusion(
-                    full_name=r["space_key"], reason=r["status_reason"] or "paused", kind="confluence"
-                )
-            )
-        elif r["connection_status"] not in ("ACTIVE", "DEGRADED"):
-            excluded.append(
-                ScopeExclusion(
-                    full_name=r["space_key"], reason=f"connection {r['connection_status']}", kind="confluence"
-                )
-            )
-        else:
-            spaces.append(
-                ConfluenceScopeItem(
-                    source_id=r["id"],
-                    **{k: r[k] for k in ConfluenceScopeItem.model_fields if k != "source_id"},
-                )
-            )
+                continue
+            fields = {k: r[k] for k in model.model_fields if k in r and k not in ("freshness", "data_as_of")}
+            if kind != "git":
+                fields["source_id"] = r["id"]
+            bucket.append(model.model_validate(fields | extra))
     return SyncScope(
         project_id=project_id,
         repositories=included,

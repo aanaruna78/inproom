@@ -18,6 +18,8 @@ from app.db import tenant_session
 from app.db_schema import project_repositories
 
 REVOKED_REASON = "connection revoked"
+# Pauses that automatic health checks must never undo (INPROOM-145): only a person / adoption may.
+HELD = ("excluded", "connection_revoked")
 
 
 def evaluate(
@@ -67,15 +69,20 @@ def evaluate(
     with tenant_session(principal.tenant_id) as conn:
         for row in rows:
             status, reason, permissions = outcomes[row["id"]]
-            if row["status_reason"] == REVOKED_REASON:
-                continue  # only a new connection re-activates repositories of a revoked one
-            values: dict[str, Any] = {"status": status, "status_reason": reason}
+            if row["pause_cause"] in HELD:
+                continue  # excluded by a person / revoked connection: health never re-activates these
+            values: dict[str, Any] = {
+                "status": status,
+                "status_reason": reason,
+                "pause_cause": "access" if status == "PAUSED" else None,
+            }
             if permissions is not None:
                 values["permissions"] = permissions
-            if (row["status"], row["status_reason"], row["permissions"]) != (
+            if (row["status"], row["status_reason"], row["permissions"], row["pause_cause"]) != (
                 status,
                 reason,
                 permissions or row["permissions"],
+                values["pause_cause"],
             ):
                 conn.execute(
                     update(project_repositories)

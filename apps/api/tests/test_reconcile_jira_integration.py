@@ -6,18 +6,18 @@ import uuid
 import pytest
 
 from app.db import tenant_session
-from app.sync import queue, worker
+from app.sync import queue
 from app.sync.handlers import plan_jira
 from tests import test_jira_sources_integration as helpers
 from tests.fakes import jira as fj
-from tests.sync_helpers import due, events, payloads
+from tests.sync_helpers import due, events, payloads, run_sync
 
 pytestmark = pytest.mark.integration
 env = helpers.env
 
 
 def _run_jira(e, **kw):
-    return worker.run_once("w", transports={"jira": e.jira.transport()}, tenant=e.tenant, **kw)
+    return run_sync({"jira": e.jira.transport()}, e.tenant, **kw)
 
 
 def _issue(e, key):

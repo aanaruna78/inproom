@@ -289,6 +289,9 @@ project_repositories = Table(
     Column("permissions", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     Column("status", Text, nullable=False),
     Column("status_reason", Text),
+    Column("pause_cause", Text),
+    Column("excluded_by", Text),
+    Column("excluded_at", DateTime(timezone=True)),
     Column("webhook_id", Text),
     Column("webhook_status", Text, nullable=False, server_default="none"),
     Column("selected_by", Text, nullable=False),
@@ -310,6 +313,10 @@ project_repositories = Table(
         name="ck_project_repositories_webhook",
     ),
     CheckConstraint("cardinality(branches) BETWEEN 1 AND 50", name="ck_project_repositories_branches"),
+    CheckConstraint(
+        "pause_cause IN ('access','connection_revoked','excluded')",
+        name="ck_project_repositories_pause_cause",
+    ),
 )
 
 webhook_deliveries = Table(
@@ -344,6 +351,9 @@ project_jira_sources = Table(
     Column("name", Text, nullable=False),
     Column("status", Text, nullable=False),
     Column("status_reason", Text),
+    Column("pause_cause", Text),
+    Column("excluded_by", Text),
+    Column("excluded_at", DateTime(timezone=True)),
     Column("capabilities", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     Column("mapping", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     Column("mapping_version", Integer, nullable=False, server_default="1"),
@@ -366,6 +376,10 @@ project_jira_sources = Table(
         name="fk_jira_sources_connection",
     ),
     CheckConstraint("status IN ('ACTIVE','PAUSED')", name="ck_project_jira_sources_status"),
+    CheckConstraint(
+        "pause_cause IN ('access','connection_revoked','excluded')",
+        name="ck_project_jira_sources_pause_cause",
+    ),
 )
 
 jira_schema_snapshots = Table(
@@ -404,6 +418,9 @@ project_confluence_sources = Table(
     Column("capabilities", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     Column("status", Text, nullable=False),
     Column("status_reason", Text),
+    Column("pause_cause", Text),
+    Column("excluded_by", Text),
+    Column("excluded_at", DateTime(timezone=True)),
     Column("warnings", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     Column("last_synced_at", DateTime(timezone=True)),
     Column("last_sync", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
@@ -424,6 +441,10 @@ project_confluence_sources = Table(
         name="fk_confluence_sources_connection",
     ),
     CheckConstraint("status IN ('ACTIVE','PAUSED')", name="ck_project_confluence_sources_status"),
+    CheckConstraint(
+        "pause_cause IN ('access','connection_revoked','excluded')",
+        name="ck_project_confluence_sources_pause_cause",
+    ),
 )
 
 confluence_pages = Table(
@@ -486,7 +507,7 @@ sync_jobs = Table(
     metadata,
     _id(),
     Column("tenant_id", UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False),
-    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True)),
     Column("source_kind", Text, nullable=False),
     Column("source_id", UUID(as_uuid=True), nullable=False),
     Column("reason", Text, nullable=False),
@@ -503,7 +524,7 @@ sync_jobs = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("started_at", DateTime(timezone=True)),
     Column("finished_at", DateTime(timezone=True)),
-    CheckConstraint("source_kind IN ('git','jira','confluence')", name="ck_sync_jobs_kind"),
+    CheckConstraint("source_kind IN ('git','jira','confluence','connection')", name="ck_sync_jobs_kind"),
     CheckConstraint("reason IN ('webhook','schedule','manual','recovery')", name="ck_sync_jobs_reason"),
     CheckConstraint("mode IN ('incremental','full')", name="ck_sync_jobs_mode"),
     CheckConstraint(
@@ -515,7 +536,7 @@ source_sync_state = Table(
     "source_sync_state",
     metadata,
     Column("tenant_id", UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False),
-    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True)),
     Column("source_kind", Text, nullable=False),
     Column("source_id", UUID(as_uuid=True), nullable=False),
     Column("watermark", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
@@ -527,7 +548,9 @@ source_sync_state = Table(
     Column("last_error", JSONB),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     PrimaryKeyConstraint("source_kind", "source_id", name="pk_source_sync_state"),
-    CheckConstraint("source_kind IN ('git','jira','confluence')", name="ck_source_sync_state_kind"),
+    CheckConstraint(
+        "source_kind IN ('git','jira','confluence','connection')", name="ck_source_sync_state_kind"
+    ),
 )
 
 Index("ix_audit_events_tenant_time", audit_events.c.tenant_id, audit_events.c.occurred_at)

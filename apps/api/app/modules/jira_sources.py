@@ -37,6 +37,7 @@ from app.modules.connections import credential_of, load_connection
 router = APIRouter(tags=["jira sources"])
 PROBLEM = {"description": "problem+json"}
 REVOKED_REASON = "connection revoked"
+HELD = ("excluded", "connection_revoked")  # pauses health checks never undo (INPROOM-145)
 JIRA_REF = Annotated[
     str,
     Path(
@@ -279,7 +280,12 @@ def _apply_discovery(
         "warnings": _warnings(mapping_warnings, capabilities, write_mode),
         "status": "ACTIVE",
         "status_reason": None,
+        "pause_cause": None,
     }
+    if source.get("pause_cause") in HELD:
+        # an excluded (or revoked) source keeps its pause; discovery still refreshes schema and mapping
+        for key in ("status", "status_reason", "pause_cause"):
+            values.pop(key)
     if changed or any(source.get(k) != v for k, v in values.items()):
         conn.execute(
             update(project_jira_sources)
@@ -661,10 +667,14 @@ def evaluate_jira(
             )
     with tenant_session(principal.tenant_id) as conn:
         for row in rows:
-            if row["id"] not in outcomes or row["status_reason"] == REVOKED_REASON:
+            if row["id"] not in outcomes or row["pause_cause"] in HELD:
                 continue  # unknown (provider outage), or only a new connection re-activates revoked sources
             status, reason, capabilities = outcomes[row["id"]]
-            values: dict[str, Any] = {"status": status, "status_reason": reason}
+            values: dict[str, Any] = {
+                "status": status,
+                "status_reason": reason,
+                "pause_cause": "access" if status == "PAUSED" else None,
+            }
             if capabilities is not None:
                 values["capabilities"] = capabilities
             if any(row[k] != v for k, v in values.items()):

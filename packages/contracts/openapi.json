@@ -55,10 +55,27 @@
             "title": "Connection Id",
             "type": "string"
           },
+          "data_as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data As Of"
+          },
           "filters": {
             "additionalProperties": true,
             "title": "Filters",
             "type": "object"
+          },
+          "freshness": {
+            "default": "never",
+            "title": "Freshness",
+            "type": "string"
           },
           "last_synced_at": {
             "anyOf": [
@@ -689,6 +706,23 @@
           "connection_id": {
             "format": "uuid",
             "title": "Connection Id",
+            "type": "string"
+          },
+          "data_as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data As Of"
+          },
+          "freshness": {
+            "default": "never",
+            "title": "Freshness",
             "type": "string"
           },
           "jira_key": {
@@ -2243,6 +2277,34 @@
       },
       "ScopeExclusion": {
         "properties": {
+          "cause": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cause"
+          },
+          "data_as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data As Of"
+          },
+          "freshness": {
+            "default": "paused",
+            "title": "Freshness",
+            "type": "string"
+          },
           "full_name": {
             "title": "Full Name",
             "type": "string"
@@ -2280,6 +2342,23 @@
           "connection_id": {
             "format": "uuid",
             "title": "Connection Id",
+            "type": "string"
+          },
+          "data_as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data As Of"
+          },
+          "freshness": {
+            "default": "never",
+            "title": "Freshness",
             "type": "string"
           },
           "full_name": {
@@ -2630,17 +2709,105 @@
         "title": "SourceConnection",
         "type": "object"
       },
+      "SourceExclusion": {
+        "properties": {
+          "excluded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excluded At"
+          },
+          "excluded_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excluded By"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "pause_cause": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Cause"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "source_id",
+          "status",
+          "pause_cause",
+          "excluded_by",
+          "excluded_at"
+        ],
+        "title": "SourceExclusion",
+        "type": "object"
+      },
       "SourceSyncStatus": {
         "properties": {
           "consecutive_failures": {
             "title": "Consecutive Failures",
             "type": "integer"
           },
+          "data_as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data As Of"
+          },
           "health": {
             "enum": [
               "fresh",
               "stale",
-              "failing"
+              "failing",
+              "never",
+              "excluded",
+              "paused"
             ],
             "title": "Health",
             "type": "string"
@@ -2701,6 +2868,17 @@
             ],
             "title": "Next Due At"
           },
+          "pause_cause": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Cause"
+          },
           "queued": {
             "title": "Queued",
             "type": "boolean"
@@ -2717,6 +2895,17 @@
           "source_status": {
             "title": "Source Status",
             "type": "string"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
           }
         },
         "required": [
@@ -2725,6 +2914,9 @@
           "name",
           "source_status",
           "health",
+          "pause_cause",
+          "status_reason",
+          "data_as_of",
           "last_success_at",
           "last_attempt_at",
           "next_due_at",
@@ -6349,6 +6541,162 @@
           }
         ],
         "summary": "Freshness of every selected source: last success, next due, failures, queued/running",
+        "tags": [
+          "sync"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sources/{kind}/{source_id}/exclude": {
+      "post": {
+        "operationId": "exclude_source_v1_projects__project_id__sources__kind___source_id__exclude_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "git",
+                "jira",
+                "confluence"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceExclusion"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Exclude a source from the sync scope (history kept; only 'include' brings it back). Idempotent",
+        "tags": [
+          "sync"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sources/{kind}/{source_id}/include": {
+      "post": {
+        "operationId": "include_source_v1_projects__project_id__sources__kind___source_id__include_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "git",
+                "jira",
+                "confluence"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceExclusion"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Include an excluded source again and queue a reconcile to catch up. Idempotent",
         "tags": [
           "sync"
         ]

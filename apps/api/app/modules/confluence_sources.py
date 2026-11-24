@@ -38,6 +38,7 @@ from app.modules.connections import credential_of, load_connection
 router = APIRouter(tags=["confluence sources"])
 PROBLEM = {"description": "problem+json"}
 REVOKED_REASON = "connection revoked"
+HELD = ("excluded", "connection_revoked")  # pauses health checks never undo (INPROOM-145)
 SPACE_REF = Annotated[
     str,
     Path(
@@ -297,11 +298,15 @@ def apply_sync(
             space_key=space.key,
             capabilities={"read": True, "write_capable": space.write_capable},
             warnings=_warnings(space, write_mode, listing.truncated),
-            status="ACTIVE",
-            status_reason=None,
             last_synced_at=now,
             last_sync=summary | {"truncated": listing.truncated},
             updated_at=now,
+            # a sync re-activates an access pause it just proved fine, never a person's exclusion
+            **(
+                {}
+                if source.get("pause_cause") in HELD
+                else {"status": "ACTIVE", "status_reason": None, "pause_cause": None}
+            ),
         )
     )
     _emit(
@@ -576,10 +581,11 @@ def evaluate_confluence(
             )
     with tenant_session(principal.tenant_id) as conn:
         for row in rows:
-            if row["id"] not in outcomes or row["status_reason"] == REVOKED_REASON:
+            if row["id"] not in outcomes or row["pause_cause"] in HELD:
                 continue
             status, reason = outcomes[row["id"]]
-            if (row["status"], row["status_reason"]) != (status, reason):
+            cause = "access" if status == "PAUSED" else None
+            if (row["status"], row["status_reason"], row["pause_cause"]) != (status, reason, cause):
                 conn.execute(
                     update(project_confluence_sources)
                     .where(
@@ -589,6 +595,7 @@ def evaluate_confluence(
                     .values(
                         status=status,
                         status_reason=reason,
+                        pause_cause=cause,
                         updated_at=datetime.now(UTC),
                         version=project_confluence_sources.c.version + 1,
                     )
