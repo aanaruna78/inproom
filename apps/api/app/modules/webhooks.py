@@ -115,7 +115,7 @@ async def receive(request: Request, tenant_id: uuid.UUID, connection_id: uuid.UU
         )
         secret = (
             vault.load(conn, tenant_id, connection_id, "webhook")
-            if row and row["status"] != "REVOKED"
+            if row and row["status"] != "REVOKED" and row["provider"] == "github"
             else None
         )
     if secret is None:

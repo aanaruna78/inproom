@@ -18,6 +18,7 @@ from app.db import tenant_session
 from app.db_schema import TENANT_SCOPED_TABLES
 from app.main import create_app
 from tests.auth_helpers import bearer
+from tests.fakes import jira as fj
 from tests.fakes.github import VALID_TOKEN
 from tests.security.conftest import record
 
@@ -60,6 +61,14 @@ ROUTES: dict[tuple[str, str], str] = {
     ("PUT", "/v1/projects/{project_id}/sources/repositories/{connection_id}/{repo_id}"): "project_scoped",
     ("DELETE", "/v1/projects/{project_id}/sources/repositories/{connection_id}/{repo_id}"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/sources/scope"): "project_scoped",
+    # INPROOM-131: Jira sources
+    ("GET", "/v1/connections/{connection_id}/jira/projects"): "connection_scoped",
+    ("GET", "/v1/projects/{project_id}/sources/jira"): "project_scoped",
+    ("PUT", "/v1/projects/{project_id}/sources/jira/{ref}"): "project_scoped",
+    ("DELETE", "/v1/projects/{project_id}/sources/jira/{ref}"): "project_scoped",
+    ("POST", "/v1/projects/{project_id}/sources/jira/{source_id}/discover"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/sources/jira/{source_id}/schema"): "project_scoped",
+    ("PUT", "/v1/projects/{project_id}/sources/jira/{source_id}/mapping"): "project_scoped",
     # INPROOM-110: unauthenticated, HMAC-signed webhook receiver (covered by test_webhooks_integration.py)
     ("POST", "/v1/hooks/github/{tenant_id}/{connection_id}"): "webhook",
 }
@@ -93,6 +102,8 @@ class Tenant:
     workspace: dict
     project: dict
     connection: dict
+    jira: dict
+    jira_source: dict
 
     def secrets(self) -> list[str]:
         """Identifiers and names that must never appear in another tenant's responses."""
@@ -106,11 +117,14 @@ class Tenant:
             self.project["name"],
             self.connection["id"],
             self.connection["display_name"],
+            self.jira["id"],
+            self.jira["display_name"],
+            self.jira_source["id"],
         ]
 
 
 @pytest.fixture
-def world(db_client, tokens, fake_github):
+def world(db_client, tokens, fake_github, fake_jira):
     def make(label: str) -> Tenant:
         tid = uuid.uuid4()
         h = bearer(tokens.mint(tenant_id=tid, user_id=f"admin-{label}", roles=["tenant_admin"]))
@@ -137,7 +151,20 @@ def world(db_client, tokens, fake_github):
             headers=h,
         )
         assert selected.status_code == 200, selected.text
-        return Tenant(tid, h, ws, pj, conn)
+        jira = db_client.post(
+            "/v1/connections",
+            json={
+                "provider": "jira",
+                "display_name": f"Secret Jira {label}{suffix}",
+                "base_url": "https://acme.atlassian.net",
+                "email": fj.EMAIL,
+                "token": fj.VALID_TOKEN,
+            },
+            headers=h,
+        ).json()
+        source = db_client.put(f"/v1/projects/{pj['id']}/sources/jira/{jira['id']}:ABC", headers=h)
+        assert source.status_code == 200, source.text
+        return Tenant(tid, h, ws, pj, conn, jira, source.json())
 
     return make("a"), make("b")
 
@@ -148,10 +175,12 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         project_id=tenant_ids.project["id"],
         user_id=tenant_ids.project.get("owner_id", "someone"),  # a real member of the victim project
         version=1,
-        connection_id=tenant_ids.connection["id"],
+        connection_id=tenant_ids.jira["id"] if "/jira/" in path_template else tenant_ids.connection["id"],
         repo_id="1",
+        ref=f"{tenant_ids.jira['id']}:ABC",
+        source_id=tenant_ids.jira_source["id"],
     )
-    if path_template.endswith("/repositories") and "{connection_id}" in path_template:
+    if path_template.endswith(("/repositories", "/jira/projects")) and "{connection_id}" in path_template:
         path += f"?project_id={tenant_ids.project['id']}"
     kwargs: dict = {"headers": dict(headers)}
     if path_template == "/v1/connections" and method == "POST":
@@ -162,6 +191,9 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         kwargs["json"] = {"branches": ["main"]}
     elif method == "PUT" and "/members/" in path_template:
         kwargs["json"] = {"roles": ["viewer"]}
+    elif method == "PUT" and path_template.endswith("/mapping"):
+        kwargs["json"] = {"fields": {}}
+        kwargs["headers"]["If-Match"] = '"1"'
     elif method == "PUT" and path_template.endswith("/settings"):
         kwargs["json"] = {"settings": {"write_mode": "draft_only"}}
         kwargs["headers"]["If-Match"] = '"1"'
@@ -183,6 +215,8 @@ def _ghost(tenant_id: uuid.UUID) -> Tenant:
         {"id": str(uuid.uuid4()), "slug": "ghost-ws", "name": "Ghost workspace"},
         {"id": str(uuid.uuid4()), "version": 1, "key": "GHOST", "name": "Ghost project"},
         {"id": str(uuid.uuid4()), "display_name": "Ghost connection"},
+        {"id": str(uuid.uuid4()), "display_name": "Ghost Jira"},
+        {"id": str(uuid.uuid4())},
     )
 
 
@@ -313,7 +347,7 @@ def test_cross_tenant_access_is_masked_audited_and_leak_free(db_client, world, o
     if "{project_id}" in path:
         target = a.project["id"]
     elif "{connection_id}" in path:
-        target = a.connection["id"]
+        target = a.jira["id"] if "/jira/" in path else a.connection["id"]
     else:
         target = a.workspace["id"]
     with owner_engine.connect() as conn:

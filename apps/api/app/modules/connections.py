@@ -1,4 +1,4 @@
-"""Tenant-level Git provider connections (INPROOM-109 / story INPROOM-22).
+"""Tenant-level source connections: Git providers (INPROOM-109 / -22) and Jira (INPROOM-131 / -23).
 
 The credential is validated with the provider BEFORE anything is stored, kept only in the vault, and never
 returned, logged or audited - responses show the account, granted scopes and a fingerprint only.
@@ -20,12 +20,11 @@ from app.auth import CurrentPrincipal, Principal
 from app.authz import deny_not_found, require_tenant
 from app.connectors import vault
 from app.connectors.base import CredentialInvalid, ProviderError
-from app.connectors.egress import EgressDenied, validate_base_url
 from app.connectors.health import evaluate
-from app.connectors.registry import GitTransport, provider_errors, provider_for
+from app.connectors.registry import Transports, jira_for, provider_errors, provider_for, validate_site
 from app.connectors.vault import Secret
 from app.db import tenant_session
-from app.db_schema import outbox_events, project_repositories, source_connections
+from app.db_schema import outbox_events, project_jira_sources, project_repositories, source_connections
 from app.idempotency import request_fingerprint, run_idempotent
 from app.modules.workspaces import ensure_tenant, is_unique_violation
 
@@ -34,10 +33,26 @@ PROBLEM = {"description": "problem+json"}
 
 
 class ConnectionCreate(BaseModel):
-    provider: Literal["github"] = "github"
+    provider: Literal["github", "jira"] = "github"
     display_name: str = Field(min_length=1, max_length=80)
-    base_url: str = Field(default="https://api.github.com", max_length=300)
-    token: SecretStr = Field(min_length=20, max_length=400, description="Fine-grained token; never returned")
+    base_url: str = Field(
+        default="https://api.github.com",
+        max_length=300,
+        description="GitHub API URL, or the Jira site URL (e.g. https://acme.atlassian.net)",
+    )
+    email: str | None = Field(
+        default=None,
+        max_length=254,
+        pattern=r"^[^@\s]+@[^@\s]+$",
+        description="Jira Cloud: the Atlassian account email the API token belongs to. Omit for a Jira "
+        "Data Center personal access token. Not used for GitHub.",
+    )
+    token: SecretStr = Field(
+        min_length=20,
+        max_length=400,
+        description="Least-privilege token (GitHub fine-grained token, Jira "
+        "API token or personal access token); never returned",
+    )
 
 
 class CredentialRotate(BaseModel):
@@ -90,6 +105,27 @@ def load_connection(
             target_id=str(connection_id),
         )
     return dict(row)
+
+
+KIND = {"github": "git", "jira": "jira"}
+
+
+def auth_type_for(provider: str, email: str | None) -> str:
+    if provider == "jira":
+        return "basic_token" if email else "pat"
+    return "token"
+
+
+def adapter_for(row: dict[str, Any], token: Secret, transports: dict[str, Any]):
+    """The provider adapter for a connection row (only `whoami` is shared by every provider)."""
+    if row["provider"] == "jira":
+        return jira_for(row, token, transports)
+    return provider_for(row["provider"], row["base_url"], token, transports)
+
+
+def _login(row: dict[str, Any], account: Any) -> str:
+    """Jira Cloud authenticates as the email, so it stays the account; other providers report their login."""
+    return row["account_login"] if row["auth_type"] == "basic_token" else account.login
 
 
 def credential_of(conn: Connection, principal: Principal, row: dict[str, Any]) -> Secret:
@@ -159,18 +195,23 @@ def _update(
 def create_connection(
     request: Request,
     principal: CurrentPrincipal,
-    transport: GitTransport,
+    transports: Transports,
     payload: Annotated[ConnectionCreate, Body()],
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ):
     require_tenant(principal, "tenant.connection.manage", request, target_type="connection")
-    try:
-        base_url = validate_base_url(payload.base_url)
-    except EgressDenied as exc:
-        raise ApiError(422, "BASE_URL_NOT_ALLOWED", "Unprocessable request", str(exc)) from exc
+    if payload.email and payload.provider != "jira":
+        raise ApiError(422, "EMAIL_NOT_APPLICABLE", "Unprocessable request", "email is only used for Jira")
+    base_url = validate_site(payload.provider, payload.base_url)
     token = Secret(payload.token.get_secret_value())
+    draft = {
+        "provider": payload.provider,
+        "base_url": base_url,
+        "auth_type": auth_type_for(payload.provider, payload.email),
+        "account_login": payload.email,
+    }
     with provider_errors():
-        account = provider_for(payload.provider, base_url, token, transport).whoami()
+        account = adapter_for(draft, token, transports).whoami()
 
     def handler(conn: Connection) -> tuple[int, dict]:
         ensure_tenant(conn, principal)
@@ -181,11 +222,11 @@ def create_connection(
                     .values(
                         tenant_id=principal.tenant_id,
                         provider=payload.provider,
-                        kind="git",
+                        kind=KIND[payload.provider],
                         display_name=payload.display_name,
                         base_url=base_url,
-                        auth_type="token",
-                        account_login=account.login,
+                        auth_type=draft["auth_type"],
+                        account_login=_login(draft, account),
                         granted_scopes=account.scopes,
                         credential_fingerprint=token.fingerprint(),
                         status="ACTIVE",
@@ -209,14 +250,21 @@ def create_connection(
         return 201, SourceConnection.model_validate(row).model_dump(mode="json")
 
     # The fingerprint covers what identifies the request, never the token itself.
-    identity = {"provider": payload.provider, "display_name": payload.display_name, "base_url": base_url}
+    identity = {
+        "provider": payload.provider,
+        "display_name": payload.display_name,
+        "base_url": base_url,
+        "email": payload.email,
+    }
     fingerprint = request_fingerprint(
         "POST", "/v1/connections", identity | {"credential": token.fingerprint()}
     )
     return run_idempotent(principal.tenant_id, idempotency_key, fingerprint, handler)
 
 
-@router.get("/v1/connections", response_model=list[SourceConnection], summary="Git provider connections")
+@router.get(
+    "/v1/connections", response_model=list[SourceConnection], summary="Source connections (Git, Jira)"
+)
 def list_connections(request: Request, principal: CurrentPrincipal) -> list[SourceConnection]:
     require_tenant(principal, "tenant.read", request, target_type="connection")
     with tenant_session(principal.tenant_id) as conn:
@@ -266,7 +314,7 @@ def check_credential(account_call) -> tuple[str, list[dict[str, Any]], bool, Any
     responses={403: PROBLEM, 404: PROBLEM, 409: PROBLEM},
 )
 def check_connection(
-    request: Request, principal: CurrentPrincipal, transport: GitTransport, connection_id: uuid.UUID
+    request: Request, principal: CurrentPrincipal, transports: Transports, connection_id: uuid.UUID
 ) -> SourceConnection:
     require_tenant(
         principal, "tenant.connection.manage", request, target_type="connection", target_id=str(connection_id)
@@ -274,12 +322,17 @@ def check_connection(
     with tenant_session(principal.tenant_id) as conn:
         row = load_connection(conn, principal, request, connection_id, "tenant.connection.manage")
         token = credential_of(conn, principal, row)
-    provider = provider_for(row["provider"], row["base_url"], token, transport)
+    provider = adapter_for(row, token, transports)
 
     status, issues, reachable, account = check_credential(provider.whoami)
     if status == "ACTIVE":
-        status, repo_issues = evaluate(principal, row, provider)
-        issues += repo_issues
+        if row["provider"] == "jira":
+            from app.modules.jira_sources import evaluate_jira  # noqa: PLC0415 (avoids an import cycle)
+
+            status, source_issues = evaluate_jira(principal, row, provider)
+        else:
+            status, source_issues = evaluate(principal, row, provider)
+        issues += source_issues
     with tenant_session(principal.tenant_id) as conn:
         current = load_connection(
             conn, principal, request, connection_id, "tenant.connection.manage", lock=True
@@ -289,7 +342,7 @@ def check_connection(
             values["status"] = status
         values["health"] = _health(values.get("status", current["status"]), issues, reachable)
         if account is not None:
-            values |= {"account_login": account.login, "granted_scopes": account.scopes}
+            values |= {"account_login": _login(current, account), "granted_scopes": account.scopes}
         updated = _update(conn, principal, connection_id, **values)
         _event(
             conn, principal, request, "connection.checked", updated, {"issues": [i["code"] for i in issues]}
@@ -306,7 +359,7 @@ def check_connection(
 def rotate_credential(
     request: Request,
     principal: CurrentPrincipal,
-    transport: GitTransport,
+    transports: Transports,
     connection_id: uuid.UUID,
     payload: Annotated[CredentialRotate, Body()],
 ) -> SourceConnection:
@@ -319,7 +372,7 @@ def rotate_credential(
         raise conflict("CONNECTION_NOT_ACTIVE", "This connection was revoked; create a new connection")
     token = Secret(payload.token.get_secret_value())
     with provider_errors():
-        account = provider_for(row["provider"], row["base_url"], token, transport).whoami()
+        account = adapter_for(row, token, transports).whoami()
     with tenant_session(principal.tenant_id) as conn:
         load_connection(conn, principal, request, connection_id, "tenant.connection.manage", lock=True)
         vault.store(conn, principal.tenant_id, connection_id, "credential", token)
@@ -328,7 +381,7 @@ def rotate_credential(
             principal,
             connection_id,
             status="ACTIVE",
-            account_login=account.login,
+            account_login=_login(row, account),
             granted_scopes=account.scopes,
             credential_fingerprint=token.fingerprint(),
             health=_health("ACTIVE", []),
@@ -341,7 +394,7 @@ def rotate_credential(
 @router.post(
     "/v1/connections/{connection_id}/revoke",
     response_model=SourceConnection,
-    summary="Revoke: destroy the stored credential and pause every repository using this connection",
+    summary="Revoke: destroy the stored credential and pause every source (repository or Jira project) on it",
     responses={403: PROBLEM, 404: PROBLEM},
 )
 def revoke_connection(
@@ -360,6 +413,14 @@ def revoke_connection(
             .where(
                 project_repositories.c.tenant_id == principal.tenant_id,
                 project_repositories.c.connection_id == connection_id,
+            )
+            .values(status="PAUSED", status_reason="connection revoked", updated_at=datetime.now(UTC))
+        )
+        conn.execute(
+            update(project_jira_sources)
+            .where(
+                project_jira_sources.c.tenant_id == principal.tenant_id,
+                project_jira_sources.c.connection_id == connection_id,
             )
             .values(status="PAUSED", status_reason="connection revoked", updated_at=datetime.now(UTC))
         )

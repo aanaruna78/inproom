@@ -16,30 +16,80 @@ from app.connectors.base import (
     ProviderUnavailable,
     RateLimited,
 )
-from app.connectors.egress import EgressDenied
+from app.connectors.egress import EgressDenied, validate_base_url, validate_jira_url
 from app.connectors.github import GitHubProvider
+from app.connectors.jira import JiraProvider
 from app.connectors.vault import Secret
 
+Transport = httpx.BaseTransport | None
 
-def get_git_transport() -> httpx.BaseTransport | None:
+
+def get_git_transport() -> Transport:
     """Real network by default. Tests override this dependency with the fake GitHub transport."""
     return None
 
 
-GitTransport = Annotated[httpx.BaseTransport | None, Depends(get_git_transport)]
+def get_jira_transport() -> Transport:
+    """Real network by default. Tests override this dependency with the fake Jira transport."""
+    return None
+
+
+GitTransport = Annotated[Transport, Depends(get_git_transport)]
+JiraTransport = Annotated[Transport, Depends(get_jira_transport)]
+
+
+def get_transports(git: GitTransport, jira: JiraTransport) -> dict[str, Transport]:
+    return {"github": git, "jira": jira}
+
+
+Transports = Annotated[dict[str, Transport], Depends(get_transports)]
+
+
+def _not_allowed(exc: EgressDenied) -> ApiError:
+    return ApiError(422, "BASE_URL_NOT_ALLOWED", "Unprocessable request", str(exc))
+
+
+def validate_site(provider: str, base_url: str) -> str:
+    """Provider-specific SSRF allowlist (Git hosts vs Jira sites); 422 BASE_URL_NOT_ALLOWED otherwise."""
+    try:
+        return validate_jira_url(base_url) if provider == "jira" else validate_base_url(base_url)
+    except EgressDenied as exc:
+        raise _not_allowed(exc) from exc
 
 
 def provider_for(
-    provider: str, base_url: str, token: Secret, transport: httpx.BaseTransport | None
+    provider: str, base_url: str, token: Secret, transport: Transport | dict[str, Transport]
 ) -> GitProvider:
+    """The Git adapter for a connection. `transport` may be the per-provider map from `Transports`."""
     if provider != "github":
         raise ApiError(
-            422, "PROVIDER_NOT_SUPPORTED", "Unprocessable request", f"Unsupported provider {provider!r}"
+            409,
+            "CONNECTION_PROVIDER_MISMATCH",
+            "Conflict",
+            f"This is a {provider} connection; it cannot be used as a Git source",
         )
+    if isinstance(transport, dict):
+        transport = transport["github"]
     try:
         return GitHubProvider(base_url, token, transport=transport)
     except EgressDenied as exc:
-        raise ApiError(422, "BASE_URL_NOT_ALLOWED", "Unprocessable request", str(exc)) from exc
+        raise _not_allowed(exc) from exc
+
+
+def jira_for(row: dict, token: Secret, transports: dict[str, Transport]) -> JiraProvider:
+    """The Jira adapter for a connection row. Cloud connections authenticate as account_login (the email)."""
+    if row["provider"] != "jira":
+        raise ApiError(
+            409,
+            "CONNECTION_PROVIDER_MISMATCH",
+            "Conflict",
+            f"This is a {row['provider']} connection; it cannot be used as a Jira source",
+        )
+    email = row["account_login"] if row["auth_type"] == "basic_token" else None
+    try:
+        return JiraProvider(row["base_url"], token, email=email, transport=transports["jira"])
+    except EgressDenied as exc:
+        raise _not_allowed(exc) from exc
 
 
 @contextmanager

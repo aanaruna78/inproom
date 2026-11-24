@@ -48,6 +48,7 @@
         "properties": {
           "base_url": {
             "default": "https://api.github.com",
+            "description": "GitHub API URL, or the Jira site URL (e.g. https://acme.atlassian.net)",
             "maxLength": 300,
             "title": "Base Url",
             "type": "string"
@@ -58,14 +59,31 @@
             "title": "Display Name",
             "type": "string"
           },
+          "email": {
+            "anyOf": [
+              {
+                "maxLength": 254,
+                "pattern": "^[^@\\s]+@[^@\\s]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Jira Cloud: the Atlassian account email the API token belongs to. Omit for a Jira Data Center personal access token. Not used for GitHub.",
+            "title": "Email"
+          },
           "provider": {
-            "const": "github",
             "default": "github",
+            "enum": [
+              "github",
+              "jira"
+            ],
             "title": "Provider",
             "type": "string"
           },
           "token": {
-            "description": "Fine-grained token; never returned",
+            "description": "Least-privilege token (GitHub fine-grained token, Jira API token or personal access token); never returned",
             "format": "password",
             "maxLength": 400,
             "minLength": 20,
@@ -141,6 +159,34 @@
         "title": "DirectoryUser",
         "type": "object"
       },
+      "DiscoveryResult": {
+        "properties": {
+          "changed": {
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "diff": {
+            "additionalProperties": true,
+            "title": "Diff",
+            "type": "object"
+          },
+          "snapshot_version": {
+            "title": "Snapshot Version",
+            "type": "integer"
+          },
+          "source": {
+            "$ref": "#/components/schemas/JiraSource"
+          }
+        },
+        "required": [
+          "source",
+          "changed",
+          "snapshot_version",
+          "diff"
+        ],
+        "title": "DiscoveryResult",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -172,6 +218,188 @@
         "title": "Health",
         "type": "object"
       },
+      "JiraProjectOption": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "selected": {
+            "title": "Selected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "name",
+          "selected"
+        ],
+        "title": "JiraProjectOption",
+        "type": "object"
+      },
+      "JiraProjectOptions": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JiraProjectOption"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Page"
+          }
+        },
+        "required": [
+          "items",
+          "next_page"
+        ],
+        "title": "JiraProjectOptions",
+        "type": "object"
+      },
+      "JiraSource": {
+        "properties": {
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "capabilities": {
+            "additionalProperties": true,
+            "title": "Capabilities",
+            "type": "object"
+          },
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "connection_name": {
+            "title": "Connection Name",
+            "type": "string"
+          },
+          "connection_status": {
+            "title": "Connection Status",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "jira_key": {
+            "title": "Jira Key",
+            "type": "string"
+          },
+          "jira_project_id": {
+            "title": "Jira Project Id",
+            "type": "string"
+          },
+          "mapping": {
+            "additionalProperties": true,
+            "title": "Mapping",
+            "type": "object"
+          },
+          "mapping_version": {
+            "title": "Mapping Version",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "selected_at": {
+            "format": "date-time",
+            "title": "Selected At",
+            "type": "string"
+          },
+          "selected_by": {
+            "title": "Selected By",
+            "type": "string"
+          },
+          "snapshot_version": {
+            "title": "Snapshot Version",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "connection_id",
+          "connection_name",
+          "connection_status",
+          "base_url",
+          "jira_project_id",
+          "jira_key",
+          "name",
+          "status",
+          "status_reason",
+          "capabilities",
+          "mapping",
+          "mapping_version",
+          "snapshot_version",
+          "warnings",
+          "selected_by",
+          "selected_at",
+          "updated_at",
+          "version"
+        ],
+        "title": "JiraSource",
+        "type": "object"
+      },
       "LifecycleRequest": {
         "properties": {
           "action": {
@@ -200,6 +428,79 @@
           "action"
         ],
         "title": "LifecycleRequest",
+        "type": "object"
+      },
+      "MappingOverrides": {
+        "description": "Replaces the overrides. A field mapped to null means \"do not read this canonical field\".",
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9_\\-]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "propertyNames": {
+              "enum": [
+                "story_points",
+                "sprint",
+                "epic_link",
+                "acceptance_criteria"
+              ]
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "issue_types": {
+            "maxProperties": 200,
+            "patternProperties": {
+              "^[A-Za-z0-9_\\-]+$": {
+                "enum": [
+                  "epic",
+                  "story",
+                  "task",
+                  "subtask",
+                  "bug",
+                  "other"
+                ],
+                "type": "string"
+              }
+            },
+            "propertyNames": {
+              "maxLength": 40,
+              "minLength": 1
+            },
+            "title": "Issue Types",
+            "type": "object"
+          },
+          "statuses": {
+            "maxProperties": 500,
+            "patternProperties": {
+              "^[A-Za-z0-9_\\-]+$": {
+                "enum": [
+                  "todo",
+                  "in_progress",
+                  "done"
+                ],
+                "type": "string"
+              }
+            },
+            "propertyNames": {
+              "maxLength": 40,
+              "minLength": 1
+            },
+            "title": "Statuses",
+            "type": "object"
+          }
+        },
+        "title": "MappingOverrides",
         "type": "object"
       },
       "Me": {
@@ -1045,6 +1346,53 @@
         "title": "RepositoryOptions",
         "type": "object"
       },
+      "SchemaSnapshot": {
+        "properties": {
+          "diff": {
+            "additionalProperties": true,
+            "title": "Diff",
+            "type": "object"
+          },
+          "discovered_at": {
+            "format": "date-time",
+            "title": "Discovered At",
+            "type": "string"
+          },
+          "discovered_by": {
+            "title": "Discovered By",
+            "type": "string"
+          },
+          "fingerprint": {
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "schema": {
+            "additionalProperties": true,
+            "title": "Schema",
+            "type": "object"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_id",
+          "version",
+          "fingerprint",
+          "schema",
+          "diff",
+          "discovered_by",
+          "discovered_at"
+        ],
+        "title": "SchemaSnapshot",
+        "type": "object"
+      },
       "ScopeExclusion": {
         "properties": {
           "full_name": {
@@ -1675,7 +2023,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Git provider connections",
+        "summary": "Source connections (Git, Jira)",
         "tags": [
           "connections"
         ]
@@ -1916,6 +2264,110 @@
         ]
       }
     },
+    "/v1/connections/{connection_id}/jira/projects": {
+      "get": {
+        "operationId": "list_jira_project_options_v1_connections__connection_id__jira_projects_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project the Jira projects would be selected into",
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "description": "Project the Jira projects would be selected into",
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JiraProjectOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "problem+json"
+          },
+          "503": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Jira projects the connection's credential can browse, for selecting into a project",
+        "tags": [
+          "jira sources"
+        ]
+      }
+    },
     "/v1/connections/{connection_id}/repositories": {
       "get": {
         "operationId": "list_repository_options_v1_connections__connection_id__repositories_get",
@@ -2068,7 +2520,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Revoke: destroy the stored credential and pause every repository using this connection",
+        "summary": "Revoke: destroy the stored credential and pause every source (repository or Jira project) on it",
         "tags": [
           "connections"
         ]
@@ -2918,6 +3370,422 @@
         "summary": "One settings version and its diff against the previous version",
         "tags": [
           "settings"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sources/jira": {
+      "get": {
+        "operationId": "list_jira_sources_v1_projects__project_id__sources_jira_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JiraSource"
+                  },
+                  "title": "Response List Jira Sources V1 Projects  Project Id  Sources Jira Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Jira projects selected for this project, with capabilities, mapping and warnings",
+        "tags": [
+          "jira sources"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sources/jira/{ref}": {
+      "delete": {
+        "operationId": "remove_jira_project_v1_projects__project_id__sources_jira__ref__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "{connection_id}:{jira project key}, e.g. 4f1c...:ABC",
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "description": "{connection_id}:{jira project key}, e.g. 4f1c...:ABC",
+              "pattern": "^[0-9a-fA-F-]{36}:[A-Z][A-Z0-9_]{0,19}$",
+              "title": "Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove a Jira project from this project (its snapshots go with it)",
+        "tags": [
+          "jira sources"
+        ]
+      },
+      "put": {
+        "operationId": "select_jira_project_v1_projects__project_id__sources_jira__ref__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "{connection_id}:{jira project key}, e.g. 4f1c...:ABC",
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "description": "{connection_id}:{jira project key}, e.g. 4f1c...:ABC",
+              "pattern": "^[0-9a-fA-F-]{36}:[A-Z][A-Z0-9_]{0,19}$",
+              "title": "Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JiraSource"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          },
+          "502": {
+            "description": "problem+json"
+          },
+          "503": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Select a Jira project for this project and discover its schema (idempotent)",
+        "tags": [
+          "jira sources"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sources/jira/{source_id}/discover": {
+      "post": {
+        "operationId": "rediscover_v1_projects__project_id__sources_jira__source_id__discover_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          },
+          "502": {
+            "description": "problem+json"
+          },
+          "503": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rediscover the Jira schema; a new snapshot (with diff) is stored only if it changed",
+        "tags": [
+          "jira sources"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sources/jira/{source_id}/mapping": {
+      "put": {
+        "operationId": "update_mapping_v1_projects__project_id__sources_jira__source_id__mapping_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MappingOverrides"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JiraSource"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "412": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          },
+          "428": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Override the mapping (If-Match = current mapping version); targets must exist in the snapshot",
+        "tags": [
+          "jira sources"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sources/jira/{source_id}/schema": {
+      "get": {
+        "operationId": "get_schema_v1_projects__project_id__sources_jira__source_id__schema_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "A discovered schema snapshot (latest by default) with its diff against the previous one",
+        "tags": [
+          "jira sources"
         ]
       }
     },

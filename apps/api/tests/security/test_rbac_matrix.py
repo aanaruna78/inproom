@@ -17,6 +17,7 @@ from sqlalchemy import text
 
 from app.authz import policy
 from tests.auth_helpers import bearer
+from tests.fakes import jira as fj
 from tests.fakes.github import OTHER_TOKEN, VALID_TOKEN
 from tests.security.conftest import record_rbac
 from tests.security.test_tenant_isolation import app_routes
@@ -78,6 +79,20 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
         "project.source.manage",
     ),
     ("GET", "/v1/projects/{project_id}/sources/scope"): ("project", "project.read"),
+    # INPROOM-131: Jira sources
+    ("GET", "/v1/connections/{connection_id}/jira/projects"): ("project", "project.source.manage"),
+    ("GET", "/v1/projects/{project_id}/sources/jira"): ("project", "project.read"),
+    ("PUT", "/v1/projects/{project_id}/sources/jira/{ref}"): ("project", "project.source.manage"),
+    ("DELETE", "/v1/projects/{project_id}/sources/jira/{ref}"): ("project", "project.source.manage"),
+    ("POST", "/v1/projects/{project_id}/sources/jira/{source_id}/discover"): (
+        "project",
+        "project.source.manage",
+    ),
+    ("GET", "/v1/projects/{project_id}/sources/jira/{source_id}/schema"): ("project", "project.read"),
+    ("PUT", "/v1/projects/{project_id}/sources/jira/{source_id}/mapping"): (
+        "project",
+        "project.source.manage",
+    ),
     # HMAC-signed, no user identity: tested in test_webhooks_integration.py
     ("POST", "/v1/hooks/github/{tenant_id}/{connection_id}"): ("webhook", None),
 }
@@ -141,10 +156,12 @@ class World:
     project: dict
     owner: dict
     connection: dict
+    jira: dict
+    jira_source: dict
 
 
 @pytest.fixture
-def world(db_client, tokens, fake_github):
+def world(db_client, tokens, fake_github, fake_jira):
     tenant = uuid.uuid4()
     owner = bearer(tokens.mint(tenant_id=tenant, user_id="owner", roles=["tenant_admin"]))
     ws = db_client.post("/v1/workspaces", json={"slug": "main", "name": "Main"}, headers=owner).json()
@@ -166,7 +183,21 @@ def world(db_client, tokens, fake_github):
         f"/v1/projects/{project['id']}/sources/repositories/{connection['id']}/1", json={}, headers=owner
     )
     assert r.status_code == 200, r.text
-    return World(tenant, ws, project, owner, connection)
+    # A Jira connection with ABC selected: DELETE removes ABC, PUT selects NOEP.
+    jira = db_client.post(
+        "/v1/connections",
+        json={
+            "provider": "jira",
+            "display_name": "Jira",
+            "base_url": "https://acme.atlassian.net",
+            "email": fj.EMAIL,
+            "token": fj.VALID_TOKEN,
+        },
+        headers=owner,
+    ).json()
+    r = db_client.put(f"/v1/projects/{project['id']}/sources/jira/{jira['id']}:ABC", headers=owner)
+    assert r.status_code == 200, r.text
+    return World(tenant, ws, project, owner, connection, jira, r.json())
 
 
 def _tenant_allows(roles: tuple[str, ...], permission: str) -> bool:
@@ -212,10 +243,12 @@ def _call(client, method, path, world: World, headers):
         project_id=world.project["id"],
         user_id="target",
         version=1,
-        connection_id=world.connection["id"],
+        connection_id=world.jira["id"] if "/jira/" in path else world.connection["id"],
         repo_id="2" if method == "PUT" else "1",
+        ref=f"{world.jira['id']}:{'NOEP' if method == 'PUT' else 'ABC'}",
+        source_id=world.jira_source["id"],
     )
-    if path == "/v1/connections/{connection_id}/repositories":
+    if path.startswith("/v1/connections/{connection_id}/") and path.endswith(("/repositories", "/projects")):
         url += f"?project_id={world.project['id']}"
     kwargs: dict = {"headers": dict(headers)}
     if method == "POST" and path == "/v1/connections":
@@ -233,6 +266,11 @@ def _call(client, method, path, world: World, headers):
     elif method == "PATCH":
         kwargs["json"] = {"name": "Renamed"}
         kwargs["headers"]["If-Match"] = f'"{world.project["version"]}"'
+    elif method == "PUT" and path.endswith("/mapping"):
+        kwargs["json"] = {"fields": {"acceptance_criteria": fj.TEAM}}
+        kwargs["headers"]["If-Match"] = '"1"'
+    elif method == "PUT" and "/sources/jira/" in path:
+        pass  # selection has no body
     elif method == "PUT" and path.endswith("/settings"):
         kwargs["json"] = {"settings": {"write_mode": "draft_only"}, "change_note": "matrix"}
         kwargs["headers"]["If-Match"] = '"1"'

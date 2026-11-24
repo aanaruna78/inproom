@@ -45,7 +45,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Git provider connections */
+        /** Source connections (Git, Jira) */
         get: operations["list_connections_v1_connections_get"];
         put?: never;
         /** Connect a Git provider with a least-privilege token (validated before it is stored) */
@@ -107,6 +107,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/connections/{connection_id}/jira/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Jira projects the connection's credential can browse, for selecting into a project */
+        get: operations["list_jira_project_options_v1_connections__connection_id__jira_projects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connections/{connection_id}/repositories": {
         parameters: {
             query?: never;
@@ -133,7 +150,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke: destroy the stored credential and pause every repository using this connection */
+        /** Revoke: destroy the stored credential and pause every source (repository or Jira project) on it */
         post: operations["revoke_connection_v1_connections__connection_id__revoke_post"];
         delete?: never;
         options?: never;
@@ -331,6 +348,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/sources/jira": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Jira projects selected for this project, with capabilities, mapping and warnings */
+        get: operations["list_jira_sources_v1_projects__project_id__sources_jira_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/sources/jira/{ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Select a Jira project for this project and discover its schema (idempotent) */
+        put: operations["select_jira_project_v1_projects__project_id__sources_jira__ref__put"];
+        post?: never;
+        /** Remove a Jira project from this project (its snapshots go with it) */
+        delete: operations["remove_jira_project_v1_projects__project_id__sources_jira__ref__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/sources/jira/{source_id}/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rediscover the Jira schema; a new snapshot (with diff) is stored only if it changed */
+        post: operations["rediscover_v1_projects__project_id__sources_jira__source_id__discover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/sources/jira/{source_id}/mapping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Override the mapping (If-Match = current mapping version); targets must exist in the snapshot */
+        put: operations["update_mapping_v1_projects__project_id__sources_jira__source_id__mapping_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/sources/jira/{source_id}/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A discovered schema snapshot (latest by default) with its diff against the previous one */
+        get: operations["get_schema_v1_projects__project_id__sources_jira__source_id__schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/sources/repositories": {
         parameters: {
             query?: never;
@@ -469,21 +572,27 @@ export interface components {
         ConnectionCreate: {
             /**
              * Base Url
+             * @description GitHub API URL, or the Jira site URL (e.g. https://acme.atlassian.net)
              * @default https://api.github.com
              */
             base_url: string;
             /** Display Name */
             display_name: string;
             /**
+             * Email
+             * @description Jira Cloud: the Atlassian account email the API token belongs to. Omit for a Jira Data Center personal access token. Not used for GitHub.
+             */
+            email?: string | null;
+            /**
              * Provider
              * @default github
-             * @constant
+             * @enum {string}
              */
-            provider: "github";
+            provider: "github" | "jira";
             /**
              * Token
              * Format: password
-             * @description Fine-grained token; never returned
+             * @description Least-privilege token (GitHub fine-grained token, Jira API token or personal access token); never returned
              */
             token: string;
         };
@@ -509,6 +618,18 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /** DiscoveryResult */
+        DiscoveryResult: {
+            /** Changed */
+            changed: boolean;
+            /** Diff */
+            diff: {
+                [key: string]: unknown;
+            };
+            /** Snapshot Version */
+            snapshot_version: number;
+            source: components["schemas"]["JiraSource"];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -521,6 +642,88 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** JiraProjectOption */
+        JiraProjectOption: {
+            /** Id */
+            id: string;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Selected */
+            selected: boolean;
+        };
+        /** JiraProjectOptions */
+        JiraProjectOptions: {
+            /** Items */
+            items: components["schemas"]["JiraProjectOption"][];
+            /** Next Page */
+            next_page: number | null;
+        };
+        /** JiraSource */
+        JiraSource: {
+            /** Base Url */
+            base_url: string;
+            /** Capabilities */
+            capabilities: {
+                [key: string]: unknown;
+            };
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            /** Connection Name */
+            connection_name: string;
+            /** Connection Status */
+            connection_status: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Jira Key */
+            jira_key: string;
+            /** Jira Project Id */
+            jira_project_id: string;
+            /** Mapping */
+            mapping: {
+                [key: string]: unknown;
+            };
+            /** Mapping Version */
+            mapping_version: number;
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Selected At
+             * Format: date-time
+             */
+            selected_at: string;
+            /** Selected By */
+            selected_by: string;
+            /** Snapshot Version */
+            snapshot_version: number;
+            /** Status */
+            status: string;
+            /** Status Reason */
+            status_reason: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+            /** Warnings */
+            warnings: {
+                [key: string]: unknown;
+            }[];
+        };
         /** LifecycleRequest */
         LifecycleRequest: {
             /**
@@ -530,6 +733,20 @@ export interface components {
             action: "activate" | "archive" | "restore";
             /** Reason */
             reason?: string | null;
+        };
+        /**
+         * MappingOverrides
+         * @description Replaces the overrides. A field mapped to null means "do not read this canonical field".
+         */
+        MappingOverrides: {
+            /** Fields */
+            fields?: {
+                [key: string]: string | null;
+            };
+            /** Issue Types */
+            issue_types?: Record<string, never>;
+            /** Statuses */
+            statuses?: Record<string, never>;
         };
         /** Me */
         Me: {
@@ -861,6 +1078,33 @@ export interface components {
             items: components["schemas"]["RepositoryOption"][];
             /** Next Page */
             next_page: number | null;
+        };
+        /** SchemaSnapshot */
+        SchemaSnapshot: {
+            /** Diff */
+            diff: {
+                [key: string]: unknown;
+            };
+            /**
+             * Discovered At
+             * Format: date-time
+             */
+            discovered_at: string;
+            /** Discovered By */
+            discovered_by: string;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Schema */
+            schema: {
+                [key: string]: unknown;
+            };
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Version */
+            version: number;
         };
         /** ScopeExclusion */
         ScopeExclusion: {
@@ -1362,6 +1606,77 @@ export interface operations {
             };
             /** @description problem+json */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_jira_project_options_v1_connections__connection_id__jira_projects_get: {
+        parameters: {
+            query: {
+                /** @description Project the Jira projects would be selected into */
+                project_id: string;
+                q?: string | null;
+                page?: number;
+            };
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JiraProjectOptions"];
+                };
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description problem+json */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2124,6 +2439,332 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingsVersionDetail"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_jira_sources_v1_projects__project_id__sources_jira_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JiraSource"][];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    select_jira_project_v1_projects__project_id__sources_jira__ref__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                /** @description {connection_id}:{jira project key}, e.g. 4f1c...:ABC */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JiraSource"];
+                };
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    remove_jira_project_v1_projects__project_id__sources_jira__ref__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                /** @description {connection_id}:{jira project key}, e.g. 4f1c...:ABC */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rediscover_v1_projects__project_id__sources_jira__source_id__discover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryResult"];
+                };
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_mapping_v1_projects__project_id__sources_jira__source_id__mapping_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
+            path: {
+                project_id: string;
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MappingOverrides"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JiraSource"];
+                };
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_schema_v1_projects__project_id__sources_jira__source_id__schema_get: {
+        parameters: {
+            query?: {
+                version?: number | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchemaSnapshot"];
                 };
             };
             /** @description problem+json */
