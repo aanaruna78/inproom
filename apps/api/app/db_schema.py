@@ -47,6 +47,8 @@ TENANT_SCOPED_TABLES = (
     "project_confluence_sources",
     "confluence_pages",
     "confluence_page_versions",
+    "sync_jobs",
+    "source_sync_state",
 )
 
 # Project roles allowed in project_members (mirrors app.authz.policy.PROJECT_ROLES; checked by a unit test).
@@ -479,7 +481,65 @@ confluence_page_versions = Table(
     ),
 )
 
+sync_jobs = Table(
+    "sync_jobs",
+    metadata,
+    _id(),
+    Column("tenant_id", UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("source_kind", Text, nullable=False),
+    Column("source_id", UUID(as_uuid=True), nullable=False),
+    Column("reason", Text, nullable=False),
+    Column("mode", Text, nullable=False, server_default="incremental"),
+    Column("status", Text, nullable=False, server_default="QUEUED"),
+    Column("attempts", Integer, nullable=False, server_default="0"),
+    Column("triggers", Integer, nullable=False, server_default="1"),
+    Column("hints", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("run_after", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("locked_by", Text),
+    Column("locked_until", DateTime(timezone=True)),
+    Column("last_error", JSONB),
+    Column("result", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("started_at", DateTime(timezone=True)),
+    Column("finished_at", DateTime(timezone=True)),
+    CheckConstraint("source_kind IN ('git','jira','confluence')", name="ck_sync_jobs_kind"),
+    CheckConstraint("reason IN ('webhook','schedule','manual','recovery')", name="ck_sync_jobs_reason"),
+    CheckConstraint("mode IN ('incremental','full')", name="ck_sync_jobs_mode"),
+    CheckConstraint(
+        "status IN ('QUEUED','RUNNING','SUCCEEDED','FAILED','DEAD','SKIPPED')", name="ck_sync_jobs_status"
+    ),
+)
+
+source_sync_state = Table(
+    "source_sync_state",
+    metadata,
+    Column("tenant_id", UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("source_kind", Text, nullable=False),
+    Column("source_id", UUID(as_uuid=True), nullable=False),
+    Column("watermark", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("last_success_at", DateTime(timezone=True)),
+    Column("last_attempt_at", DateTime(timezone=True)),
+    Column("last_full_at", DateTime(timezone=True)),
+    Column("next_due_at", DateTime(timezone=True)),
+    Column("consecutive_failures", Integer, nullable=False, server_default="0"),
+    Column("last_error", JSONB),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("source_kind", "source_id", name="pk_source_sync_state"),
+    CheckConstraint("source_kind IN ('git','jira','confluence')", name="ck_source_sync_state_kind"),
+)
+
 Index("ix_audit_events_tenant_time", audit_events.c.tenant_id, audit_events.c.occurred_at)
 Index("ix_outbox_unpublished", outbox_events.c.created_at, postgresql_where=text("published_at IS NULL"))
 Index("ix_idempotency_created", idempotency_keys.c.created_at)
 Index("ix_tenant_users_email", tenant_users.c.tenant_id, tenant_users.c.email)
+Index(
+    "uq_sync_jobs_queued",
+    sync_jobs.c.source_kind,
+    sync_jobs.c.source_id,
+    unique=True,
+    postgresql_where=text("status = 'QUEUED'"),
+)
+Index("ix_sync_jobs_due", sync_jobs.c.status, sync_jobs.c.run_after)
+Index("ix_sync_jobs_project", sync_jobs.c.tenant_id, sync_jobs.c.project_id, sync_jobs.c.created_at)

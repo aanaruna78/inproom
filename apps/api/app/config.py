@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     jira_allowed_hosts: str = "*.atlassian.net"
     # Confluence sites (INPROOM-134): same rules as the Jira list.
     confluence_allowed_hosts: str = "*.atlassian.net"
+    # Source sync worker (INPROOM-141): incremental reconcile interval, full reconcile interval, job lease.
+    sync_interval_seconds: int = 900
+    sync_full_interval_seconds: int = 86400
+    sync_lease_seconds: int = 300
     # Public base URL used in webhook registrations; unset => webhooks are not registered.
     public_url: str | None = None
 

@@ -95,18 +95,36 @@ def test_code_schema_matches_migrated_database(owner_engine):
 
 
 def test_rls_forced_and_policy_present_on_every_table(owner_engine):
+    """Every tenant table forces RLS with the tenant_isolation policy. The only other policy allowed is
+    sync_maintenance (INPROOM-141), and it must apply to the migration owner alone - never to the app role or
+    PUBLIC - so the application can still only ever see its own tenant's rows."""
     with owner_engine.connect() as conn:
         rows = conn.execute(
             text(
                 "SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity, "
-                "(SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies "
+                "array(SELECT p.polname FROM pg_policy p WHERE p.polrelid = c.oid ORDER BY 1) AS policies "
                 "FROM pg_class c WHERE c.relname = ANY(:t)"
             ),
             {"t": list(TENANT_SCOPED_TABLES)},
         ).all()
+        maintenance_roles = set(
+            conn.execute(
+                text(
+                    "SELECT DISTINCT r.rolname FROM pg_policy p "
+                    "CROSS JOIN LATERAL unnest(p.polroles) AS role_oid "
+                    "LEFT JOIN pg_roles r ON r.oid = role_oid WHERE p.polname = 'sync_maintenance'"
+                )
+            ).scalars()
+        )
+        owner = conn.execute(text("SELECT current_user")).scalar()
     assert {r.relname for r in rows} == set(TENANT_SCOPED_TABLES)
     for r in rows:
-        assert r.relrowsecurity and r.relforcerowsecurity and r.policies == 1, r
+        assert r.relrowsecurity and r.relforcerowsecurity, r
+        assert "tenant_isolation" in r.policies and set(r.policies) <= {
+            "tenant_isolation",
+            "sync_maintenance",
+        }, r
+    assert maintenance_roles == {owner}  # not inproom_app, not PUBLIC (which would show as NULL)
 
 
 SEED_SQL = [
@@ -145,6 +163,10 @@ SEED_SQL = [
     "content_sha256) VALUES (:t, :s, '100', 'Home', 'CURRENT', 1, 'x')",
     "INSERT INTO confluence_page_versions (tenant_id, source_id, page_id, version, content_sha256, title) "
     "VALUES (:t, :s, '100', 1, 'x', 'Home')",
+    "INSERT INTO sync_jobs (tenant_id, project_id, source_kind, source_id, reason) "
+    "VALUES (:t, :p, 'confluence', :s, 'manual')",
+    "INSERT INTO source_sync_state (tenant_id, project_id, source_kind, source_id) "
+    "VALUES (:t, :p, 'confluence', :s)",
 ]
 
 

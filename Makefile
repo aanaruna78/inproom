@@ -37,6 +37,9 @@ migrate: ## Apply database migrations
 api: ## Run the API with auto-reload on :8000
 	$(API) uv run uvicorn app.main:app --reload --port $${API_PORT:-8000}
 
+worker: ## Run the source sync worker and scheduler (INPROOM-25)
+	$(API) uv run python -m app.worker
+
 web: ## Run the web app on :3000
 	$(WEB) INPROOM_API_URL=http://localhost:$${API_PORT:-8000} npm run dev -- --port $${WEB_PORT:-3000}
 

@@ -203,7 +203,7 @@ def _warnings(space: Space, write_mode: str, truncated: bool) -> list[dict[str, 
 def _emit(
     conn: Connection,
     principal: Principal,
-    request: Request,
+    trace_id: str | None,
     action: str,
     source: dict[str, Any],
     extra: dict[str, Any] | None = None,
@@ -221,7 +221,7 @@ def _emit(
         action,
         "project_confluence_source",
         str(source["id"]),
-        trace_id=request.state.trace_id,
+        trace_id=trace_id,
         payload=payload,
         project_id=source["project_id"],
     )
@@ -234,7 +234,7 @@ def _emit(
 def apply_sync(
     conn: Connection,
     principal: Principal,
-    request: Request,
+    trace_id: str | None,
     source: dict[str, Any],
     space: Space,
     listing: PageListing,
@@ -307,7 +307,7 @@ def apply_sync(
     _emit(
         conn,
         principal,
-        request,
+        trace_id,
         "source.confluence.synced",
         source,
         {"counts": plan.counts, "truncated": listing.truncated},
@@ -421,7 +421,12 @@ def select_space(
             ).scalar_one()
             source = sources(conn, principal.tenant_id, id=source_id)[0]
             _emit(
-                conn, principal, request, "source.confluence.selected", source, {"filters": filters.as_dict()}
+                conn,
+                principal,
+                request.state.trace_id,
+                "source.confluence.selected",
+                source,
+                {"filters": filters.as_dict()},
             )
         else:
             source = found[0]
@@ -438,12 +443,14 @@ def select_space(
                 _emit(
                     conn,
                     principal,
-                    request,
+                    request.state.trace_id,
                     "source.confluence.updated",
                     source,
                     {"filters": filters.as_dict()},
                 )
-        counts, changed = apply_sync(conn, principal, request, source, space, listing, write_mode)
+        counts, changed = apply_sync(
+            conn, principal, request.state.trace_id, source, space, listing, write_mode
+        )
         updated = sources(conn, principal.tenant_id, id=source["id"])[0]
     return SyncResult(
         source=ConfluenceSource.model_validate(updated),
@@ -479,7 +486,7 @@ def remove_space(
                 project_confluence_sources.c.id == found[0]["id"],
             )
         )
-        _emit(conn, principal, request, "source.confluence.removed", found[0])
+        _emit(conn, principal, request.state.trace_id, "source.confluence.removed", found[0])
     return Response(status_code=204)
 
 
@@ -509,7 +516,9 @@ def sync_now(
         access = authorize(conn, principal, request, "project.source.manage", project_id, lock=True)
         write_mode = _require_allowed(conn, principal, access.project)
         source = source_of(conn, principal, project_id, source_id)
-        counts, changed = apply_sync(conn, principal, request, source, space, listing, write_mode)
+        counts, changed = apply_sync(
+            conn, principal, request.state.trace_id, source, space, listing, write_mode
+        )
         updated = source_of(conn, principal, project_id, source_id)
     return SyncResult(
         source=ConfluenceSource.model_validate(updated),
