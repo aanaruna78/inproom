@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     git_allowed_hosts: str = "api.github.com"
     # Jira sites (INPROOM-130): hostnames, one leading wildcard label, or explicit origins (local fakes).
     jira_allowed_hosts: str = "*.atlassian.net"
+    # Confluence sites (INPROOM-134): same rules as the Jira list.
+    confluence_allowed_hosts: str = "*.atlassian.net"
     # Public base URL used in webhook registrations; unset => webhooks are not registered.
     public_url: str | None = None
 

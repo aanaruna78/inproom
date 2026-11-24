@@ -44,6 +44,9 @@ TENANT_SCOPED_TABLES = (
     "webhook_deliveries",
     "project_jira_sources",
     "jira_schema_snapshots",
+    "project_confluence_sources",
+    "confluence_pages",
+    "confluence_page_versions",
 )
 
 # Project roles allowed in project_members (mirrors app.authz.policy.PROJECT_ROLES; checked by a unit test).
@@ -240,8 +243,8 @@ source_connections = Table(
     Column("version", Integer, nullable=False, server_default="1"),
     UniqueConstraint("tenant_id", "id", name="uq_source_connections_tenant_id"),
     UniqueConstraint("tenant_id", "display_name", name="uq_source_connections_name"),
-    CheckConstraint("provider IN ('github','jira')", name="ck_source_connections_provider"),
-    CheckConstraint("kind IN ('git','jira')", name="ck_source_connections_kind"),
+    CheckConstraint("provider IN ('github','jira','confluence')", name="ck_source_connections_provider"),
+    CheckConstraint("kind IN ('git','jira','confluence')", name="ck_source_connections_kind"),
     CheckConstraint(
         "auth_type IN ('token','github_app','basic_token','pat')", name="ck_source_connections_auth"
     ),
@@ -383,6 +386,97 @@ jira_schema_snapshots = Table(
         ondelete="CASCADE",
     ),
     CheckConstraint("version >= 1", name="ck_jira_schema_snapshots_version"),
+)
+
+project_confluence_sources = Table(
+    "project_confluence_sources",
+    metadata,
+    _id(),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("connection_id", UUID(as_uuid=True), nullable=False),
+    Column("space_id", Text, nullable=False),
+    Column("space_key", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("filters", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("capabilities", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("status", Text, nullable=False),
+    Column("status_reason", Text),
+    Column("warnings", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("last_synced_at", DateTime(timezone=True)),
+    Column("last_sync", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("selected_by", Text, nullable=False),
+    Column("selected_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("version", Integer, nullable=False, server_default="1"),
+    UniqueConstraint("tenant_id", "id", name="uq_project_confluence_sources_tenant_id"),
+    UniqueConstraint("project_id", "connection_id", "space_id", name="uq_project_confluence_sources_space"),
+    ForeignKeyConstraint(
+        ["tenant_id", "project_id"],
+        ["projects.tenant_id", "projects.id"],
+        name="fk_confluence_sources_project",
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "connection_id"],
+        ["source_connections.tenant_id", "source_connections.id"],
+        name="fk_confluence_sources_connection",
+    ),
+    CheckConstraint("status IN ('ACTIVE','PAUSED')", name="ck_project_confluence_sources_status"),
+)
+
+confluence_pages = Table(
+    "confluence_pages",
+    metadata,
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("source_id", UUID(as_uuid=True), nullable=False),
+    Column("page_id", Text, nullable=False),
+    Column("title", Text, nullable=False),
+    Column("parent_page_id", Text),
+    Column("ancestors", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
+    Column("status", Text, nullable=False),
+    Column("status_reason", Text),
+    Column("current_version", Integer, nullable=False),
+    Column("content_sha256", Text, nullable=False),
+    Column("labels", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
+    Column("restrictions", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("attachments", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("author", Text),
+    Column("last_modified_at", Text),
+    Column("web_url", Text),
+    Column("first_seen_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("source_id", "page_id", name="pk_confluence_pages"),
+    ForeignKeyConstraint(
+        ["tenant_id", "source_id"],
+        ["project_confluence_sources.tenant_id", "project_confluence_sources.id"],
+        name="fk_confluence_pages_source",
+        ondelete="CASCADE",
+    ),
+    CheckConstraint(
+        "status IN ('CURRENT','RESTRICTED','EXCLUDED','DELETED')", name="ck_confluence_pages_status"
+    ),
+)
+
+confluence_page_versions = Table(
+    "confluence_page_versions",
+    metadata,
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("source_id", UUID(as_uuid=True), nullable=False),
+    Column("page_id", Text, nullable=False),
+    Column("version", Integer, nullable=False),
+    Column("content_sha256", Text, nullable=False),
+    Column("title", Text, nullable=False),
+    Column("author", Text),
+    Column("created_at", Text),
+    Column("message", Text),
+    Column("seen_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("source_id", "page_id", "version", name="pk_confluence_page_versions"),
+    ForeignKeyConstraint(
+        ["tenant_id", "source_id"],
+        ["project_confluence_sources.tenant_id", "project_confluence_sources.id"],
+        name="fk_confluence_versions_source",
+        ondelete="CASCADE",
+    ),
 )
 
 Index("ix_audit_events_tenant_time", audit_events.c.tenant_id, audit_events.c.occurred_at)

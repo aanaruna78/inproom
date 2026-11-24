@@ -94,3 +94,26 @@ def test_wildcard_never_matches_ip_literals(monkeypatch):
     get_settings.cache_clear()
     with pytest.raises(EgressDenied):
         validate_base_url("https://127.0.0.1")
+
+
+@pytest.mark.parametrize(
+    ("url", "ok"),
+    [
+        ("https://acme.atlassian.net", True),
+        ("https://atlassian.net.evil.com", False),
+        ("http://acme.atlassian.net", False),
+        ("https://acme.atlassian.net@169.254.169.254", False),
+        ("https://api.github.com", False),
+    ],
+)
+def test_confluence_site_allowlist(monkeypatch, url, ok):
+    """INPROOM-134: Confluence sites use their own list (default *.atlassian.net)."""
+    from app.connectors.egress import validate_confluence_url
+
+    monkeypatch.delenv("INPROOM_CONFLUENCE_ALLOWED_HOSTS", raising=False)
+    get_settings.cache_clear()
+    if ok:
+        assert validate_confluence_url(url) == url
+    else:
+        with pytest.raises(EgressDenied):
+            validate_confluence_url(url)

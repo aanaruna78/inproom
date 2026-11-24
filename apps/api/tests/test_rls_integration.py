@@ -139,6 +139,12 @@ SEED_SQL = [
     "name, status, selected_by) VALUES (:j, :t, :p, :c, '10100', 'ABC', 'Acme', 'ACTIVE', 'seed')",
     "INSERT INTO jira_schema_snapshots (tenant_id, source_id, version, fingerprint, schema, discovered_by) "
     "VALUES (:t, :j, 1, 'x', '{}', 'seed')",
+    "INSERT INTO project_confluence_sources (id, tenant_id, project_id, connection_id, space_id, space_key, "
+    "name, status, selected_by) VALUES (:s, :t, :p, :c, '1', 'ENG', 'Eng', 'ACTIVE', 'seed')",
+    "INSERT INTO confluence_pages (tenant_id, source_id, page_id, title, status, current_version, "
+    "content_sha256) VALUES (:t, :s, '100', 'Home', 'CURRENT', 1, 'x')",
+    "INSERT INTO confluence_page_versions (tenant_id, source_id, page_id, version, content_sha256, title) "
+    "VALUES (:t, :s, '100', 1, 'x', 'Home')",
 ]
 
 
@@ -150,6 +156,7 @@ def _seed(owner_engine, tenant_id: uuid.UUID) -> dict[str, str]:
         "p": uuid.uuid4(),
         "c": uuid.uuid4(),
         "j": uuid.uuid4(),
+        "s": uuid.uuid4(),
         "k": "P" + uuid.uuid4().hex[:6].upper(),
     }
     with owner_engine.begin() as c:

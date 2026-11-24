@@ -36,6 +36,11 @@ def _host_allowed(host: str, hosts: set[str]) -> bool:
     return bool(label and rest) and f"*.{rest}" in hosts
 
 
+def validate_confluence_url(url: str) -> str:
+    """Confluence sites get their own allowlist (INPROOM_CONFLUENCE_ALLOWED_HOSTS), same rules as Jira."""
+    return validate_base_url(url, get_settings().confluence_allowed_hosts, "Confluence site")
+
+
 def validate_jira_url(url: str) -> str:
     """Jira sites are per customer, so they get their own allowlist (INPROOM_JIRA_ALLOWED_HOSTS)."""
     return validate_base_url(url, get_settings().jira_allowed_hosts, "Jira site")
