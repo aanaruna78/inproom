@@ -301,3 +301,68 @@ def test_confluence_site_cannot_be_pointed_at_internal_hosts(db_client, tokens, 
     record("POST /v1/connections (confluence)", f"SSRF site {site}", "422", str(r.status_code))
     assert r.status_code == 422 and r.json()["code"] == "BASE_URL_NOT_ALLOWED"
     assert fake_confluence.calls == []
+
+
+# ------------------------------------------------ webhook secrets (INPROOM-143; story INPROOM-25 AC 6)
+
+
+def test_webhook_secret_is_shown_once_and_leaks_nowhere_else(
+    db_client, tokens, fake_confluence, owner_engine, caplog
+):
+    """The generation response is the only place a Jira/Confluence webhook secret appears in plaintext."""
+    import hashlib
+    import hmac
+
+    from tests.fakes import confluence as fc
+
+    caplog.set_level(logging.DEBUG)
+    tenant = uuid.uuid4()
+    h = bearer(tokens.mint(tenant_id=tenant, user_id="alice", roles=["tenant_admin"]))
+    responses = []
+
+    def call(method, path, **kw):
+        r = db_client.request(method, path, headers=kw.pop("headers", h), **kw)
+        responses.append(r)
+        return r
+
+    ws = call("POST", "/v1/workspaces", json={"slug": "hleak", "name": "Leak"}).json()
+    pid = call("POST", f"/v1/workspaces/{ws['id']}/projects", json={"key": "HLEAK", "name": "Leak"}).json()[
+        "id"
+    ]
+    body = {"provider": "confluence", "display_name": "c", "base_url": "https://acme.atlassian.net"}
+    cid = call("POST", "/v1/connections", json=body | {"token": fc.VALID_TOKEN, "email": fc.EMAIL}).json()[
+        "id"
+    ]
+    call("PUT", f"/v1/projects/{pid}/sources/confluence/{cid}:ENG", json={"required_labels": ["approved"]})
+    generated = db_client.post(f"/v1/connections/{cid}/webhook-secret", headers=h)
+    secret, path = generated.json()["secret"], generated.json()["path"]
+    payload = b'{"event": "page_updated", "page": {"id": 101, "spaceKey": "ENG"}}'
+    signature = "sha256=" + hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+    call(
+        "POST",
+        path,
+        content=payload,
+        headers={"x-hub-signature": signature, "x-atlassian-webhook-identifier": "1"},
+    )
+    call("POST", path, content=payload, headers={"x-hub-signature": "sha256=" + "0" * 64})
+    call("GET", f"/v1/connections/{cid}")
+    call("GET", "/v1/connections")
+    call("POST", f"/v1/connections/{cid}/check")
+    call("POST", f"/v1/connections/{cid}/revoke")
+    with owner_engine.connect() as conn:
+        for table in TENANT_SCOPED_TABLES:
+            column = "id" if table == "tenants" else "tenant_id"
+            dump = conn.execute(
+                text(
+                    "SELECT coalesce(string_agg(t::text, ' '), '') "
+                    f"FROM (SELECT * FROM {table} WHERE {column}=:t) t"
+                ),
+                {"t": tenant},
+            ).scalar()
+            assert (
+                secret not in dump and secret.encode().hex() not in dump
+            ), f"webhook secret in table {table}"
+    for r in responses:
+        assert secret not in r.text and secret not in str(r.headers), f"webhook secret in {r.request.url}"
+    assert secret not in caplog.text
+    record("POST /v1/connections/{id}/webhook-secret", "secret shown once; leak scan", "once", "once")

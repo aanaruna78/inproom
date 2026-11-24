@@ -79,3 +79,37 @@ def test_jira_watermark_planning():
         mark | {"ids": ["1", "2", "3"]}, [issue("1", t1), issue("2", t2)], full=True
     )
     assert changed == [] and deleted == ["3"] and mark["ids"] == ["1", "2"]
+
+
+def test_jira_deletion_webhook_triggers_a_full_reconcile_once(jira_selected_env, monkeypatch):
+    """INPROOM-143: jira:issue_deleted enqueues a FULL job (only an id-set diff can confirm a deletion);
+    a replayed or late delivery changes nothing."""
+    import hashlib
+    import hmac
+    import json
+
+    from app.config import get_settings
+
+    monkeypatch.setenv("INPROOM_PUBLIC_URL", "https://inproom.example.com")
+    get_settings.cache_clear()
+    e = jira_selected_env
+    _run_jira(e)  # baseline
+    hook = e.client.post(f"/v1/connections/{e.cid}/webhook-secret", headers=e.h()).json()
+    e.jira.projects["ABC"].issues = [i for i in e.jira.projects["ABC"].issues if i["key"] != "ABC-4"]
+    body = json.dumps(
+        {
+            "webhookEvent": "jira:issue_deleted",
+            "issue": {"id": "20004", "fields": {"project": {"id": "10100"}}},
+        }
+    ).encode()
+    sig = "sha256=" + hmac.new(hook["secret"].encode(), body, hashlib.sha256).hexdigest()
+    headers = {
+        "x-hub-signature": sig,
+        "x-atlassian-webhook-identifier": "j-1",
+        "content-type": "application/json",
+    }
+    assert e.client.post(hook["path"], content=body, headers=headers).status_code == 202
+    assert e.client.post(hook["path"], content=body, headers=headers).json()["status"] == "duplicate"
+    done = _run_jira(e, schedule=False)
+    assert done["mode"] == "full" and done["result"]["deleted"] == 1
+    assert events(e, "source.jira.issue.deleted") == 1

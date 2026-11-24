@@ -129,22 +129,32 @@ def test_webhook_secret_is_only_stored_encrypted(connected, public_url, owner_en
 
 
 def test_selected_push_is_processed_once_even_when_replayed(connected, public_url):
+    """INPROOM-143: a verified delivery enqueues a reconcile job; the job (not the payload) produces the
+    event, carrying the branch head actually read from GitHub."""
+    from app.sync import worker
+
     env = connected
     _select(env, "1")
     first = _deliver(env, _push(), delivery="d-1")
-    assert first.status_code == 202 and first.json() == {
+    assert first.status_code == 202
+    assert {k: first.json()[k] for k in ("status", "delivery_id", "projects")} == {
         "status": "processed",
         "delivery_id": "d-1",
         "projects": 1,
     }
+    assert len(first.json()["jobs"]) == 1
     replay = _deliver(env, _push(), delivery="d-1")
     assert replay.status_code == 200 and replay.json()["status"] == "duplicate"
-    assert _changed(env) == 1
     assert env.q("SELECT count(*) FROM webhook_deliveries WHERE tenant_id=:t") == 1
+    assert env.q("SELECT count(*) FROM sync_jobs WHERE tenant_id=:t AND reason='webhook'") == 1
+    assert _changed(env) == 0  # nothing is emitted from the payload itself
+    done = worker.run_once("w", transports={"github": env.gh.transport()}, schedule=False, tenant=env.tenant)
+    assert done["status"] == "SUCCEEDED" and done["reason"] == "webhook"
+    assert _changed(env) == 1
     payload = env.q(
         "SELECT payload::text FROM outbox_events WHERE tenant_id=:t AND type='source.repository.changed'"
     )
-    assert '"branch": "main"' in payload and '"after_sha": "' + "f" * 40 in payload
+    assert '"branch": "main"' in payload and '"after_sha": "' + "a" * 40 in payload  # the real head
 
 
 @pytest.mark.parametrize(
@@ -160,7 +170,7 @@ def test_unselected_events_are_acknowledged_and_ignored(connected, public_url, p
     _select(env, "1")
     r = _deliver(env, payload, event=event)
     assert r.status_code == 202 and r.json()["status"] == "ignored"
-    assert _changed(env) == 0
+    assert _changed(env) == 0 and env.q("SELECT count(*) FROM sync_jobs WHERE tenant_id=:t") == 0
 
 
 def test_bad_or_missing_signature_is_rejected_and_audited(connected, public_url):

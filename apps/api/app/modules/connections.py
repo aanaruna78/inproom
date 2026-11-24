@@ -5,11 +5,12 @@ returned, logged or audited - responses show the account, granted scopes and a f
 Provider calls run outside database transactions, so no row lock is held while waiting on the network.
 """
 
+import secrets
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Body, Header, Request
+from fastapi import APIRouter, Body, Header, Request, Response
 from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy import Connection, insert, select, update
 from sqlalchemy.exc import IntegrityError
@@ -464,3 +465,47 @@ def revoke_connection(
         )
         _event(conn, principal, request, "connection.revoked", updated)
     return SourceConnection.model_validate(updated)
+
+
+class WebhookSecret(BaseModel):
+    """Shown exactly once. Paste the URL and secret into the Jira / Confluence webhook settings."""
+
+    url: str | None = Field(description="Full receiver URL (needs INPROOM_PUBLIC_URL); see `path` otherwise")
+    path: str
+    secret: str = Field(description="HMAC-SHA256 secret; never shown again")
+    signature_header: str = "X-Hub-Signature"
+
+
+@router.post(
+    "/v1/connections/{connection_id}/webhook-secret",
+    response_model=WebhookSecret,
+    summary="Generate (or rotate) a Jira/Confluence webhook secret; returned once, never shown again",
+    responses={403: PROBLEM, 404: PROBLEM, 409: PROBLEM},
+)
+def rotate_webhook_secret(
+    request: Request, response: Response, principal: CurrentPrincipal, connection_id: uuid.UUID
+) -> WebhookSecret:
+    from app.modules.webhooks import hook_path, hook_url  # noqa: PLC0415 (avoids an import cycle)
+
+    require_tenant(
+        principal, "tenant.connection.manage", request, target_type="connection", target_id=str(connection_id)
+    )
+    with tenant_session(principal.tenant_id) as conn:
+        row = load_connection(conn, principal, request, connection_id, "tenant.connection.manage", lock=True)
+        if row["status"] == "REVOKED":
+            raise conflict("CONNECTION_NOT_ACTIVE", "This connection was revoked; create a new connection")
+        if row["provider"] not in ATLASSIAN:
+            raise conflict(
+                "WEBHOOK_SECRET_NOT_APPLICABLE",
+                "GitHub webhooks are registered by INPROOM when a repository is selected",
+            )
+        secret = Secret(secrets.token_urlsafe(32))
+        vault.store(conn, principal.tenant_id, connection_id, "webhook", secret)
+        _event(conn, principal, request, "connection.webhook_secret.rotated", row)
+    # Never cache a response that carries a secret.
+    response.headers["Cache-Control"] = "no-store"
+    return WebhookSecret(
+        url=hook_url(principal.tenant_id, connection_id, row["provider"]),
+        path=hook_path(row["provider"], principal.tenant_id, connection_id),
+        secret=secret.reveal(),
+    )

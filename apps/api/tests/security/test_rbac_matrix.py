@@ -115,6 +115,10 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
     ),
     # HMAC-signed, no user identity: tested in test_webhooks_integration.py
     ("POST", "/v1/hooks/github/{tenant_id}/{connection_id}"): ("webhook", None),
+    ("POST", "/v1/hooks/jira/{tenant_id}/{connection_id}"): ("webhook", None),
+    ("POST", "/v1/hooks/confluence/{tenant_id}/{connection_id}"): ("webhook", None),
+    # INPROOM-143
+    ("POST", "/v1/connections/{connection_id}/webhook-secret"): ("connection", "tenant.connection.manage"),
 }
 # Audit action recorded for a denial when it differs from the permission (listing projects of a workspace
 # the caller cannot see is audited as a project read).
@@ -282,7 +286,7 @@ def _pick(path: str, git: dict, jira: dict, confluence: dict) -> dict:
     """The connection a route acts on: Jira and Confluence routes need their own provider's connection."""
     if "/jira" in path:
         return jira
-    if "/confluence" in path:
+    if "/confluence" in path or path.endswith("/webhook-secret"):
         return confluence
     return git
 

@@ -175,6 +175,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/connections/{connection_id}/webhook-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate (or rotate) a Jira/Confluence webhook secret; returned once, never shown again */
+        post: operations["rotate_webhook_secret_v1_connections__connection_id__webhook_secret_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/hooks/confluence/{tenant_id}/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confluence webhook receiver (X-Hub-Signature HMAC; enqueues reconcile jobs for the space) */
+        post: operations["receive_confluence_v1_hooks_confluence__tenant_id___connection_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/hooks/github/{tenant_id}/{connection_id}": {
         parameters: {
             query?: never;
@@ -184,8 +218,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** GitHub webhook receiver (HMAC-signed; replayed deliveries are acknowledged, not reprocessed) */
+        /** GitHub webhook receiver (HMAC-signed; enqueues reconcile jobs; replays are acknowledged only) */
         post: operations["receive_v1_hooks_github__tenant_id___connection_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/hooks/jira/{tenant_id}/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Jira webhook receiver (X-Hub-Signature HMAC; enqueues reconcile jobs for the Jira project) */
+        post: operations["receive_jira_v1_hooks_jira__tenant_id___connection_id__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1801,6 +1852,29 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /**
+         * WebhookSecret
+         * @description Shown exactly once. Paste the URL and secret into the Jira / Confluence webhook settings.
+         */
+        WebhookSecret: {
+            /** Path */
+            path: string;
+            /**
+             * Secret
+             * @description HMAC-SHA256 secret; never shown again
+             */
+            secret: string;
+            /**
+             * Signature Header
+             * @default X-Hub-Signature
+             */
+            signature_header: string;
+            /**
+             * Url
+             * @description Full receiver URL (needs INPROOM_PUBLIC_URL); see `path` otherwise
+             */
+            url: string | null;
+        };
         /** Workspace */
         Workspace: {
             /**
@@ -2367,7 +2441,179 @@ export interface operations {
             };
         };
     };
+    rotate_webhook_secret_v1_connections__connection_id__webhook_secret_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecret"];
+                };
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    receive_confluence_v1_hooks_confluence__tenant_id___connection_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description duplicate delivery */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     receive_v1_hooks_github__tenant_id___connection_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description duplicate delivery */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    receive_jira_v1_hooks_jira__tenant_id___connection_id__post: {
         parameters: {
             query?: never;
             header?: never;

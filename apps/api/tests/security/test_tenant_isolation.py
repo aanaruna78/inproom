@@ -85,6 +85,10 @@ ROUTES: dict[tuple[str, str], str] = {
     ): "project_scoped",
     # INPROOM-110: unauthenticated, HMAC-signed webhook receiver (covered by test_webhooks_integration.py)
     ("POST", "/v1/hooks/github/{tenant_id}/{connection_id}"): "webhook",
+    ("POST", "/v1/hooks/jira/{tenant_id}/{connection_id}"): "webhook",
+    ("POST", "/v1/hooks/confluence/{tenant_id}/{connection_id}"): "webhook",
+    # INPROOM-143
+    ("POST", "/v1/connections/{connection_id}/webhook-secret"): "connection_scoped",
 }
 
 SCOPED = [
@@ -209,7 +213,7 @@ def _pick(path: str, t: Tenant) -> dict:
     """The connection a route acts on (Jira and Confluence routes need their own provider's connection)."""
     if "/jira" in path:
         return t.jira
-    if "/confluence" in path:
+    if "/confluence" in path or path.endswith("/webhook-secret"):
         return t.confluence
     return t.connection
 
