@@ -1,9 +1,13 @@
 """Confluence adapter (INPROOM-134 / story INPROOM-24): spaces, pages, versions, restrictions, attachments.
 
-Cloud authenticates with email + API token (HTTP Basic) under /wiki; Data Center with a personal access token
-(Bearer) at the site root. Both expose the same content API (/rest/api), so one adapter serves both; paging
-follows the `_links.next` the server returns (offset on DC, cursor-style on Cloud). Shares the hardened HTTP
-core. Only reads: write capability is discovered from the space's operations, never exercised.
+Cloud (email + API token, HTTP Basic, under /wiki) uses the REST v2 API with cursor paging (INPROOM-138):
+  /wiki/api/v2/spaces, /spaces/{id}/operations, /spaces/{id}/pages, /pages/{id}[/labels|/attachments|
+  /versions|/ancestors].
+  Two calls stay on v1 because v2 has no equivalent: the current user (/wiki/rest/api/user/current) and page
+  read restrictions (/wiki/rest/api/content/{id}/restriction/byOperation/read).
+Data Center (personal access token, Bearer, at the site root) uses the v1 content API (/rest/api).
+Paging always follows the `_links.next` the server returns, reusing only its query string (no SSRF steering).
+Shares the hardened HTTP core. Only reads: write capability comes from the space's operations, never used.
 """
 
 import base64
@@ -24,7 +28,7 @@ from app.connectors.vault import Secret
 PAGE_SIZE = 50
 MAX_PAGES = 5000  # sync cap per run (reported as truncated)
 MAX_LIST_PAGES = 20  # cap when walking space lists
-PAGE_EXPAND = ",".join(
+V1_PAGE_EXPAND = ",".join(
     (
         "version",
         "ancestors",
@@ -78,7 +82,8 @@ class PageMeta:
 class PageBody:
     id: str
     title: str
-    space_key: str
+    space_id: str
+    status: str
     version: int
     storage: str
     content_sha256: str
@@ -116,7 +121,8 @@ class ConfluenceProvider:
         self.base_url = validate_confluence_url(base_url)
         self.cloud = email is not None
         # Cloud serves Confluence under /wiki on the shared Atlassian site; Data Center at its own root.
-        self.api = "/wiki/rest/api" if self.cloud else "/rest/api"
+        self.v1 = "/wiki/rest/api" if self.cloud else "/rest/api"
+        self.v2 = "/wiki/api/v2"
         if self.cloud:
             auth = "Basic " + base64.b64encode(f"{email}:{token.reveal()}".encode()).decode()
         else:
@@ -139,56 +145,83 @@ class ConfluenceProvider:
             "GET", path, params={k: v for k, v in params.items() if v is not None}
         ).json()
 
-    def _walk(self, path: str, params: dict[str, Any], limit_pages: int) -> Iterator[tuple[list[dict], bool]]:
-        """Follow `_links.next`. Only its query string is reused, so the server can never redirect us
-        to another host or path (SSRF) through a crafted next link."""
+    def _walk(
+        self, path: str, params: dict[str, Any], limit_pages: int
+    ) -> Iterator[tuple[list[dict], str | None]]:
+        """Follow `_links.next`, yielding (results, next query). Only the next link's query string is reused,
+        so the server can never steer a request to another host or path (SSRF) through a crafted link."""
         query = dict(params)
         for _ in range(limit_pages):
             data = self._get(path, **query)
             nxt = (data.get("_links") or {}).get("next")
-            yield data.get("results", []), bool(nxt)
+            query = {k: v[-1] for k, v in parse_qs(urlsplit(nxt).query).items()} if nxt else {}
+            yield data.get("results", []), (urlsplit(nxt).query if nxt else None)
             if not nxt:
                 return
-            query = {k: v[-1] for k, v in parse_qs(urlsplit(nxt).query).items()}
+
+    def _all(self, path: str, params: dict[str, Any], limit_pages: int = 20) -> list[dict]:
+        return [item for values, _ in self._walk(path, params, limit_pages) for item in values]
 
     # ------------------------------------------------------------ identity and spaces
 
     def whoami(self) -> Account:
-        data = self._get(f"{self.api}/user/current")
+        data = self._get(f"{self.v1}/user/current")  # v1 on Cloud too: v2 has no current-user endpoint
         login = data.get("email") or data.get("username") or data.get("displayName") or "unknown"
         return Account(login=login, id=str(data.get("accountId") or data.get("userKey") or login), scopes=[])
 
     @staticmethod
-    def _space(data: dict[str, Any]) -> Space:
-        ops = data.get("operations")
-        write = None if ops is None else any(o.get("operation") in WRITE_OPERATIONS for o in ops)
-        return Space(
-            id=str(data["id"]), key=data["key"], name=data.get("name") or data["key"], write_capable=write
-        )
+    def _write(ops: list[dict[str, Any]] | None) -> bool | None:
+        return None if ops is None else any(o.get("operation") in WRITE_OPERATIONS for o in ops)
 
-    def list_spaces(self, q: str | None = None, start: int = 0) -> tuple[list[Space], int | None]:
-        """One page of spaces (or, with q, every matching space within the walk cap)."""
-        params = {"limit": PAGE_SIZE, "start": start, "type": "global", "status": "current"}
+    def list_spaces(self, q: str | None = None, cursor: str | None = None) -> tuple[list[Space], str | None]:
+        """One page of spaces and an opaque cursor for the next (or, with q, every match within the cap)."""
+        if self.cloud:
+            path, params = f"{self.v2}/spaces", {"limit": PAGE_SIZE, "type": "global", "status": "current"}
+        else:
+            path, params = f"{self.v1}/space", {"limit": PAGE_SIZE, "type": "global", "status": "current"}
+        if cursor:
+            params |= {
+                k: v[-1]
+                for k, v in parse_qs(
+                    base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)).decode()
+                ).items()
+            }
+
+        def space(s: dict[str, Any]) -> Space:
+            return Space(id=str(s["id"]), key=s["key"], name=s.get("name") or s["key"])
+
         if not q:
-            values, more = next(self._walk(f"{self.api}/space", params, 1))
-            return [self._space(s) for s in values], (start + len(values)) if more else None
+            values, nxt = next(self._walk(path, params, 1))
+            token = base64.urlsafe_b64encode(nxt.encode()).decode().rstrip("=") if nxt else None
+            return [space(s) for s in values], token
         needle = q.lower()
-        found = [
-            self._space(s)
-            for values, _ in self._walk(f"{self.api}/space", params, MAX_LIST_PAGES)
-            for s in values
+        return [
+            space(s)
+            for s in self._all(path, params, MAX_LIST_PAGES)
             if needle in f"{s['key']} {s.get('name', '')}".lower()
-        ]
-        return found, None
+        ], None
 
     def get_space(self, key: str) -> Space:
-        return self._space(self._get(f"{self.api}/space/{quote(key, safe='')}", expand="operations"))
+        if self.cloud:
+            found = self._get(f"{self.v2}/spaces", keys=key, limit=1).get("results", [])
+            if not found:
+                raise NotFoundOrNoAccess("space not found, or the credential cannot read it")
+            data = found[0]
+            ops = self._get(f"{self.v2}/spaces/{int(data['id'])}/operations").get("operations")
+        else:
+            data = self._get(f"{self.v1}/space/{quote(key, safe='')}", expand="operations")
+            ops = data.get("operations")
+        return Space(
+            id=str(data["id"]),
+            key=data["key"],
+            name=data.get("name") or data["key"],
+            write_capable=self._write(ops),
+        )
 
-    # ------------------------------------------------------------ pages
+    # ------------------------------------------------------------ restrictions and metadata
 
     @staticmethod
-    def _restrictions(data: dict[str, Any]) -> dict[str, list[str]]:
-        read = ((data.get("restrictions") or {}).get("read") or {}).get("restrictions") or {}
+    def _acl(read: dict[str, Any]) -> dict[str, list[str]]:
         users = [
             u.get("accountId") or u.get("username") or u.get("displayName", "?")
             for u in (read.get("user") or {}).get("results", [])
@@ -196,26 +229,93 @@ class ConfluenceProvider:
         groups = [g.get("name", "?") for g in (read.get("group") or {}).get("results", [])]
         return {"users": sorted(users), "groups": sorted(groups)}
 
-    @staticmethod
-    def _attachments(data: dict[str, Any]) -> list[Attachment]:
-        results = (((data.get("children") or {}).get("attachment")) or {}).get("results", [])
+    def restrictions(self, page_id: str) -> dict[str, list[str]]:
+        """A page's own read restrictions. v1 on Cloud too: v2 has no content-restrictions endpoint."""
+        data = self._get(f"{self.v1}/content/{int(page_id)}/restriction/byOperation/read")
+        return self._acl(data.get("restrictions") or {})
+
+    def _v2_attachments(self, page_id: str) -> list[Attachment]:
         return [
             Attachment(
                 id=str(a["id"]),
                 title=a.get("title", ""),
-                media_type=(a.get("metadata") or {}).get("mediaType"),
-                size=(a.get("extensions") or {}).get("fileSize"),
+                media_type=a.get("mediaType"),
+                size=a.get("fileSize"),
                 version=(a.get("version") or {}).get("number"),
             )
-            for a in results
+            for a in self._all(f"{self.v2}/pages/{int(page_id)}/attachments", {"limit": PAGE_SIZE}, 5)
         ]
 
-    def _meta(self, data: dict[str, Any]) -> PageMeta:
+    def _v2_labels(self, page_id: str) -> list[str]:
+        return sorted(
+            lbl["name"]
+            for lbl in self._all(f"{self.v2}/pages/{int(page_id)}/labels", {"limit": PAGE_SIZE}, 5)
+        )
+
+    # ------------------------------------------------------------ pages
+
+    def iter_pages(self, space: Space, cap: int = MAX_PAGES) -> PageListing:
+        """Every current page of the space (drafts, archived and trashed pages are never requested)."""
+        return self._v2_pages(space, cap) if self.cloud else self._v1_pages(space, cap)
+
+    def _v2_pages(self, space: Space, cap: int) -> PageListing:
+        listing = PageListing()
+        raw: list[dict[str, Any]] = []
+        params = {"status": "current", "body-format": "storage", "limit": PAGE_SIZE}
+        for values, nxt in self._walk(
+            f"{self.v2}/spaces/{int(space.id)}/pages", params, cap // PAGE_SIZE + 1
+        ):
+            for item in values:
+                if len(raw) >= cap:
+                    listing.truncated = True
+                    break
+                if item.get("status", "current") == "current":
+                    raw.append(item)
+            if listing.truncated or not nxt:
+                break
+        else:
+            listing.truncated = True
+        parents = {
+            str(p["id"]): (
+                str(p["parentId"]) if p.get("parentId") and p.get("parentType", "page") == "page" else None
+            )
+            for p in raw
+        }
+        for item in raw:
+            pid = str(item["id"])
+            chain, cur = [], parents.get(pid)
+            while cur and cur not in chain:
+                chain.insert(0, cur)
+                cur = parents.get(cur)
+            version = item.get("version") or {}
+            storage = ((item.get("body") or {}).get("storage") or {}).get("value", "")
+            listing.pages.append(
+                PageMeta(
+                    id=pid,
+                    title=item.get("title", ""),
+                    space_key=space.key,
+                    parent_id=parents.get(pid),
+                    ancestors=chain,
+                    version=int(version.get("number", 1)),
+                    author=version.get("authorId"),
+                    created_at=version.get("createdAt"),
+                    message=version.get("message") or None,
+                    labels=self._v2_labels(pid),
+                    restrictions=self.restrictions(pid),
+                    attachments=self._v2_attachments(pid),
+                    content_sha256=content_hash(storage),
+                    web_url=(item.get("_links") or {}).get("webui"),
+                )
+            )
+        return listing
+
+    def _v1_meta(self, data: dict[str, Any]) -> PageMeta:
         version = data.get("version") or {}
         ancestors = [str(a["id"]) for a in data.get("ancestors") or []]
         storage = ((data.get("body") or {}).get("storage") or {}).get("value", "")
         labels = (((data.get("metadata") or {}).get("labels")) or {}).get("results", [])
-        webui = (data.get("_links") or {}).get("webui")
+        read = ((data.get("restrictions") or {}).get("read") or {}).get("restrictions") or {}
+        attachments = (((data.get("children") or {}).get("attachment")) or {}).get("results", [])
         return PageMeta(
             id=str(data["id"]),
             title=data.get("title", ""),
@@ -227,66 +327,86 @@ class ConfluenceProvider:
             created_at=version.get("when"),
             message=version.get("message") or None,
             labels=sorted(lbl["name"] for lbl in labels if lbl.get("name")),
-            restrictions=self._restrictions(data),
-            attachments=self._attachments(data),
+            restrictions=self._acl(read),
+            attachments=[
+                Attachment(
+                    id=str(a["id"]),
+                    title=a.get("title", ""),
+                    media_type=(a.get("metadata") or {}).get("mediaType"),
+                    size=(a.get("extensions") or {}).get("fileSize"),
+                    version=(a.get("version") or {}).get("number"),
+                )
+                for a in attachments
+            ],
             content_sha256=content_hash(storage),
-            web_url=webui,
+            web_url=(data.get("_links") or {}).get("webui"),
         )
 
-    def iter_pages(self, space_key: str, cap: int = MAX_PAGES) -> PageListing:
-        """Every current page of the space (drafts, archived and trashed pages are never requested)."""
+    def _v1_pages(self, space: Space, cap: int) -> PageListing:
         listing = PageListing()
         params = {
-            "spaceKey": space_key,
+            "spaceKey": space.key,
             "type": "page",
             "status": "current",
             "limit": PAGE_SIZE,
-            "expand": PAGE_EXPAND,
+            "expand": V1_PAGE_EXPAND,
         }
-        for values, more in self._walk(f"{self.api}/content", params, cap // PAGE_SIZE + 1):
+        for values, nxt in self._walk(f"{self.v1}/content", params, cap // PAGE_SIZE + 1):
             for item in values:
                 if len(listing.pages) >= cap:
                     listing.truncated = True
                     return listing
                 if item.get("status", "current") == "current":
-                    listing.pages.append(self._meta(item))
-            if not more:
+                    listing.pages.append(self._v1_meta(item))
+            if not nxt:
                 return listing
         listing.truncated = True
         return listing
 
     def get_page(self, page_id: str, version: int | None = None) -> PageBody:
-        params: dict[str, Any] = {"expand": "body.storage,version,space"}
-        if version is not None:
-            params |= {"status": "historical", "version": version}
-        data = self._get(f"{self.api}/content/{int(page_id)}", **params)
+        if self.cloud:
+            data = self._get(
+                f"{self.v2}/pages/{int(page_id)}", **{"body-format": "storage", "version": version}
+            )
+            space_id = str(data.get("spaceId", ""))
+        else:
+            params: dict[str, Any] = {"expand": "body.storage,version,space"}
+            if version is not None:
+                params |= {"status": "historical", "version": version}
+            data = self._get(f"{self.v1}/content/{int(page_id)}", **params)
+            space_id = str((data.get("space") or {}).get("id", ""))
         storage = ((data.get("body") or {}).get("storage") or {}).get("value", "")
         return PageBody(
             id=str(data["id"]),
             title=data.get("title", ""),
-            space_key=(data.get("space") or {}).get("key", ""),
+            space_id=space_id,
+            status=data.get("status", "current"),
             version=int((data.get("version") or {}).get("number", 1)),
             storage=storage,
             content_sha256=content_hash(storage),
         )
 
     def page_versions(self, page_id: str) -> list[PageVersion]:
-        out = []
-        for values, _ in self._walk(f"{self.api}/content/{int(page_id)}/version", {"limit": PAGE_SIZE}, 10):
-            out += [
+        if self.cloud:
+            items = self._all(f"{self.v2}/pages/{int(page_id)}/versions", {"limit": PAGE_SIZE}, 10)
+            out = [
+                PageVersion(
+                    number=int(v["number"]),
+                    author=v.get("authorId"),
+                    created_at=v.get("createdAt"),
+                    message=v.get("message") or None,
+                )
+                for v in items
+            ]
+        else:
+            items = self._all(f"{self.v1}/content/{int(page_id)}/version", {"limit": PAGE_SIZE}, 10)
+            out = [
                 PageVersion(
                     number=int(v["number"]),
                     author=(v.get("by") or {}).get("displayName"),
                     created_at=v.get("when"),
                     message=v.get("message") or None,
                 )
-                for v in values
+                for v in items
             ]
         return sorted(out, key=lambda v: v.number)
-
-    def can_read_space(self, key: str) -> bool:
-        try:
-            self.get_space(key)
-            return True
-        except NotFoundOrNoAccess:
-            return False

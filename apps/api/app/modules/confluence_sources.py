@@ -71,7 +71,7 @@ class SpaceOption(BaseModel):
 
 class SpaceOptions(BaseModel):
     items: list[SpaceOption]
-    next_start: int | None
+    next_cursor: str | None
 
 
 class ConfluenceSource(BaseModel):
@@ -177,7 +177,7 @@ def usable_connection(conn: Connection, principal: Principal, request: Request, 
 def _fetch(provider: ConfluenceProvider, key: str) -> tuple[Space, PageListing]:
     with provider_errors(NOT_ACCESSIBLE):
         space = provider.get_space(key)
-        listing = provider.iter_pages(space.key)
+        listing = provider.iter_pages(space)
     return space, listing
 
 
@@ -332,7 +332,9 @@ def list_space_options(
     connection_id: uuid.UUID,
     project_id: Annotated[uuid.UUID, Query(description="Project the spaces would be selected into")],
     q: Annotated[str | None, Query(max_length=100)] = None,
-    start: Annotated[int, Query(ge=0, le=100_000)] = 0,
+    cursor: Annotated[
+        str | None, Query(max_length=2000, description="next_cursor of the previous page")
+    ] = None,
 ) -> SpaceOptions:
     with tenant_session(principal.tenant_id) as conn:
         row = load_connection(conn, principal, request, connection_id, "project.source.manage")
@@ -345,9 +347,12 @@ def list_space_options(
         }
     provider = confluence_for(row, token, transports)
     with provider_errors():
-        found, nxt = provider.list_spaces(q, start)
+        try:
+            found, nxt = provider.list_spaces(q, cursor)
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise ApiError(400, "INVALID_CURSOR", "Invalid cursor", "cursor is malformed") from exc
     items = [SpaceOption(id=s.id, key=s.key, name=s.name, selected=s.id in chosen) for s in found]
-    return SpaceOptions(items=items, next_start=nxt)
+    return SpaceOptions(items=items, next_cursor=nxt)
 
 
 @router.get(

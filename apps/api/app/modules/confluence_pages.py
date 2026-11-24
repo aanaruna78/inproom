@@ -317,7 +317,7 @@ def get_page_content(
         token = credential_of(conn, principal, connection)
     with provider_errors(("PAGE_NOT_ACCESSIBLE", "Confluence no longer returns this page to the credential")):
         body = confluence_for(connection, token, transports).get_page(page_id, version)
-    if body.space_key != source["space_key"]:
+    if body.space_id != source["space_id"]:
         # The page moved to another space after the last sync: never serve content from outside the selection.
         raise ApiError(
             404, "PAGE_NOT_IN_SPACE", "Not found", "This page is no longer in the selected space; sync again"

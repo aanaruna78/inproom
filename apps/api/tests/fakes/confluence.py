@@ -118,16 +118,128 @@ class FakeConfluence:
             ]
         return out
 
-    def _page_json(self, page: FakePage, version: dict[str, Any], prefix: str) -> dict[str, Any]:
-        def restrict(p: FakePage) -> dict[str, Any]:
-            return {
-                "read": {
-                    "restrictions": {
-                        "user": {"results": [{"accountId": u, "displayName": u} for u in p.users]},
-                        "group": {"results": [{"name": g} for g in p.groups]},
-                    }
+    @staticmethod
+    def _restrict(p: FakePage) -> dict[str, Any]:
+        return {
+            "read": {
+                "restrictions": {
+                    "user": {"results": [{"accountId": u, "displayName": u} for u in p.users]},
+                    "group": {"results": [{"name": g} for g in p.groups]},
                 }
             }
+        }
+
+    # ---- Cloud REST v2 (cursor paging)
+    @staticmethod
+    def _cursored(results: list[Any], params: httpx.QueryParams, path: str) -> dict[str, Any]:
+        start = int(base64.urlsafe_b64decode(params["cursor"]).decode()) if params.get("cursor") else 0
+        limit = int(params.get("limit", "25"))
+        out: dict[str, Any] = {"results": results[start : start + limit], "_links": {}}
+        if start + limit < len(results):
+            cursor = base64.urlsafe_b64encode(str(start + limit).encode()).decode()
+            rest = "&".join(f"{k}={v}" for k, v in params.items() if k != "cursor")
+            out["_links"]["next"] = f"/wiki/api/v2{path}?{rest}&cursor={cursor}"
+        return out
+
+    def _v2_page(self, page: FakePage, version: dict[str, Any], params: httpx.QueryParams) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "id": str(page.id),
+            "status": page.status,
+            "title": page.title,
+            "spaceId": str(self.spaces[page.space]["id"]),
+            "parentId": str(page.parent) if page.parent else None,
+            "parentType": "page" if page.parent else None,
+            "authorId": page.versions[0]["by"],
+            "version": {
+                "number": version["number"],
+                "message": version["message"],
+                "createdAt": version["when"],
+                "authorId": version["by"],
+            },
+            "_links": {"webui": f"/spaces/{page.space}/pages/{page.id}"},
+        }
+        if params.get("body-format") == "storage":
+            out["body"] = {"storage": {"value": version["body"], "representation": "storage"}}
+        if params.get("include-labels") == "true":
+            out["labels"] = {
+                "results": [{"id": label, "name": label, "prefix": "global"} for label in page.labels]
+            }
+        return out
+
+    def _v2(self, path: str, params: httpx.QueryParams, user: "FakeUser") -> httpx.Response:
+        readable = {k for k, ops in user.spaces.items() if "read" in ops and k in self.spaces}
+        by_id = {str(sp["id"]): k for k, sp in self.spaces.items()}
+        if path == "/spaces":
+            keys = sorted(readable)
+            if params.get("keys"):
+                keys = [k for k in keys if k in params["keys"].split(",")]
+            return self._json(200, self._cursored([dict(self.spaces[k]) for k in keys], params, path))
+        sm = re.fullmatch(r"/spaces/(\d+)/(operations|pages)", path)
+        if sm:
+            key = by_id.get(sm.group(1))
+            if key not in readable:
+                return self._json(404, {"message": "space not found"})
+            if sm.group(2) == "operations":
+                ops = [{"operation": op, "targetType": "space"} for op in sorted(user.spaces[key])]
+                return self._json(200, {"operations": ops})
+            status = params.get("status", "current")
+            pages = sorted(
+                (
+                    p
+                    for p in self.pages.values()
+                    if p.space == key and p.status == status and self._visible(p, user)
+                ),
+                key=lambda p: p.id,
+            )
+            return self._json(
+                200, self._cursored([self._v2_page(p, p.versions[-1], params) for p in pages], params, path)
+            )
+        pm = re.fullmatch(r"/pages/(\d+)(/labels|/attachments|/versions|/ancestors)?", path)
+        if pm:
+            page = self.pages.get(int(pm.group(1)))
+            if page is None or not self._visible(page, user) or page.status == "trashed":
+                return self._json(404, {"message": "page not found"})
+            sub = pm.group(2)
+            if sub == "/labels":
+                items = [{"id": label, "name": label, "prefix": "global"} for label in page.labels]
+            elif sub == "/attachments":
+                items = [
+                    {
+                        "id": a["id"],
+                        "title": a["title"],
+                        "mediaType": (a.get("metadata") or {}).get("mediaType"),
+                        "fileSize": (a.get("extensions") or {}).get("fileSize"),
+                        "version": a.get("version"),
+                    }
+                    for a in page.attachments
+                ]
+            elif sub == "/versions":
+                items = [
+                    {
+                        "number": v["number"],
+                        "message": v["message"],
+                        "createdAt": v["when"],
+                        "authorId": v["by"],
+                    }
+                    for v in page.versions
+                ]
+            elif sub == "/ancestors":
+                items = [{"id": str(a.id), "type": "page"} for a in self._ancestors(page)]
+            else:
+                wanted = params.get("version")
+                version = (
+                    page.versions[-1]
+                    if wanted is None
+                    else next((v for v in page.versions if v["number"] == int(wanted)), None)
+                )
+                if version is None:
+                    return self._json(404, {"message": "No such version"})
+                return self._json(200, self._v2_page(page, version, params))
+            return self._json(200, self._cursored(items, params, path))
+        return self._json(404, {"message": "not found"})
+
+    def _page_json(self, page: FakePage, version: dict[str, Any], prefix: str) -> dict[str, Any]:
+        restrict = self._restrict
 
         return {
             "id": str(page.id),
@@ -193,11 +305,24 @@ class FakeConfluence:
         user = self._user(request)
         if user is None:
             return self._json(401, {"message": "Unauthorized"})
+        if path.startswith("/wiki/api/v2/"):
+            return self._v2(path.removeprefix("/wiki/api/v2"), request.url.params, user)
         m = re.fullmatch(r"(/wiki)?/rest/api(/.*)", path)
         if not m:
             return self._json(404, {"message": "not found"})
         prefix, rest, params = (m.group(1) or "") + "/rest/api", m.group(2), request.url.params
         expand = params.get("expand", "")
+        rm = re.fullmatch(r"/content/(\d+)/restriction/byOperation/read", rest)
+        if rm:  # v1 on Cloud too (v2 has no restrictions API)
+            page = self.pages.get(int(rm.group(1)))
+            if page is None or not self._visible(page, user):
+                return self._json(404, {"message": "No content found"})
+            return self._json(
+                200, {"operation": "read", "restrictions": self._restrict(page)["read"]["restrictions"]}
+            )
+        if m.group(1) and rest != "/user/current":
+            # Cloud must use REST v2 for spaces and pages (INPROOM-138): refuse the v1 content API on /wiki.
+            return self._json(410, {"message": "fake Cloud: use /wiki/api/v2 for this resource"})
 
         if rest == "/user/current":
             return self._json(

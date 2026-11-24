@@ -1761,8 +1761,8 @@ export interface components {
         SpaceOptions: {
             /** Items */
             items: components["schemas"]["SpaceOption"][];
-            /** Next Start */
-            next_start: number | null;
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** SyncResult */
         SyncResult: {
@@ -2060,7 +2060,8 @@ export interface operations {
                 /** @description Project the spaces would be selected into */
                 project_id: string;
                 q?: string | null;
-                start?: number;
+                /** @description next_cursor of the previous page */
+                cursor?: string | null;
             };
             header?: never;
             path: {

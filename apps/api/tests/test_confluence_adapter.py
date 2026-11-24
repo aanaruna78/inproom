@@ -1,4 +1,5 @@
-"""INPROOM-134: Confluence adapter against the fake - spaces, paging, pages, versions, ACLs, errors."""
+"""INPROOM-134/138: Confluence adapter against the fake - Cloud REST v2 + DC v1: spaces, cursor paging,
+pages, versions, ACLs, errors."""
 
 import pytest
 
@@ -44,7 +45,7 @@ def test_whoami_spaces_and_write_capability(fake):
 
 
 def test_pages_follow_next_links_and_carry_metadata(fake):
-    listing = provider(fake).iter_pages("ENG")
+    listing = provider(fake).iter_pages(provider(fake).get_space("ENG"))
     pages = {pg.id: pg for pg in listing.pages}
     assert (
         not listing.truncated and len(pages) == 71
@@ -65,7 +66,7 @@ def test_pages_follow_next_links_and_carry_metadata(fake):
         "users": [],
         "groups": [],
     }
-    capped = provider(fake).iter_pages("ENG", cap=10)
+    capped = provider(fake).iter_pages(provider(fake).get_space("ENG"), cap=10)
     assert capped.truncated and len(capped.pages) == 10
 
 
@@ -74,8 +75,10 @@ def test_bodies_versions_and_data_center(fake):
     assert p.get_page("101").version == 3 and p.get_page("101", version=1).storage == fc.ARCH_V1
     assert [v.number for v in p.page_versions("101")] == [1, 2, 3]
     dc = ConfluenceProvider("https://wiki.corp.example.com", Secret(fc.DC_PAT), transport=fake.transport())
-    assert dc.whoami().login == "dc-bot" and dc.get_page("101").space_key == "ENG"
-    assert all(path.startswith("/rest/api") for _, path in fake.calls[-2:])
+    assert dc.whoami().login == "dc-bot" and dc.get_page("101").space_id == "1"
+    dc_pages = dc.iter_pages(dc.get_space("ENG")).pages
+    assert len(dc_pages) == 71 and next(pg for pg in dc_pages if pg.id == "104").ancestors == ["100", "103"]
+    assert all(path.startswith("/rest/api") for _, path in fake.calls[-4:])
 
 
 def test_errors_retries_and_redirects(fake):
@@ -97,21 +100,40 @@ def test_errors_retries_and_redirects(fake):
         provider(fake).whoami()
 
 
+def test_cloud_uses_rest_v2_with_cursor_paging(fake):
+    """INPROOM-138: Cloud spaces/pages/versions/labels/attachments go to /wiki/api/v2 and follow cursors.
+    Only the current user and read restrictions stay on v1 (v2 has no equivalent); the fake answers 410 to
+    any other /wiki/rest/api call, so a regression to v1 cannot pass."""
+    p = provider(fake)
+    p.whoami()
+    space = p.get_space("ENG")
+    p.list_spaces()
+    listing = p.iter_pages(space)
+    p.get_page("101", version=1)
+    p.page_versions("101")
+    v1 = {path for _, path in fake.calls if path.startswith("/wiki/rest/api")}
+    assert v1 == {"/wiki/rest/api/user/current"} | {
+        f"/wiki/rest/api/content/{pg.id}/restriction/byOperation/read" for pg in listing.pages
+    }
+    listing_calls = [path for _, path in fake.calls if path == "/wiki/api/v2/spaces/1/pages"]
+    assert len(listing_calls) == 2 and len(listing.pages) == 71  # two cursor pages
+
+
 def test_next_links_cannot_steer_requests_elsewhere(fake, monkeypatch):
     """A hostile `_links.next` pointing at another host/path is reduced to its query string."""
-    real = fake._paged
+    real = fake._cursored
 
     def hostile(results, params, path):
         out = real(results, params, path)
-        if "next" in out["_links"]:
-            out["_links"]["next"] = (
-                "http://169.254.169.254/latest" + out["_links"]["next"][out["_links"]["next"].index("?") :]
-            )
+        nxt = out["_links"].get("next")
+        if nxt:
+            out["_links"]["next"] = "http://169.254.169.254/latest" + nxt[nxt.index("?") :]
         return out
 
-    monkeypatch.setattr(fake, "_paged", hostile)
-    assert len(provider(fake).iter_pages("ENG").pages) == 71
-    assert all(path == "/wiki/rest/api/content" for _, path in fake.calls)
+    monkeypatch.setattr(fake, "_cursored", hostile)
+    p = provider(fake)
+    assert len(p.iter_pages(p.get_space("ENG")).pages) == 71
+    assert all(path.startswith(("/wiki/api/v2/", "/wiki/rest/api/")) for _, path in fake.calls)
 
 
 def test_site_outside_allowlist_is_refused_before_any_call(fake):

@@ -2725,21 +2725,21 @@
             "title": "Items",
             "type": "array"
           },
-          "next_start": {
+          "next_cursor": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Next Start"
+            "title": "Next Cursor"
           }
         },
         "required": [
           "items",
-          "next_start"
+          "next_cursor"
         ],
         "title": "SpaceOptions",
         "type": "object"
@@ -3223,15 +3223,22 @@
             }
           },
           {
+            "description": "next_cursor of the previous page",
             "in": "query",
-            "name": "start",
+            "name": "cursor",
             "required": false,
             "schema": {
-              "default": 0,
-              "maximum": 100000,
-              "minimum": 0,
-              "title": "Start",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "next_cursor of the previous page",
+              "title": "Cursor"
             }
           }
         ],
