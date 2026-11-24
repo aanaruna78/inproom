@@ -11,14 +11,19 @@ export default async function ProjectsPage({ params }: { params: Promise<{ works
   const { workspaceId } = await params;
   const path = `/workspaces/${workspaceId}/projects`;
   const api = await apiClient(path);
-  const [list, workspaces] = await Promise.all([
-    api.GET("/v1/workspaces/{workspace_id}/projects", {
-      params: { path: { workspace_id: workspaceId }, query: { limit: 100 } },
-    }),
-    api.GET("/v1/workspaces", { params: { query: { limit: 100 } } }),
-  ]);
+  const list = await api.GET("/v1/workspaces/{workspace_id}/projects", {
+    params: { path: { workspace_id: workspaceId }, query: { limit: 100 } },
+  });
   if (list.response.status === 404 || list.response.status === 422) notFound();
-  const workspace = workspaces.data?.items.find((w) => w.id === workspaceId);
+  // No single-workspace endpoint: walk the (paged) list until we find it, bounded.
+  let workspace: { id: string; name: string; slug: string } | undefined;
+  let cursor: string | undefined;
+  for (let page = 0; page < 20 && !workspace; page++) {
+    const { data } = await api.GET("/v1/workspaces", { params: { query: { limit: 100, cursor } } });
+    workspace = data?.items.find((w) => w.id === workspaceId);
+    cursor = data?.next_cursor ?? undefined;
+    if (!cursor) break;
+  }
   const items = list.data?.items ?? [];
   return (
     <main>

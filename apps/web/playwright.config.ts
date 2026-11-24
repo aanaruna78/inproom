@@ -8,6 +8,9 @@ export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
   retries: 0,
+  // Specs share the fake GitHub / Jira / Confluence servers' state (pages, tokens): run them one at a time.
+  workers: 1,
+  fullyParallel: false,
   reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   outputDir: "test-results",
   use: {

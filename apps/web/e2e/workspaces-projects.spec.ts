@@ -41,6 +41,11 @@ test("tenant admin creates a workspace and a project, duplicate key shows inline
   await wsForm.getByRole("button", { name: "Create workspace" }).click();
   await expect(page.getByTestId("create-workspace-success")).toContainText(`E2E workspace ${run}`);
   const wsLink = page.getByTestId("workspace-table").getByRole("link", { name: `E2E workspace ${run}` });
+  // The list is oldest-first and paged; on a long-lived dev database the new workspace may be on a later page.
+  while (!(await wsLink.isVisible()) && (await page.getByTestId("workspaces-next").isVisible())) {
+    await page.getByTestId("workspaces-next").click();
+    await page.waitForLoadState("networkidle");
+  }
   await expect(wsLink).toBeVisible();
   await shot(page, "03-workspace-created");
 

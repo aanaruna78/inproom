@@ -366,3 +366,65 @@ def test_webhook_secret_is_shown_once_and_leaks_nowhere_else(
         assert secret not in r.text and secret not in str(r.headers), f"webhook secret in {r.request.url}"
     assert secret not in caplog.text
     record("POST /v1/connections/{id}/webhook-secret", "secret shown once; leak scan", "once", "once")
+
+
+# ------------------------------------------------ reauthorize + adopt (INPROOM-148; story INPROOM-26 AC 7)
+
+
+def test_reauthorize_and_adopt_never_leak_tokens(db_client, tokens, fake_confluence, owner_engine, caplog):
+    """Old and new tokens stay out of every response, log line and table (except ciphertext) through
+    break -> reauthorize -> revoke -> new connection -> adopt."""
+    from tests.fakes import confluence as fc
+
+    caplog.set_level(logging.DEBUG)
+    tenant = uuid.uuid4()
+    h = bearer(tokens.mint(tenant_id=tenant, user_id="alice", roles=["tenant_admin"]))
+    responses = []
+
+    def call(method, path, **kw):
+        r = db_client.request(method, path, headers=kw.pop("headers", h), **kw)
+        responses.append(r)
+        return r
+
+    ws = call("POST", "/v1/workspaces", json={"slug": "rleak", "name": "Leak"}).json()
+    pid = call("POST", f"/v1/workspaces/{ws['id']}/projects", json={"key": "RLEAK", "name": "Leak"}).json()[
+        "id"
+    ]
+    body = {"provider": "confluence", "display_name": "old", "base_url": "https://acme.atlassian.net"}
+    old = call("POST", "/v1/connections", json=body | {"token": fc.VALID_TOKEN, "email": fc.EMAIL}).json()[
+        "id"
+    ]
+    call("PUT", f"/v1/projects/{pid}/sources/confluence/{old}:ENG", json={"required_labels": ["approved"]})
+    fake_confluence.users[fc.VALID_TOKEN].valid = False
+    call("POST", f"/v1/connections/{old}/check")
+    call("GET", "/v1/connections/attention")
+    call("PUT", f"/v1/connections/{old}/credential", json={"token": fc.BAD_TOKEN})
+    fake_confluence.users[fc.VALID_TOKEN].valid = True
+    call("PUT", f"/v1/connections/{old}/credential", json={"token": fc.VALID_TOKEN})
+    call("GET", f"/v1/connections/{old}/impact")
+    call("POST", f"/v1/connections/{old}/revoke")
+    reader = {"provider": "confluence", "display_name": "new", "base_url": "https://acme.atlassian.net"}
+    new = call(
+        "POST", "/v1/connections", json=reader | {"token": fc.READONLY_TOKEN, "email": "reader@acme.example"}
+    ).json()["id"]
+    call("POST", f"/v1/connections/{new}/adopt", json={"from_connection_id": old})
+    call("GET", f"/v1/connections/{new}/sources")
+    secrets_ = {"VALID": fc.VALID_TOKEN, "BAD": fc.BAD_TOKEN, "READONLY": fc.READONLY_TOKEN}
+    with owner_engine.connect() as conn:
+        for table in TENANT_SCOPED_TABLES:
+            column = "id" if table == "tenants" else "tenant_id"
+            dump = conn.execute(
+                text(
+                    "SELECT coalesce(string_agg(t::text, ' '), '') "
+                    f"FROM (SELECT * FROM {table} WHERE {column}=:t) t"
+                ),
+                {"t": tenant},
+            ).scalar()
+            for name, value in secrets_.items():
+                assert value not in dump, f"{name} token in table {table}"
+    for r in responses:
+        for name, value in secrets_.items():
+            assert value not in r.text and value not in str(r.headers), f"{name} token in {r.request.url}"
+    for name, value in secrets_.items():
+        assert value not in caplog.text, f"{name} token in logs"
+    record("reauthorize / impact / revoke / adopt", "token leak scan", "none found", "none found")

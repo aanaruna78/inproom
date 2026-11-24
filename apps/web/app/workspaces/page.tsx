@@ -6,9 +6,10 @@ import { apiClient } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-export default async function WorkspacesPage() {
+export default async function WorkspacesPage({ searchParams }: { searchParams: Promise<{ cursor?: string }> }) {
+  const { cursor } = await searchParams;
   const api = await apiClient("/workspaces");
-  const { data, error } = await api.GET("/v1/workspaces", { params: { query: { limit: 100 } } });
+  const { data, error } = await api.GET("/v1/workspaces", { params: { query: { limit: 100, cursor: cursor || undefined } } });
   const items = data?.items ?? [];
   return (
     <main>
@@ -36,6 +37,16 @@ export default async function WorkspacesPage() {
                 ))}
               </tbody>
             </table>
+          )}
+          {(cursor || data?.next_cursor) && (
+            <nav className="tabs" aria-label="Workspace pages">
+              {cursor && <Link href="/workspaces">« First page</Link>}
+              {data?.next_cursor && (
+                <Link data-testid="workspaces-next" href={`/workspaces?cursor=${encodeURIComponent(data.next_cursor)}`}>
+                  Next page »
+                </Link>
+              )}
+            </nav>
           )}
         </section>
         <section className="card" aria-labelledby="ws-create">

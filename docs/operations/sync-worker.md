@@ -49,3 +49,39 @@ Rate limits (429) wait for the provider's Retry-After and don't count as attempt
 - **GitHub** webhooks are registered by INPROOM when a repository is selected with "Register a webhook".
 - **Jira and Confluence:** on Integrations, use **Webhook setup → Generate webhook secret**. Copy the URL and secret into the webhook settings of the Jira or Confluence administration. The secret is shown only once, and generating a new one replaces the old.
 - Deliveries are checked with HMAC-SHA256 (`X-Hub-Signature`) and deduplicated by delivery id. They only queue jobs.
+
+## Connection health and recovery (INPROOM-26)
+
+- **Automatic health checks:** the worker checks every connection every `INPROOM_HEALTH_INTERVAL_SECONDS` (default 3600). A scheduled check is audited only when the status or issues change.
+- **Invalid credential:** if any sync gets "unauthorized" (401), the connection becomes **INVALID** immediately (audit `connection.invalidated`) and no further syncs run for it. It appears under **Integrations → Needs attention** with a plain-language reason and action.
+
+**Why a source is paused** (`pause_cause`) and who can resume it:
+
+| Cause | Set by | Resumed by |
+|---|---|---|
+| `access` | Health check (lost access, missing branch) | Automatically: a health check or reauthorization that finds it readable again |
+| `excluded` | A project admin (**Exclude**) | Only a project admin (**Include again**). Health checks, re-selecting and syncs never resume it |
+| `connection_revoked` | Disconnect (revoke) | Only by moving the source to a new connection (**Move sources** / `POST /v1/connections/{id}/adopt`) |
+
+**Freshness** (sync scope, Sources, Jira and Confluence pages) is one of:
+
+| Value | Meaning |
+|---|---|
+| `fresh` | Synced recently |
+| `stale` | No success for 3× the sync interval |
+| `failing` | Recent syncs failed |
+| `never` | Never synced |
+| `paused` | Paused (see cause above) |
+| `excluded` | Excluded by a project admin |
+
+`data_as_of` is the time of the last successful sync. Pages for stale or paused sources show a "data as of …" banner.
+
+**Fixing a broken token:** open the connection's page and use **Reauthorize** with a new token. INPROOM validates the token, checks every source, resumes those that were paused only for access, and queues a sync for each. The result lists what resumed and what is still blocked, and why.
+
+**Disconnecting:** the connection page shows what would stop (projects, sources, webhooks) before you confirm. Revoking destroys the token, skips queued jobs and makes its webhooks return 404. History is kept.
+
+**Reconnecting after a disconnect:**
+1. Create a new connection to the **same provider and site**.
+2. On the old connection's page, use **Move sources**.
+3. Each source is re-verified with the new token. Verified sources resume and sync. The others stay paused, with the reason shown. Excluded sources keep their exclusion.
+4. Webhooks are not carried over: re-register GitHub hooks, or generate a new Jira or Confluence webhook secret.

@@ -441,7 +441,8 @@ def serve(port: int) -> None:
     """Run the standard fake as a local HTTP server for browser E2E. NEVER expose it: test-only.
 
     Control endpoints (test-only): POST /_fake/reset, POST /_fake/edit {"page_id","body"},
-    POST /_fake/space-access {"token","space","grant"}, GET /_fake/health.
+    POST /_fake/space-access {"token","space","grant"}, POST /_fake/token {"token","valid"},
+    GET /_fake/health.
     """
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -481,6 +482,9 @@ def serve(port: int) -> None:
             data = json.loads(body or b"{}")
             if self.path == "/_fake/edit":
                 fake.edit(int(data["page_id"]), data["body"])
+                return self._send(204, b"", {})
+            if self.path == "/_fake/token":  # invalidate / restore a token at the "provider"
+                fake.users[data["token"]].valid = bool(data.get("valid"))
                 return self._send(204, b"", {})
             if self.path == "/_fake/space-access":
                 user = fake.users[data["token"]]
