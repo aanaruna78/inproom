@@ -82,16 +82,25 @@ Lines GitHub would ignore (negation, `[ ]`, invalid owners) are reported in `cod
 |---|---|
 | `GET /v1/projects/{id}/code/search?q=&kind=&language=&repository=&branch=&cursor=` | Symbol hits ranked exact > prefix > contains (case-insensitive). Each hit has `citation` {repository, branch, commit, path, line_start, line_end, blob_sha, permalink}, `owners`, `behind`, `snapshot_status`, and `item` (for the content API). |
 | `GET /v1/projects/{id}/code/snapshots` | Per repository and branch: `head_commit`, `indexed_commit`, `behind`, `indexing`, `status`, `truncated`, counts, skipped paths, renames, CODEOWNERS errors |
-| `GET /v1/projects/{id}/code/files?repository=&branch=&path=` | One file's definitions, imports, owners and citation. 409 `CONTENT_WITHHELD` when the repository is paused; 409 `NOT_INDEXED` (with `parse_status` and `failure`) when there are no symbols yet |
+| `GET /v1/projects/{id}/code/files?repository=&branch=&path=` | One file's definitions, imports, owners and citation. 404 `CODE_NOT_FOUND` for unselected branches; 409 `CONTENT_WITHHELD` when the repository is paused or the file is withheld; 409 `NOT_INDEXED` (with `parse_status` and `failure`) when there are no symbols yet |
 
-**Which commit a citation names:**
-- **The branch's latest snapshot is COMPLETE:** its commit, since every indexed file is verified there.
-- **The snapshot is PARTIAL:** the commit at which that file's content was recorded. A citation never names a commit its content wasn't verified at.
+**Which commit a citation names (INPROOM-177):** each file carries `verified_ref`, the newest commit at which its current content was confirmed.
+- The code job sets it for every file it records or finds unchanged.
+- A citation names that commit, so the commit always contains exactly the cited content:
+  - mid-batch, new files cite the new commit and not-yet-rechecked files cite their earlier commit;
+  - in a PARTIAL snapshot, files the cut tree omitted keep their earlier commit.
+- **`behind: true`** means the branch head has moved past that commit.
+- **Permalinks** URL-encode the path (`#`, `?`, `%`, spaces, Unicode), keeping `/` and the `#L..` line fragment (INPROOM-181).
 
-**`behind: true`** means the branch head has moved past the indexed commit. Results stay pinned to what was indexed until the new commit is.
+**Owners (INPROOM-180)** come from CODEOWNERS **at the commit the citation names**. Each snapshot records its commit's CODEOWNERS on its first run.
+
+**Rejected new content (INPROOM-177):** a file whose new content can't be indexed (it became binary, an LFS pointer, or too large) is **withheld** (EXCLUDED, with the reason and commit). It is never left as stale code cited at a commit that doesn't contain it. Its previous content returns once the path holds indexable content again.
+
+**Rollbacks (INPROOM-178):** a branch's files reflect its most recently **finished** snapshot. If the head returns to a commit indexed before (a rollback or force-push), that snapshot is re-activated and the files are restored. Stored blobs are reused and nothing is downloaded again.
 
 **Withholding:**
 - **Paused or excluded repository** (access lost, deleted branch, connection revoked, user exclusion): it drops out of search, and its files are withheld.
+- **Branch no longer selected (INPROOM-179):** it drops out of search, files and content at once (`CODE_NOT_FOUND` / `SOURCE_BRANCH_NOT_SELECTED`). The next code job marks its files EXCLUDED and its snapshots RETIRED. Reselecting re-activates it from stored blobs.
 - **Removed repository:** its items become DELETED at the next retention purge.
 
 ## Troubleshooting
