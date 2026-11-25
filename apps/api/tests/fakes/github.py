@@ -66,6 +66,8 @@ class FakeGitHub:
         self.tokens: dict[str, FakeToken] = {}
         self.hooks: dict[int, list[dict[str, Any]]] = {}
         self.failures: list[str] = []  # next responses: "timeout" | "500" | "ratelimit" | "redirect"
+        # (path regex, failure): the next request whose path matches fails that way (INPROOM-176)
+        self.path_failures: list[tuple[str, str]] = []
         self.calls: list[tuple[str, str]] = []
         self._ids = itertools.count(9000)
 
@@ -99,8 +101,9 @@ class FakeGitHub:
     def handle(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path.removeprefix("/api/v3")
         self.calls.append((request.method, path))
-        if self.failures:
-            failure = self.failures.pop(0)
+        targeted = next((i for i, (pat, _) in enumerate(self.path_failures) if re.search(pat, path)), None)
+        if self.failures or targeted is not None:
+            failure = self.path_failures.pop(targeted)[1] if targeted is not None else self.failures.pop(0)
             if failure == "timeout":
                 raise httpx.ReadTimeout("fake timeout", request=request)
             if failure == "500":

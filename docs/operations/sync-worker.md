@@ -19,7 +19,7 @@ It stops cleanly on SIGTERM or SIGINT, after finishing the current job. Running 
 | `INPROOM_SYNC_LEASE_SECONDS` | 300 | A job whose worker stops responding for this long is recovered |
 | `INPROOM_PUBLIC_URL` | unset | Base URL shown in webhook setup (receivers live at `/v1/hooks/{github,jira,confluence}/{tenant}/{connection}`) |
 
-Synced Confluence pages and Jira issues are also stored as versioned source revisions, with derivatives and retention. Pipeline jobs of kinds `derive` and `purge` run on the same queue. See [content-store.md](content-store.md).
+Synced Confluence pages and Jira issues are also stored as versioned source revisions, with derivatives and retention. Pipeline jobs of kinds `derive`, `purge`, `sweep` and `code` run on the same queue. See [content-store.md](content-store.md) and [code-index.md](code-index.md).
 
 ## What happens to a change
 

@@ -65,6 +65,7 @@ def test_each_revision_gets_its_derivative_and_a_new_revision_supersedes_it(sele
         "failed": 0,
         "skipped": 0,
         "failures": {},
+        "symbols": 0,  # symbols projected for search (code only, INPROOM-176)
         "more": False,
     }
     first = derived(e, "101", 1)

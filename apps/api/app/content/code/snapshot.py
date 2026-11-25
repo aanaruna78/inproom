@@ -310,9 +310,11 @@ def _index_branch(
             ).all()
             values["counts"] = counts | {"files": len(files), "removed": len(gone) if complete else 0}
         conn.execute(update(code_snapshots).where(code_snapshots.c.id == snap["id"]).values(**values))
-    summary = {"commit": commit, "status": values.get("status", "RUNNING")} | {
-        k: run[k] for k in ("fetched", "reused", "stored", "unchanged", "inaccessible")
-    }
+    summary = (
+        {"commit": commit, "status": values.get("status", "RUNNING")}
+        | {k: run[k] for k in ("fetched", "reused", "stored", "unchanged", "inaccessible")}
+        | {"skipped": run["skipped"], "renamed": len(values.get("renames") or [])}
+    )
     return summary, budget, more
 
 

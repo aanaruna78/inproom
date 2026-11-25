@@ -193,7 +193,7 @@ def live(conn: Connection, project_id: uuid.UUID, kind: str | None = None) -> li
     return [dict(x) for x in conn.execute(stmt).mappings()]
 
 
-def _project_symbols(conn: Connection, tenant, project_id, row: dict[str, Any], output: bytes) -> None:
+def _project_symbols(conn: Connection, tenant, project_id, row: dict[str, Any], output: bytes) -> int:
     rev = dict(
         conn.execute(select(source_revisions).where(source_revisions.c.id == row["revision_id"]))
         .mappings()
@@ -202,16 +202,17 @@ def _project_symbols(conn: Connection, tenant, project_id, row: dict[str, Any], 
     obj = dict(
         conn.execute(select(source_objects).where(source_objects.c.id == rev["object_id"])).mappings().one()
     )
-    if obj["source_kind"] == "git":
-        projection.project(
-            conn,
-            tenant,
-            project_id=project_id,
-            derivative_id=row["id"],
-            revision=rev,
-            obj=obj,
-            doc=json.loads(output),
-        )
+    if obj["source_kind"] != "git":
+        return 0
+    return projection.project(
+        conn,
+        tenant,
+        project_id=project_id,
+        derivative_id=row["id"],
+        revision=rev,
+        obj=obj,
+        doc=json.loads(output),
+    )
 
 
 def _parse_failed(ctx: JobContext, row: dict[str, Any], error: dict[str, Any]) -> None:
@@ -270,7 +271,7 @@ def derive(ctx: JobContext) -> dict[str, Any]:
         ]
     more, rows = len(rows) > BATCH, rows[:BATCH]
     store = blobs.get_store()
-    counts: dict[str, Any] = {"built": 0, "failed": 0, "skipped": 0, "failures": {}}
+    counts: dict[str, Any] = {"built": 0, "failed": 0, "skipped": 0, "failures": {}, "symbols": 0}
     for row in rows:
         producer = PRODUCERS.get(row["producer"])
         error = None
@@ -312,7 +313,7 @@ def derive(ctx: JobContext) -> dict[str, Any]:
                 ).rowcount
             )
             if done and row["producer"] == "symbols":  # INPROOM-175: searchable in the same transaction
-                _project_symbols(conn, tenant, ctx.job["project_id"], row, output)
+                counts["symbols"] += _project_symbols(conn, tenant, ctx.job["project_id"], row, output)
         counts["built" if done else "skipped"] += 1  # skipped: superseded or invalidated meanwhile
     with tenant_session(tenant) as conn:
         if more:

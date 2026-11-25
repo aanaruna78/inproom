@@ -92,6 +92,8 @@ The job results show `content: {revisions, unchanged, withheld}`.
   - Bumping a producer's version and invalidating rebuilds everything.
 - **FAILED codes:** `PRODUCER_FAILED`, `NOT_STORED`, `BLOB_MISSING`, `BLOB_CORRUPT` and `UNKNOWN_PRODUCER`. They are explained in the error catalog. Invalidate after fixing the cause.
 
+Repository code (files, symbols, ownership, code search) has its own runbook: [code-index.md](code-index.md).
+
 ## Documents and parsing (INPROOM-28)
 
 Every stored revision of a supported type gets a **`parse@2`** derivative (kind `document`): a structured document whose sections have stable anchors, so citations can point at a page or section.
