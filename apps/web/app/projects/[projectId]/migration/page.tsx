@@ -23,6 +23,11 @@ const READINESS: Record<string, string> = {
   SCAN_STALE: "the last scan is older than 24 hours",
   SOURCE_PAUSED: "the Jira source is paused",
   PERMISSION_LOST: "the account lost access",
+  PROJECT_ARCHIVED: "the project is archived",
+  CONNECTION_INVALID: "the Jira connection needs reauthorization",
+  CONNECTION_REVOKED: "the Jira connection was disconnected",
+  SOURCE_EXCLUDED: "the Jira source is excluded",
+  SCAN_OUTDATED: "the last scan is of an earlier plan",
 };
 
 export default async function MigrationPage({

@@ -78,6 +78,11 @@ CATALOG: dict[str, tuple[str, str, str]] = {
         "The token can write, but INPROOM only reads here.",
         "Replace it with a read-only token (least privilege).",
     ),
+    "PLAN_CHANGED": (
+        "Scan superseded",
+        "The migration plan's source or scope changed while this scan was waiting or running.",
+        "Run a new scan of the current plan, review it, then confirm.",
+    ),
     "TOO_MANY_ISSUES": (
         "Jira project too large to inventory at once",
         "The migration scan stopped at 50,000 issues so it does not run unbounded.",

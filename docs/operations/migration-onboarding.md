@@ -47,6 +47,13 @@ The migration page, and `GET /v1/projects/{id}/migration` (`write_readiness`), s
 | `SCAN_STALE` | The last scan is more than 24 hours old |
 | `SOURCE_PAUSED` | The Jira source is paused |
 | `PERMISSION_LOST` | The account lost access |
+| `PROJECT_ARCHIVED` | The project is archived |
+| `CONNECTION_INVALID` | The Jira connection needs reauthorization (for example after a 401) |
+| `CONNECTION_REVOKED` | The Jira connection was disconnected |
+| `SOURCE_EXCLUDED` | A project admin excluded the Jira source |
+| `SCAN_OUTDATED` | The last scan is of an earlier plan revision |
+
+Readiness **fails closed**: any of these makes `ready` false. Confirming a baseline also needs a completed scan of the **current** plan revision; changing the plan's source or scope supersedes any scan of the old revision.
 
 INPROOM-19 never writes to Jira. Publishing (E07-S04) must refuse to write unless `ready` is true.
 

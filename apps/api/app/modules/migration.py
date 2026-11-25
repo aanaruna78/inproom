@@ -26,6 +26,7 @@ from app.db_schema import (
     outbox_events,
     project_jira_sources,
     projects,
+    source_connections,
 )
 from app.modules import settings as settings_module
 from app.sync import queue
@@ -153,7 +154,7 @@ def state(conn: Connection, project: dict[str, Any]) -> MigrationState:
         project_status=project["status"],
         plan=MigrationPlan.model_validate(plan) if plan else None,
         latest_run=MigrationRun.model_validate(run) if run else None,
-        write_readiness=readiness(conn, plan, run),
+        write_readiness=readiness(conn, plan, run, project),
     )
 
 
@@ -353,9 +354,17 @@ class Drift(BaseModel):
     counts: dict[str, int]
 
 
-def readiness(conn: Connection, plan: dict[str, Any] | None, run: dict[str, Any] | None) -> dict[str, Any]:
-    """Would automated writes (E07 publishing) be safe right now? Reasons are stable codes."""
+def readiness(
+    conn: Connection,
+    plan: dict[str, Any] | None,
+    run: dict[str, Any] | None,
+    project: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Would automated writes (E07 publishing) be safe right now? Fails CLOSED: every condition that could
+    make a write unsafe is a reason (INPROOM-156 added project lifecycle, connection status, exclusions)."""
     reasons = []
+    if project is not None and project["status"] == "ARCHIVED":
+        reasons.append("PROJECT_ARCHIVED")
     if plan is None or plan["status"] != "BASELINED":
         reasons.append("NO_BASELINE")
     if run is None:
@@ -364,22 +373,38 @@ def readiness(conn: Connection, plan: dict[str, Any] | None, run: dict[str, Any]
         reasons.append("SCAN_FAILED")
     elif run["status"] in ("QUEUED", "RUNNING"):
         reasons.append("SCAN_IN_PROGRESS")
+    elif plan is not None and run["plan_version"] != plan["version"]:
+        reasons.append("SCAN_OUTDATED")
     elif run["finished_at"] and datetime.now(UTC) - run["finished_at"] > SCAN_MAX_AGE:
         reasons.append("SCAN_STALE")
     if plan is not None:
         source = (
             conn.execute(
-                select(project_jira_sources.c.status, project_jira_sources.c.capabilities).where(
-                    project_jira_sources.c.id == plan["jira_source_id"]
+                select(
+                    project_jira_sources.c.status,
+                    project_jira_sources.c.pause_cause,
+                    project_jira_sources.c.capabilities,
+                    source_connections.c.status.label("connection_status"),
                 )
+                .join(source_connections, source_connections.c.id == project_jira_sources.c.connection_id)
+                .where(project_jira_sources.c.id == plan["jira_source_id"])
             )
             .mappings()
             .first()
         )
-        if source is None or source["status"] != "ACTIVE":
+        if source is None:
             reasons.append("SOURCE_PAUSED")
-        elif not (source["capabilities"] or {}).get("read", True):
-            reasons.append("PERMISSION_LOST")
+        else:
+            if source["connection_status"] == "REVOKED":
+                reasons.append("CONNECTION_REVOKED")
+            elif source["connection_status"] not in ("ACTIVE", "DEGRADED"):
+                reasons.append("CONNECTION_INVALID")  # e.g. INVALID after a 401: reauthorize first
+            if source["pause_cause"] == "excluded":
+                reasons.append("SOURCE_EXCLUDED")
+            elif source["status"] != "ACTIVE":
+                reasons.append("SOURCE_PAUSED")
+            elif not (source["capabilities"] or {}).get("read", True):
+                reasons.append("PERMISSION_LOST")
     return {"ready": not reasons, "reasons": reasons}
 
 
@@ -518,6 +543,12 @@ def confirm(
             .values(
                 status="BASELINED", baseline=baseline, updated_at=now, version=migration_plans.c.version + 1
             )
+        )
+        # Confirming changes only the plan status, not its source or scope: the confirmed scan stays current.
+        conn.execute(
+            update(migration_runs)
+            .where(migration_runs.c.id == run["id"])
+            .values(plan_version=plan["version"] + 1)
         )
         _audit(conn, principal, request, "migration.baselined", project_id, baseline)
         conn.execute(

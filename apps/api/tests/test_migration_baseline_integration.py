@@ -152,3 +152,32 @@ def test_changed_plan_supersedes_in_flight_scan_and_needs_a_new_one(mig):
     assert scan(e)["status"] == "SUCCEEDED"  # a scan of the revised plan
     ok = confirm(e, state(e)["plan"]["version"])
     assert ok.status_code == 200 and ok.json()["plan"]["baseline"]["scope"]["history_since"] == "2026-01-01"
+
+
+def test_readiness_fails_closed_on_every_unsafe_condition(scanned):
+    """INPROOM-156: readiness lists each reason, including the immediate 401 invalidation, exclusion and
+    archive; a healthy baselined configuration is ready."""
+    import uuid as _uuid
+
+    from app.db import tenant_session
+    from app.sync import queue
+
+    e = scanned
+    confirm(e, state(e)["plan"]["version"])
+    assert state(e)["write_readiness"] == {"ready": True, "reasons": []}
+    # A sync job that hits 401 invalidates the connection immediately (INPROOM-145): readiness follows.
+    with tenant_session(e.tenant) as conn:
+        queue.enqueue(conn, e.tenant, _uuid.UUID(e.mpid), "jira", _uuid.UUID(e.jsid), "manual")
+    e.jira.users[fj.VALID_TOKEN].valid = False
+    scan_helpers.work(e)
+    assert "CONNECTION_INVALID" in state(e)["write_readiness"]["reasons"]
+    e.jira.users[fj.VALID_TOKEN].valid = True
+    e.client.put(f"/v1/connections/{e.cid}/credential", json={"token": fj.VALID_TOKEN}, headers=e.h())
+    assert state(e)["write_readiness"]["ready"] is True  # reauthorized
+    e.client.post(f"/v1/projects/{e.mpid}/sources/jira/{e.jsid}/exclude", headers=e.h())
+    assert state(e)["write_readiness"]["reasons"] == ["SOURCE_EXCLUDED"]
+    e.client.post(f"/v1/projects/{e.mpid}/sources/jira/{e.jsid}/include", headers=e.h())
+    e.client.post(f"/v1/projects/{e.mpid}/archive", headers=e.h())
+    assert "PROJECT_ARCHIVED" in state(e)["write_readiness"]["reasons"]
+    e.client.post(f"/v1/connections/{e.cid}/revoke", headers=e.h())
+    assert "CONNECTION_REVOKED" in state(e)["write_readiness"]["reasons"]

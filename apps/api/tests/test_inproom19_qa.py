@@ -2,7 +2,7 @@
 
 Unfixed cases are strict xfails naming their defect:
 - INPROOM-155: confirming must need a completed scan of the CURRENT plan revision (fixed);
-- INPROOM-156: write-readiness must fail closed for unusable connections and archived projects.
+- INPROOM-156: write-readiness must fail closed for unusable connections and archived projects (fixed).
 """
 
 import pytest
@@ -40,7 +40,6 @@ def test_changed_plan_cannot_confirm_previous_scope_scan(mig, change):
     ), f"revised plan confirmed: HTTP {result.status_code}, {result.json().get('plan', {}).get('baseline')}"
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-156: readiness ignores connection / project state")
 def test_readiness_refuses_invalid_connection(mig):
     e = mig
     h.plan(e)
@@ -53,7 +52,6 @@ def test_readiness_refuses_invalid_connection(mig):
     assert ready["ready"] is False, f"invalid credential still write-ready: {ready}"
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-156: readiness ignores connection / project state")
 def test_readiness_refuses_archived_project(mig):
     e = mig
     h.plan(e)
