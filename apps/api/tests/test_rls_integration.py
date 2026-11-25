@@ -173,6 +173,12 @@ SEED_SQL = [
     "INSERT INTO migration_issues (tenant_id, project_id, jira_issue_id, key, original_key, type_raw, type, "
     "status_raw, status, summary, first_seen_run, last_seen_run) "
     "VALUES (:t, :p, '1', 'LEG-1', 'LEG-1', 'Epic', 'epic', 'To Do', 'todo', 'x', :r, :r)",
+    "INSERT INTO source_objects (id, tenant_id, project_id, source_kind, source_id, external_id) "
+    "VALUES (:o, :t, :p, 'confluence', :s, '100')",
+    "INSERT INTO source_revisions (id, tenant_id, object_id, seq, content_sha256, size_bytes, media_type) "
+    "VALUES (:v, :t, :o, 1, 'x', 1, 'text/plain')",
+    "INSERT INTO derivatives (tenant_id, project_id, revision_id, kind, producer, producer_version) "
+    "VALUES (:t, :p, :v, 'text', 'text', 1)",
 ]
 
 
@@ -187,6 +193,8 @@ def _seed(owner_engine, tenant_id: uuid.UUID) -> dict[str, str]:
         "s": uuid.uuid4(),
         "m": uuid.uuid4(),
         "r": uuid.uuid4(),
+        "o": uuid.uuid4(),
+        "v": uuid.uuid4(),
         "k": "P" + uuid.uuid4().hex[:6].upper(),
     }
     with owner_engine.begin() as c:

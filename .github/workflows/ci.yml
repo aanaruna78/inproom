@@ -42,6 +42,24 @@ jobs:
         with:
           version: "0.13.5"
       - run: uv sync --frozen
+      - name: Start object store (SeaweedFS S3 gateway, as in infra/local)
+        run: |
+          docker run -d --name objectstore -p 18333:8333 chrislusf/seaweedfs:4.48 \
+            server -dir=/data -s3 -s3.port=8333 -master.volumeSizeLimitMB=256
+          # Ready when the S3 port answers HTTP (any status); fail the step after ~2 minutes.
+          python3 - <<'PY'
+          import time, urllib.error, urllib.request
+          for _ in range(60):
+              try:
+                  urllib.request.urlopen("http://127.0.0.1:18333/", timeout=2)
+                  break
+              except urllib.error.HTTPError:
+                  break
+              except OSError:
+                  time.sleep(2)
+          else:
+              raise SystemExit("object store did not start")
+          PY
       - name: Lint
         run: uv run ruff check . && uv run ruff format --check .
       - name: Migrate

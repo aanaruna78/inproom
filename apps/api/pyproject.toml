@@ -11,6 +11,7 @@ dependencies = [
     "psycopg[binary]==3.2.3",
     "alembic==1.14.0",
     "pyjwt[crypto]==2.10.1",
+    "boto3==1.35.99",
 ]
 
 [dependency-groups]
@@ -32,4 +33,5 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["integration: requires a running PostgreSQL (INPROOM_TEST_DATABASE_URL)"]
+markers = ["integration: requires a running PostgreSQL (INPROOM_TEST_DATABASE_URL) and the local object store"]
+filterwarnings = ["ignore:datetime.datetime.utcnow:DeprecationWarning:botocore"]

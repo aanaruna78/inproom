@@ -58,6 +58,21 @@ CATALOG: dict[str, tuple[str, str, str]] = {
         "The provider timed out or returned server errors; syncs retry with backoff.",
         "Check the provider's status page. Syncs resume automatically when it recovers.",
     ),
+    "OBJECTSTORE_UNAVAILABLE": (
+        "Content store unavailable",
+        "INPROOM could not reach its object store to save or read source content; nothing partial was kept.",
+        "Syncs retry automatically. If it persists, check the object store's health and credentials.",
+    ),
+    "BLOB_MISSING": (
+        "Stored content missing",
+        "A stored original is no longer in the object store (retention purge, or removed outside INPROOM).",
+        "Run Reconcile now to fetch the current content again.",
+    ),
+    "BLOB_CORRUPT": (
+        "Stored content failed its integrity check",
+        "The bytes read from the object store do not match their recorded sha256, so they were not used.",
+        "Run Reconcile now to fetch the content again, and check the object store for tampering or faults.",
+    ),
     "PROVIDER_ERROR": (
         "Unexpected provider response",
         "The provider returned an unexpected error.",

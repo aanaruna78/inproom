@@ -42,6 +42,16 @@ class Settings(BaseSettings):
     health_interval_seconds: int = 3600
     # Public base URL used in webhook registrations; unset => webhooks are not registered.
     public_url: str | None = None
+    # Content store (INPROOM-157): S3-compatible object storage for original source bytes and derivatives.
+    # "memory" keeps blobs in-process (unit tests only). Locally this is the SeaweedFS S3 gateway.
+    objectstore_backend: str = "s3"
+    objectstore_url: str = "http://localhost:18333"
+    objectstore_bucket: str = "inproom-content"
+    objectstore_region: str = "us-east-1"
+    objectstore_access_key: str | None = None
+    objectstore_secret_key: str | None = None
+    objectstore_timeout_s: int = 5
+    content_max_bytes: int = 25 * 1024 * 1024
 
     @property
     def jwks_url(self) -> str:

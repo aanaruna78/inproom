@@ -4,6 +4,7 @@ Every tenant-scoped table carries tenant_id and is protected by FORCE ROW LEVEL 
 """
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Column,
@@ -53,6 +54,9 @@ TENANT_SCOPED_TABLES = (
     "migration_plans",
     "migration_runs",
     "migration_issues",
+    "source_objects",
+    "source_revisions",
+    "derivatives",
 )
 
 # Project roles allowed in project_members (mirrors app.authz.policy.PROJECT_ROLES; checked by a unit test).
@@ -529,7 +533,8 @@ sync_jobs = Table(
     Column("started_at", DateTime(timezone=True)),
     Column("finished_at", DateTime(timezone=True)),
     CheckConstraint(
-        "source_kind IN ('git','jira','confluence','connection','migration')", name="ck_sync_jobs_kind"
+        "source_kind IN ('git','jira','confluence','connection','migration','derive','purge')",
+        name="ck_sync_jobs_kind",
     ),
     CheckConstraint("reason IN ('webhook','schedule','manual','recovery')", name="ck_sync_jobs_reason"),
     CheckConstraint("mode IN ('incremental','full')", name="ck_sync_jobs_mode"),
@@ -555,7 +560,7 @@ source_sync_state = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     PrimaryKeyConstraint("source_kind", "source_id", name="pk_source_sync_state"),
     CheckConstraint(
-        "source_kind IN ('git','jira','confluence','connection','migration')",
+        "source_kind IN ('git','jira','confluence','connection','migration','derive','purge')",
         name="ck_source_sync_state_kind",
     ),
 )
@@ -648,6 +653,98 @@ migration_issues = Table(
     ),
 )
 
+source_objects = Table(
+    "source_objects",
+    metadata,
+    _id(),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("source_kind", Text, nullable=False),
+    Column("source_id", UUID(as_uuid=True), nullable=False),
+    Column("external_id", Text, nullable=False),
+    Column("title", Text, nullable=False, server_default=""),
+    Column("uri", Text),
+    Column("status", Text, nullable=False, server_default="CURRENT"),
+    Column("status_reason", Text),
+    Column("acl", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("current_revision_id", UUID(as_uuid=True)),
+    Column("revisions", Integer, nullable=False, server_default="0"),
+    Column("first_seen_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("last_seen_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("deleted_at", DateTime(timezone=True)),
+    UniqueConstraint(
+        "project_id", "source_kind", "source_id", "external_id", name="uq_source_objects_identity"
+    ),
+    UniqueConstraint("tenant_id", "id", name="uq_source_objects_tenant_id"),
+    ForeignKeyConstraint(
+        ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_source_objects_project"
+    ),
+    CheckConstraint("source_kind IN ('confluence','jira','git','upload')", name="ck_source_objects_kind"),
+    CheckConstraint(
+        "status IN ('CURRENT','RESTRICTED','EXCLUDED','DELETED','TOO_LARGE')", name="ck_source_objects_status"
+    ),
+)
+
+source_revisions = Table(
+    "source_revisions",
+    metadata,
+    _id(),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("object_id", UUID(as_uuid=True), nullable=False),
+    Column("seq", Integer, nullable=False),
+    Column("parent_revision_id", UUID(as_uuid=True)),
+    Column("provider_version", Text),
+    Column("content_sha256", Text, nullable=False),
+    Column("size_bytes", BigInteger, nullable=False),
+    Column("media_type", Text, nullable=False),
+    Column("blob_key", Text),
+    Column("acl", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("job_id", UUID(as_uuid=True)),
+    Column("fetched_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("purged_at", DateTime(timezone=True)),
+    UniqueConstraint("object_id", "seq", name="uq_source_revisions_seq"),
+    UniqueConstraint("tenant_id", "id", name="uq_source_revisions_tenant_id"),
+    ForeignKeyConstraint(
+        ["tenant_id", "object_id"],
+        ["source_objects.tenant_id", "source_objects.id"],
+        name="fk_source_revisions_object",
+        ondelete="CASCADE",
+    ),
+    CheckConstraint("seq >= 1", name="ck_source_revisions_seq"),
+)
+
+derivatives = Table(
+    "derivatives",
+    metadata,
+    _id(),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("revision_id", UUID(as_uuid=True), nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("producer", Text, nullable=False),
+    Column("producer_version", Integer, nullable=False),
+    Column("status", Text, nullable=False, server_default="PENDING"),
+    Column("output_sha256", Text),
+    Column("size_bytes", BigInteger),
+    Column("blob_key", Text),
+    Column("error", JSONB),
+    Column("reason", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("built_at", DateTime(timezone=True)),
+    Column("invalidated_at", DateTime(timezone=True)),
+    Column("purged_at", DateTime(timezone=True)),
+    ForeignKeyConstraint(
+        ["tenant_id", "revision_id"],
+        ["source_revisions.tenant_id", "source_revisions.id"],
+        name="fk_derivatives_revision",
+        ondelete="CASCADE",
+    ),
+    CheckConstraint(
+        "status IN ('PENDING','READY','FAILED','SUPERSEDED','INVALIDATED')", name="ck_derivatives_status"
+    ),
+)
+
 Index("ix_audit_events_tenant_time", audit_events.c.tenant_id, audit_events.c.occurred_at)
 Index("ix_outbox_unpublished", outbox_events.c.created_at, postgresql_where=text("published_at IS NULL"))
 Index("ix_idempotency_created", idempotency_keys.c.created_at)
@@ -668,3 +765,24 @@ Index(
     migration_runs.c.created_at,
 )
 Index("ix_migration_issues_parent", migration_issues.c.project_id, migration_issues.c.parent_issue_id)
+Index(
+    "ix_source_objects_source",
+    source_objects.c.tenant_id,
+    source_objects.c.project_id,
+    source_objects.c.source_kind,
+    source_objects.c.source_id,
+)
+Index("ix_source_revisions_sha", source_revisions.c.tenant_id, source_revisions.c.content_sha256)
+Index(
+    "uq_derivatives_live",
+    derivatives.c.revision_id,
+    derivatives.c.kind,
+    derivatives.c.producer,
+    derivatives.c.producer_version,
+    unique=True,
+    postgresql_where=text("status IN ('PENDING','READY','FAILED')"),
+)
+Index(
+    "ix_derivatives_project_status", derivatives.c.tenant_id, derivatives.c.project_id, derivatives.c.status
+)
+Index("ix_derivatives_sha", derivatives.c.tenant_id, derivatives.c.output_sha256)
