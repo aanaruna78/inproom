@@ -159,6 +159,10 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
         "project.read",
     ),
     ("GET", "/v1/projects/{project_id}/content/parse-failures"): ("project", "project.read"),
+    # INPROOM-175
+    ("GET", "/v1/projects/{project_id}/code/search"): ("project", "project.read"),
+    ("GET", "/v1/projects/{project_id}/code/snapshots"): ("project", "project.read"),
+    ("GET", "/v1/projects/{project_id}/code/files"): ("project", "project.read"),
     # INPROOM-165
     ("POST", "/v1/projects/{project_id}/documents"): ("project", "project.content.upload"),
     ("PUT", "/v1/projects/{project_id}/documents/{document_id}"): ("project", "project.content.upload"),
@@ -199,6 +203,8 @@ BUSINESS_RULE = {
     ("POST", "/v1/projects/{project_id}/migration/scan"): "409",
     ("POST", "/v1/projects/{project_id}/migration/confirm"): "409",
     ("GET", "/v1/projects/{project_id}/migration/drift"): "409",  # no baseline in the shared world
+    # The shared world indexes no code: an authorized file lookup is 404 CODE_NOT_FOUND (INPROOM-175).
+    ("GET", "/v1/projects/{project_id}/code/files"): "404",
     # The shared world never runs the derive job: authorized readers get 409 NOT_PARSED (INPROOM-167).
     (
         "GET",
@@ -406,6 +412,10 @@ def _call(client, method, path, world: World, headers):
         ("/repositories", "/projects", "/spaces")
     ):
         url += f"?project_id={world.project['id']}"
+    if path.endswith("/code/search"):
+        url += "?q=handler"
+    if path.endswith("/code/files"):
+        url += "?repository=acme/api&branch=main&path=src/app.py"
     kwargs: dict = {"headers": dict(headers)}
     if method == "POST" and path == "/v1/connections":
         kwargs["json"] = {"display_name": f"c-{uuid.uuid4().hex[:8]}", "token": VALID_TOKEN}
@@ -484,14 +494,15 @@ def test_route_x_role(db_client, tokens, world, owner_engine, method, path, acto
         expected = "201"
     if expected == "200" and (method, path) in ACCEPTED:
         expected = "202"
-    if expected in ("200", "201") and (method, path) in BUSINESS_RULE:
+    business = expected in ("200", "201") and (method, path) in BUSINESS_RULE
+    if business:
         expected = BUSINESS_RULE[(method, path)]
     r = _call(db_client, method, path, world, headers)
     record_rbac(f"{method} {path}", actor, expected, str(r.status_code))
     assert str(r.status_code) == expected, (actor, r.text)
 
     denials = _denials(owner_engine, tenant, actor_id)
-    if expected in ("403", "404"):
+    if expected in ("403", "404") and not business:
         body = r.json()
         assert body["code"] == ("FORBIDDEN" if expected == "403" else "NOT_FOUND")
         if expected == "403":

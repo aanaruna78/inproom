@@ -196,6 +196,317 @@
         "title": "Body_upload_v1_projects__project_id__documents_post",
         "type": "object"
       },
+      "BranchSnapshot": {
+        "properties": {
+          "behind": {
+            "title": "Behind",
+            "type": "boolean"
+          },
+          "branch": {
+            "title": "Branch",
+            "type": "string"
+          },
+          "codeowners": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codeowners"
+          },
+          "counts": {
+            "additionalProperties": true,
+            "title": "Counts",
+            "type": "object"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "head_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Commit"
+          },
+          "indexed_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexed Commit"
+          },
+          "indexing": {
+            "title": "Indexing",
+            "type": "boolean"
+          },
+          "renames": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Renames",
+            "type": "array"
+          },
+          "repository": {
+            "title": "Repository",
+            "type": "string"
+          },
+          "repository_status": {
+            "title": "Repository Status",
+            "type": "string"
+          },
+          "skipped": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Skipped",
+            "type": "array"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "repository",
+          "repository_status",
+          "branch",
+          "head_commit",
+          "indexed_commit",
+          "status",
+          "indexing",
+          "behind",
+          "truncated",
+          "counts",
+          "skipped",
+          "renames",
+          "codeowners",
+          "finished_at"
+        ],
+        "title": "BranchSnapshot",
+        "type": "object"
+      },
+      "Citation": {
+        "properties": {
+          "blob_sha": {
+            "title": "Blob Sha",
+            "type": "string"
+          },
+          "branch": {
+            "title": "Branch",
+            "type": "string"
+          },
+          "commit": {
+            "title": "Commit",
+            "type": "string"
+          },
+          "line_end": {
+            "title": "Line End",
+            "type": "integer"
+          },
+          "line_start": {
+            "title": "Line Start",
+            "type": "integer"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "permalink": {
+            "title": "Permalink",
+            "type": "string"
+          },
+          "repository": {
+            "title": "Repository",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository",
+          "branch",
+          "commit",
+          "path",
+          "line_start",
+          "line_end",
+          "blob_sha",
+          "permalink"
+        ],
+        "title": "Citation",
+        "type": "object"
+      },
+      "CodeFile": {
+        "properties": {
+          "behind": {
+            "title": "Behind",
+            "type": "boolean"
+          },
+          "citation": {
+            "$ref": "#/components/schemas/Citation"
+          },
+          "definitions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Definitions",
+            "type": "array"
+          },
+          "imports": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Imports",
+            "type": "array"
+          },
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "owners": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Owners",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "citation",
+          "language",
+          "owners",
+          "behind",
+          "definitions",
+          "imports",
+          "warnings"
+        ],
+        "title": "CodeFile",
+        "type": "object"
+      },
+      "CodeHit": {
+        "properties": {
+          "behind": {
+            "title": "Behind",
+            "type": "boolean"
+          },
+          "citation": {
+            "$ref": "#/components/schemas/Citation"
+          },
+          "item": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Item",
+            "type": "object"
+          },
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "owners": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Owners",
+            "type": "array"
+          },
+          "snapshot_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Status"
+          },
+          "symbol": {
+            "$ref": "#/components/schemas/Symbol"
+          }
+        },
+        "required": [
+          "symbol",
+          "language",
+          "citation",
+          "owners",
+          "behind",
+          "snapshot_status",
+          "item"
+        ],
+        "title": "CodeHit",
+        "type": "object"
+      },
+      "CodeHitPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CodeHit"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CodeHitPage",
+        "type": "object"
+      },
       "ConfluenceScopeItem": {
         "properties": {
           "base_url": {
@@ -4844,6 +5155,48 @@
         "title": "SpaceOptions",
         "type": "object"
       },
+      "Symbol": {
+        "properties": {
+          "container": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Container"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "signature": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signature"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "container",
+          "signature"
+        ],
+        "title": "Symbol",
+        "type": "object"
+      },
       "SyncJob": {
         "properties": {
           "attempts": {
@@ -6628,6 +6981,308 @@
         "summary": "Archive a project (idempotent; alias of lifecycle action 'archive')",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/code/files": {
+      "get": {
+        "operationId": "file_symbols_v1_projects__project_id__code_files_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repository",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "title": "Repository",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "title": "Branch",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeFile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "One file's symbols and imports at the indexed commit, with owners and its citation",
+        "tags": [
+          "code"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/code/search": {
+      "get": {
+        "operationId": "search_v1_projects__project_id__code_search_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(function|method|constructor|class|interface|type|enum|record|struct|constant|annotation)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "language",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(python|javascript|typescript|go|java)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Language"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repository",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repository"
+            }
+          },
+          {
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 600,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeHitPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Find symbols by name (exact, then prefix, then contains); every hit is a commit-pinned citation",
+        "tags": [
+          "code"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/code/snapshots": {
+      "get": {
+        "operationId": "snapshots_v1_projects__project_id__code_snapshots_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BranchSnapshot"
+                  },
+                  "title": "Response Snapshots V1 Projects  Project Id  Code Snapshots Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Per repository and branch: indexed commit vs head (behind), complete or partial, skips, renames",
+        "tags": [
+          "code"
         ]
       }
     },

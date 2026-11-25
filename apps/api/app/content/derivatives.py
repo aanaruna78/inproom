@@ -13,6 +13,7 @@ Consumers (retrieval projections, E03-S05, E04) must read through ``live()``: RE
 revision of an in-scope object whose source is ACTIVE.
 """
 
+import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -21,6 +22,7 @@ from sqlalchemy import Connection, and_, insert, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.content import store as blobs
+from app.content.code import projection
 from app.content.producers import PRODUCERS, ProducerError, for_media_type
 from app.db import tenant_session
 from app.db_schema import (
@@ -76,11 +78,17 @@ def on_new_revision(
     others = select(source_revisions.c.id).where(
         source_revisions.c.object_id == obj["id"], source_revisions.c.id != revision_id
     )
-    conn.execute(
-        update(derivatives)
-        .where(derivatives.c.revision_id.in_(others), derivatives.c.status.in_(LIVE))
-        .values(status="SUPERSEDED", invalidated_at=datetime.now(UTC), reason="a newer revision exists")
+    superseded = (
+        conn.execute(
+            update(derivatives)
+            .where(derivatives.c.revision_id.in_(others), derivatives.c.status.in_(LIVE))
+            .values(status="SUPERSEDED", invalidated_at=datetime.now(UTC), reason="a newer revision exists")
+            .returning(derivatives.c.id)
+        )
+        .scalars()
+        .all()
     )
+    projection.drop(conn, list(superseded))  # INPROOM-175: superseded symbols leave the search projection
     if stored and _pending(conn, tenant, obj["project_id"], revision_id, media_type, "new revision"):
         queue.enqueue(conn, tenant, obj["project_id"], "derive", obj["source_id"], "schedule")
 
@@ -113,9 +121,18 @@ def invalidate(
     if producer:
         stale.append(d.c.producer == producer)
     now = datetime.now(UTC)
-    invalidated = conn.execute(
-        update(d).where(*stale).values(status="INVALIDATED", invalidated_at=now, reason=reason[:300])
-    ).rowcount
+    dropped = (
+        conn.execute(
+            update(d)
+            .where(*stale)
+            .values(status="INVALIDATED", invalidated_at=now, reason=reason[:300])
+            .returning(d.c.id)
+        )
+        .scalars()
+        .all()
+    )
+    invalidated = len(dropped)
+    projection.drop(conn, list(dropped))
     queued = 0
     for rev in revisions:
         if rev["blob_key"] is None or rev["purged_at"] is not None:
@@ -176,6 +193,27 @@ def live(conn: Connection, project_id: uuid.UUID, kind: str | None = None) -> li
     return [dict(x) for x in conn.execute(stmt).mappings()]
 
 
+def _project_symbols(conn: Connection, tenant, project_id, row: dict[str, Any], output: bytes) -> None:
+    rev = dict(
+        conn.execute(select(source_revisions).where(source_revisions.c.id == row["revision_id"]))
+        .mappings()
+        .one()
+    )
+    obj = dict(
+        conn.execute(select(source_objects).where(source_objects.c.id == rev["object_id"])).mappings().one()
+    )
+    if obj["source_kind"] == "git":
+        projection.project(
+            conn,
+            tenant,
+            project_id=project_id,
+            derivative_id=row["id"],
+            revision=rev,
+            obj=obj,
+            doc=json.loads(output),
+        )
+
+
 def _parse_failed(ctx: JobContext, row: dict[str, Any], error: dict[str, Any]) -> None:
     with tenant_session(ctx.tenant) as conn:
         conn.execute(
@@ -223,7 +261,7 @@ def derive(ctx: JobContext) -> dict[str, Any]:
                 select(
                     d.c.id, d.c.producer, d.c.producer_version, r.c.blob_key, r.c.purged_at, r.c.media_type
                 )
-                .add_columns(r.c.seq, o.c.source_kind, o.c.external_id)
+                .add_columns(r.c.seq, o.c.source_kind, o.c.external_id, d.c.revision_id)
                 .select_from(d.join(r, r.c.id == d.c.revision_id).join(o, o.c.id == r.c.object_id))
                 .where(o.c.source_id == ctx.job["source_id"], d.c.status == "PENDING")
                 .order_by(d.c.created_at, d.c.id)
@@ -273,6 +311,8 @@ def derive(ctx: JobContext) -> dict[str, Any]:
                     )
                 ).rowcount
             )
+            if done and row["producer"] == "symbols":  # INPROOM-175: searchable in the same transaction
+                _project_symbols(conn, tenant, ctx.job["project_id"], row, output)
         counts["built" if done else "skipped"] += 1  # skipped: superseded or invalidated meanwhile
     with tenant_session(tenant) as conn:
         if more:

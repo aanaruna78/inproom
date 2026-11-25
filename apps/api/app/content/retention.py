@@ -161,14 +161,16 @@ def purge_project(tenant: uuid.UUID, project_id: uuid.UUID, store: blobs.BlobSto
                     .returning(source_revisions.c.blob_key)
                 ).scalars()
             )
-            keys |= set(
-                conn.execute(
-                    update(derivatives)
-                    .where(derivatives.c.revision_id.in_(ids), derivatives.c.purged_at.is_(None))
-                    .values(purged_at=now)
-                    .returning(derivatives.c.blob_key)
-                ).scalars()
-            )
+            purged = conn.execute(
+                update(derivatives)
+                .where(derivatives.c.revision_id.in_(ids), derivatives.c.purged_at.is_(None))
+                .values(purged_at=now)
+                .returning(derivatives.c.id, derivatives.c.blob_key)
+            ).all()
+            keys |= {p.blob_key for p in purged}
+            from app.content.code import projection  # INPROOM-175: purged symbols leave the search projection
+
+            projection.drop(conn, [p.id for p in purged])
         keys.discard(None)
         counts = {"items_marked_deleted": marked_deleted, "revisions_purged": len(ids)}
     # Released blobs: deleted under the exclusive tenant blob lock, re-checking references at that moment.

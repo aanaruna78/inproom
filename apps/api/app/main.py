@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.errors import install_error_handlers
 from app.health import router as health_router
 from app.me import router as me_router
+from app.modules.code import router as code_router
 from app.modules.confluence_pages import router as confluence_pages_router
 from app.modules.confluence_sources import router as confluence_sources_router
 from app.modules.connection_health import router as connection_health_router
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
     app.include_router(migration_router)
     app.include_router(content_router)
     app.include_router(documents_router)
+    app.include_router(code_router)
     app.include_router(webhooks_router)
     return app
 

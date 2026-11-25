@@ -788,6 +788,7 @@ code_symbols = Table(
     Column("branch", Text, nullable=False),
     Column("path", Text, nullable=False),
     Column("blob_sha", Text, nullable=False),
+    Column("commit_sha", Text, nullable=False, server_default=""),
     Column("language", Text, nullable=False),
     Column("kind", Text, nullable=False),
     Column("name", Text, nullable=False),

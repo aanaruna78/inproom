@@ -102,6 +102,9 @@ ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/v1/projects/{project_id}/migration/confirm"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/migration/drift"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/content"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/code/search"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/code/snapshots"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/code/files"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/content/parse-failures"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/document"): (
         "project_scoped"
@@ -294,6 +297,10 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         and "{connection_id}" in path_template
     ):
         path += f"?project_id={tenant_ids.project['id']}"
+    if path_template.endswith("/code/search"):
+        path += "?q=handler"
+    if path_template.endswith("/code/files"):
+        path += "?repository=acme/api&branch=main&path=src/app.py"
     kwargs: dict = {"headers": dict(headers)}
     if path_template == "/v1/connections" and method == "POST":
         kwargs["json"] = {"display_name": f"x-{uuid.uuid4().hex[:6]}", "token": VALID_TOKEN}

@@ -199,7 +199,9 @@ def _index_branch(
             k: v for k, v in ingest.current_items(conn, project, "git", src).items() if k.startswith(prefix)
         }
         stored = _stored_blobs(conn, project, src)
-    acl = {"repository": repo["full_name"], "private": repo["private"], "branch": branch}
+    # The commit rides along with each revision: a citation can always name a commit at which that exact
+    # content was seen (INPROOM-175), even when the branch's latest snapshot is partial.
+    acl = {"repository": repo["full_name"], "private": repo["private"], "branch": branch, "commit": commit}
     more = False
     for entry, decision in indexable:
         current = have.get(item_id(branch, entry.path))

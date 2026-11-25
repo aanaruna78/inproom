@@ -363,6 +363,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/code/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One file's symbols and imports at the indexed commit, with owners and its citation */
+        get: operations["file_symbols_v1_projects__project_id__code_files_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/code/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Find symbols by name (exact, then prefix, then contains); every hit is a commit-pinned citation */
+        get: operations["search_v1_projects__project_id__code_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/code/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Per repository and branch: indexed commit vs head (behind), complete or partial, skips, renames */
+        get: operations["snapshots_v1_projects__project_id__code_snapshots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/content": {
         parameters: {
             query?: never;
@@ -1211,6 +1262,110 @@ export interface components {
             file: string;
             /** Title */
             title?: string | null;
+        };
+        /** BranchSnapshot */
+        BranchSnapshot: {
+            /** Behind */
+            behind: boolean;
+            /** Branch */
+            branch: string;
+            /** Codeowners */
+            codeowners: {
+                [key: string]: unknown;
+            } | null;
+            /** Counts */
+            counts: {
+                [key: string]: unknown;
+            };
+            /** Finished At */
+            finished_at: string | null;
+            /** Head Commit */
+            head_commit: string | null;
+            /** Indexed Commit */
+            indexed_commit: string | null;
+            /** Indexing */
+            indexing: boolean;
+            /** Renames */
+            renames: {
+                [key: string]: unknown;
+            }[];
+            /** Repository */
+            repository: string;
+            /** Repository Status */
+            repository_status: string;
+            /** Skipped */
+            skipped: {
+                [key: string]: unknown;
+            }[];
+            /** Status */
+            status: string | null;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** Citation */
+        Citation: {
+            /** Blob Sha */
+            blob_sha: string;
+            /** Branch */
+            branch: string;
+            /** Commit */
+            commit: string;
+            /** Line End */
+            line_end: number;
+            /** Line Start */
+            line_start: number;
+            /** Path */
+            path: string;
+            /** Permalink */
+            permalink: string;
+            /** Repository */
+            repository: string;
+        };
+        /** CodeFile */
+        CodeFile: {
+            /** Behind */
+            behind: boolean;
+            citation: components["schemas"]["Citation"];
+            /** Definitions */
+            definitions: {
+                [key: string]: unknown;
+            }[];
+            /** Imports */
+            imports: {
+                [key: string]: unknown;
+            }[];
+            /** Language */
+            language: string;
+            /** Owners */
+            owners: string[];
+            /** Warnings */
+            warnings: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** CodeHit */
+        CodeHit: {
+            /** Behind */
+            behind: boolean;
+            citation: components["schemas"]["Citation"];
+            /** Item */
+            item: {
+                [key: string]: string;
+            };
+            /** Language */
+            language: string;
+            /** Owners */
+            owners: string[];
+            /** Snapshot Status */
+            snapshot_status: string | null;
+            symbol: components["schemas"]["Symbol"];
+        };
+        /** CodeHitPage */
+        CodeHitPage: {
+            /** Items */
+            items: components["schemas"]["CodeHit"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** ConfluenceScopeItem */
         ConfluenceScopeItem: {
@@ -2983,6 +3138,17 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** Symbol */
+        Symbol: {
+            /** Container */
+            container: string | null;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Signature */
+            signature: string | null;
+        };
         /** SyncJob */
         SyncJob: {
             /** Attempts */
@@ -4266,6 +4432,146 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_symbols_v1_projects__project_id__code_files_get: {
+        parameters: {
+            query: {
+                repository: string;
+                branch: string;
+                path: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodeFile"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_v1_projects__project_id__code_search_get: {
+        parameters: {
+            query: {
+                q: string;
+                kind?: string | null;
+                language?: string | null;
+                repository?: string | null;
+                branch?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodeHitPage"];
+                };
+            };
+            /** @description problem+json */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    snapshots_v1_projects__project_id__code_snapshots_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchSnapshot"][];
+                };
             };
             /** @description problem+json */
             404: {
