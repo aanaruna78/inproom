@@ -20,12 +20,12 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Connection, select, update
+from sqlalchemy import Connection, insert, select, update
 
 from app.connectors.confluence import PageListing, Space
 from app.content import store as blobs
 from app.content.revisions import IN_SCOPE, record_revision
-from app.db_schema import confluence_pages, source_objects, source_revisions
+from app.db_schema import confluence_pages, outbox_events, source_objects, source_revisions
 
 CONFLUENCE_MEDIA = "application/vnd.atlassian.confluence.storage+xml; charset=utf-8"
 JIRA_MEDIA = "application/vnd.inproom.jira-issue+json"
@@ -104,13 +104,16 @@ def jira_record(issue: dict[str, Any], fields: list[str]) -> bytes:
     return json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
 
 
-def current_hashes(conn: Connection, project_id, kind: str, source_id) -> dict[str, tuple[str | None, str]]:
-    """external_id -> (current revision sha256, object status) for one source. A purged current revision has
-    no stored bytes, so it never matches (its item must be re-recorded: INPROOM-161)."""
+def current_items(conn: Connection, project_id, kind: str, source_id) -> dict[str, dict[str, Any]]:
+    """external_id -> what is stored for it now: current sha256 (None when the current revision's bytes were
+    purged: INPROOM-161), object status, ACL, title and URI."""
     rows = conn.execute(
         select(
             source_objects.c.external_id,
             source_objects.c.status,
+            source_objects.c.acl,
+            source_objects.c.title,
+            source_objects.c.uri,
             source_revisions.c.content_sha256,
             source_revisions.c.purged_at,
         )
@@ -125,7 +128,71 @@ def current_hashes(conn: Connection, project_id, kind: str, source_id) -> dict[s
             source_objects.c.source_id == source_id,
         )
     )
-    return {r.external_id: (None if r.purged_at else r.content_sha256, r.status) for r in rows}
+    return {
+        r.external_id: {
+            "sha": None if r.purged_at else r.content_sha256,
+            "status": r.status,
+            "acl": r.acl,
+            "title": r.title,
+            "uri": r.uri,
+        }
+        for r in rows
+    }
+
+
+def _unchanged(have: dict[str, Any] | None, data: bytes, title: str, uri: str | None, acl: dict) -> bool:
+    """Nothing to write: same bytes, in scope, and the same ACL, title and URI (INPROOM-163: an ACL-only
+    change must still reach the stored object)."""
+    return have is not None and have == {
+        "sha": blobs.sha256(data),
+        "status": IN_SCOPE,
+        "acl": acl,
+        "title": title,
+        "uri": uri,
+    }
+
+
+def refresh_acl(
+    conn: Connection, tenant, project_id, kind: str, source_id, external_id: str, acl: dict
+) -> None:
+    """Keep an out-of-scope item's current ACL true (its bytes are withheld anyway); revisions keep the ACL
+    they were fetched under."""
+    obj = (
+        conn.execute(
+            update(source_objects)
+            .where(
+                source_objects.c.project_id == project_id,
+                source_objects.c.source_kind == kind,
+                source_objects.c.source_id == source_id,
+                source_objects.c.external_id == external_id,
+            )
+            .values(acl=acl, updated_at=datetime.now(UTC))
+            .returning(source_objects.c.id)
+        )
+        .mappings()
+        .first()
+    )
+    if obj is not None:
+        acl_changed_event(conn, tenant, project_id, kind, source_id, external_id, obj["id"], acl)
+
+
+def acl_changed_event(
+    conn: Connection, tenant, project_id, kind, source_id, external_id, object_id, acl
+) -> None:
+    conn.execute(
+        insert(outbox_events).values(
+            tenant_id=tenant,
+            type="source.object.acl_changed",
+            payload={
+                "project_id": str(project_id),
+                "source_kind": kind,
+                "source_id": str(source_id),
+                "external_id": external_id,
+                "object_id": str(object_id),
+                "acl": acl,
+            },
+        )
+    )
 
 
 def mark(
@@ -186,14 +253,15 @@ def confluence(
             ).where(confluence_pages.c.source_id == source["id"])
         )
     }
-    have = current_hashes(conn, source["project_id"], "confluence", source["id"])
+    have = current_items(conn, source["project_id"], "confluence", source["id"])
     counts = {"revisions": 0, "unchanged": 0, "withheld": 0}
     for page in listing.pages:
         row = catalog.get(page.id)
         if row is None or row.status != IN_SCOPE:
             continue
         data = page.storage.encode()
-        if have.get(page.id) == (blobs.sha256(data), IN_SCOPE):
+        acl = {"space_id": space.id, "space_key": space.key, "restrictions": row.restrictions}
+        if _unchanged(have.get(page.id), data, page.title, page.web_url, acl):
             counts["unchanged"] += 1
             continue
         done = record_revision(
@@ -209,7 +277,7 @@ def confluence(
             title=page.title,
             uri=page.web_url,
             provider_version=str(page.version),
-            acl={"space_id": space.id, "space_key": space.key, "restrictions": row.restrictions},
+            acl=acl,
             job_id=job_id,
         )
         counts["revisions" if done.created else "unchanged"] += 1
@@ -217,6 +285,9 @@ def confluence(
     for page_id, row in catalog.items():
         if row.status != IN_SCOPE and page_id in have:
             by_status.setdefault(row.status, []).append(page_id)
+            acl = {"space_id": space.id, "space_key": space.key, "restrictions": row.restrictions}
+            if row.status != "DELETED" and have[page_id]["acl"] != acl:  # e.g. newly restricted
+                refresh_acl(conn, tenant, source["project_id"], "confluence", source["id"], page_id, acl)
     for status, ids in by_status.items():
         reason = {"DELETED": "deleted or no longer visible in Confluence"}.get(status)
         counts["withheld"] += mark(
@@ -236,15 +307,22 @@ def jira(
     fields: list[str],
     job_id: uuid.UUID | None = None,
 ) -> dict[str, int]:
-    have = current_hashes(conn, source["project_id"], "jira", source["id"])
+    have = current_items(conn, source["project_id"], "jira", source["id"])
     counts = {"revisions": 0, "unchanged": 0, "withheld": 0}
     for issue in issues:
         data = jira_record(issue, fields)
         external = str(issue["id"])
-        if have.get(external) == (blobs.sha256(data), IN_SCOPE):
+        security = (issue.get("fields") or {}).get("security") or {}
+        acl = {
+            "jira_project_id": source["jira_project_id"],
+            "jira_key": source["jira_key"],
+            "security_level": security.get("name"),
+        }
+        title = f"{issue.get('key')}: {(issue.get('fields') or {}).get('summary') or ''}"[:500]
+        uri = f"/browse/{issue.get('key')}"
+        if _unchanged(have.get(external), data, title, uri, acl):
             counts["unchanged"] += 1
             continue
-        security = (issue.get("fields") or {}).get("security") or {}
         done = record_revision(
             conn,
             store,
@@ -255,14 +333,10 @@ def jira(
             external_id=external,
             data=data,
             media_type=JIRA_MEDIA,
-            title=f"{issue.get('key')}: {(issue.get('fields') or {}).get('summary') or ''}"[:500],
-            uri=f"/browse/{issue.get('key')}",
+            title=title,
+            uri=uri,
             provider_version=(issue.get("fields") or {}).get("updated"),
-            acl={
-                "jira_project_id": source["jira_project_id"],
-                "jira_key": source["jira_key"],
-                "security_level": security.get("name"),
-            },
+            acl=acl,
             job_id=job_id,
         )
         counts["revisions" if done.created else "unchanged"] += 1

@@ -105,8 +105,12 @@ def record_revision(
         if obj["status"] != status or obj["deleted_at"] is not None:
             fields |= {"status": status, "status_reason": None, "deleted_at": None}
         changed = {k: v for k, v in fields.items() if k == "updated_at" or obj[k] != v}
-        if len(changed) > 1:
+        if len(changed) > 1:  # e.g. an ACL-only change (INPROOM-163): the object's current ACL follows
             conn.execute(update(source_objects).where(source_objects.c.id == obj["id"]).values(**changed))
+        if "acl" in changed:
+            from app.content.ingest import acl_changed_event
+
+            acl_changed_event(conn, tenant, project_id, source_kind, source_id, external_id, obj["id"], acl)
         return Recorded(obj["id"], current["id"], current["seq"], digest, False, status)
     seq = obj["revisions"] + 1
     revision = conn.execute(

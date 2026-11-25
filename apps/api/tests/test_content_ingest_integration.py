@@ -155,3 +155,45 @@ def test_canonical_jira_record_ignores_volatile_and_linked_issue_details():
     assert ingest.jira_record(b, fields) == a
     assert ingest.jira_record(issue(summary="S2"), fields) != a
     assert b"avatarUrls" not in a and b"watches" not in a
+
+
+def test_acl_and_title_changes_without_new_bytes_update_the_stored_item(selected):
+    """INPROOM-163: the current ACL, title and URI follow the source even when the body is unchanged;
+    revisions keep the ACL they were fetched under."""
+    e = selected
+    r = e.select(filters={"required_labels": ["approved"], "include_restricted": True})
+    assert r.status_code == 200, r.text
+    assert e.client.get(page(e, "101"), headers=e.h()).json()["acl"]["restrictions"]["restricted"] is False
+    events = "SELECT count(*) FROM outbox_events WHERE tenant_id=:t AND type='source.object.acl_changed'"
+    before = e.q(events)
+
+    e.conf.pages[101].groups = ["bots"]  # own restriction
+    assert e.sync().status_code == 200
+    arch = e.client.get(page(e, "101"), headers=e.h()).json()
+    assert arch["acl"]["restrictions"]["restricted"] is True and arch["acl"]["restrictions"]["own"]["groups"]
+    assert arch["revisions"] == 1  # same bytes: no new revision
+    assert arch["lineage"][0]["acl"]["restrictions"]["restricted"] is False  # the snapshot stays truthful
+    assert e.q(events) == before + 1
+
+    e.conf.pages[101].groups = []
+    e.conf.pages[100].groups = ["bots"]  # inherited from the parent instead
+    assert e.sync().status_code == 200
+    acl = e.client.get(page(e, "101"), headers=e.h()).json()["acl"]["restrictions"]
+    assert acl["restricted"] is True and acl["inherited"][0]["page_id"] == "100" and not acl["own"]["groups"]
+
+    e.conf.pages[100].groups = []  # removed again
+    e.conf.pages[101].title = "Architecture (renamed)"
+    assert e.sync().status_code == 200
+    arch = e.client.get(page(e, "101"), headers=e.h()).json()
+    assert arch["acl"]["restrictions"]["restricted"] is False and arch["title"] == "Architecture (renamed)"
+    assert arch["revisions"] == 1
+
+
+def test_a_page_restricted_out_of_scope_gets_its_restricted_acl_and_stays_withheld(selected):
+    e = selected  # restricted pages are not included
+    e.conf.pages[102].groups = ["bots"]
+    assert e.sync().status_code == 200
+    item = e.client.get(page(e, "102"), headers=e.h()).json()
+    assert item["status"] == "RESTRICTED" and item["acl"]["restrictions"]["restricted"] is True
+    assert e.client.get(page(e, "102/revisions/1/raw"), headers=e.h()).status_code == 409
+    assert e.client.get(page(e, "103"), headers=e.h()).status_code == 404  # never in scope: never stored

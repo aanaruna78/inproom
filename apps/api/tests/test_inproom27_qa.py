@@ -83,7 +83,6 @@ def test_purge_due_after_source_removed_is_scheduled(selected, owner_engine):
     assert queued == 1, f"daily purge never re-enqueued after last source removal: {queued} queued"
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-163: unchanged bodies skip the object ACL update")
 def test_acl_changes_without_body_changes_refresh_stored_acl(selected):
     e = selected
     assert e.select(filters={"required_labels": ["approved"], "include_restricted": True}).status_code == 200
