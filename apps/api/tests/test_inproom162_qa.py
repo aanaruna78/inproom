@@ -19,7 +19,6 @@ env = h.env
 pytestmark = pytest.mark.integration
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-162: orphan-only tenants are never scheduled for cleanup")
 def test_initial_ingest_rollback_orphan_is_reachable_by_daily_cleanup(env, monkeypatch):
     e = env
     data = b"first ingestion wrote this blob, then failed before committing any content row"
@@ -56,8 +55,11 @@ def test_initial_ingest_rollback_orphan_is_reachable_by_daily_cleanup(env, monke
             break
         results.append(out)
     remaining = list(store.list(blobs.tenant_prefix(e.tenant)))
-    manual = retention.purge_project(e.tenant, uuid.UUID(e.pid), store, datetime.now(UTC))
-    assert manual["orphans_deleted"] == 1  # collector works; the scheduler never reaches it
+    # Adapted control (QA asserted that a MANUAL run still found the orphan, which only holds while the
+    # scheduler cannot reach it). Orphan collection is now the per-tenant sweep, and the scheduled one has
+    # already collected it: a manual sweep finds nothing left.
+    manual = retention.sweep_tenant(e.tenant, store, datetime.now(UTC))
+    assert manual["orphans_deleted"] == 0
     assert key not in [
         item.key for item in remaining
     ], f"first-ingest orphan never scheduled for collection; worker results={results}; manual purge={manual}"

@@ -10,7 +10,10 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.content import retention
 from app.content import store as blobs
+from app.content.revisions import record_revision
+from app.db import get_engine, tenant_session
 from app.modules import confluence_sources
+from app.sync import worker
 from tests import test_confluence_sources_integration as conf
 from tests.sync_helpers import due, run_sync
 
@@ -103,13 +106,9 @@ def test_unreferenced_blobs_are_collected_only_after_the_grace_period(selected, 
     store = blobs.get_store()
     _, orphan, _ = blobs.put(store, e.tenant, b"written by a sync that rolled back", "text/plain")
     now = datetime.now(UTC)
-    assert (
-        retention.purge_project(e.tenant, uuid.UUID(e.pid), store, now)["orphans_deleted"] == 0
-    )  # too fresh
+    assert retention.sweep_tenant(e.tenant, store, now)["orphans_deleted"] == 0  # too fresh
     monkeypatch.setattr(get_settings(), "content_orphan_grace_seconds", 0)
-    assert (
-        retention.purge_project(e.tenant, uuid.UUID(e.pid), store, datetime.now(UTC))["orphans_deleted"] == 1
-    )
+    assert retention.sweep_tenant(e.tenant, store, datetime.now(UTC))["orphans_deleted"] == 1
     with pytest.raises(blobs.BlobMissing):
         store.get(orphan)
     assert page(e, "101", "/revisions/1/raw").status_code == 200  # referenced blobs untouched
@@ -219,3 +218,48 @@ def test_an_item_restored_after_its_purge_is_readable_rebuilt_and_kept(selected,
     assert [d["status"] for d in derived] == ["PENDING"]  # rebuilt by the next derive job
     again = retention.purge_project(e.tenant, uuid.UUID(e.pid), store, datetime.now(UTC))
     assert again["revisions_purged"] == 0 and page(e, "101", "/revisions/2/raw").content == original
+
+
+def test_a_tenant_whose_first_ingestion_rolled_back_is_swept_by_the_worker(env, make_tenant, monkeypatch):
+    """INPROOM-162 retest: no content row exists anywhere, yet the daily schedule reaches the orphan blob."""
+    e = env
+    store = blobs.get_store()
+    with pytest.raises(RuntimeError), tenant_session(e.tenant) as conn:
+        record_revision(
+            conn,
+            store,
+            tenant=e.tenant,
+            project_id=uuid.UUID(e.pid),
+            source_kind="confluence",
+            source_id=uuid.uuid4(),
+            external_id="1",
+            data=b"first ingestion, rolled back",
+            media_type="text/plain",
+        )
+        raise RuntimeError("crash before commit")
+    orphan = blobs.blob_key(e.tenant, blobs.sha256(b"first ingestion, rolled back"))
+    assert e.q("SELECT count(*) FROM source_objects WHERE tenant_id=:t") == 0 and store.get(orphan)
+    other = make_tenant()  # another tenant's (unreferenced, old) blob is never touched by this sweep
+    _, theirs, _ = blobs.put(store, other, b"someone else's bytes", "text/plain")
+
+    assert worker.schedule_tick(e.tenant)["sweeps"] == 1
+    assert worker.schedule_tick(e.tenant)["sweeps"] == 0  # one per tenant per interval, coalesced
+    out = worker.run_once("w", transports={}, schedule=False, tenant=e.tenant)
+    assert out["source_kind"] == "sweep" and out["result"]["orphans_deleted"] == 0  # within the grace period
+    store.get(orphan)
+
+    monkeypatch.setattr(get_settings(), "content_orphan_grace_seconds", 0)  # the blob is "old" now
+    with get_engine().begin() as conn:  # and a day has passed
+        conn.execute(
+            text(
+                "UPDATE source_sync_state SET next_due_at = now() "
+                "WHERE source_kind='sweep' AND tenant_id=:t"
+            ),
+            {"t": e.tenant},
+        )
+    assert worker.schedule_tick(e.tenant)["sweeps"] == 1
+    out = worker.run_once("w", transports={}, schedule=False, tenant=e.tenant)
+    assert out["status"] == "SUCCEEDED" and out["result"]["orphans_deleted"] == 1
+    with pytest.raises(blobs.BlobMissing):
+        store.get(orphan)
+    assert store.get(theirs) == b"someone else's bytes"

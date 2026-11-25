@@ -533,7 +533,7 @@ sync_jobs = Table(
     Column("started_at", DateTime(timezone=True)),
     Column("finished_at", DateTime(timezone=True)),
     CheckConstraint(
-        "source_kind IN ('git','jira','confluence','connection','migration','derive','purge')",
+        "source_kind IN ('git','jira','confluence','connection','migration','derive','purge','sweep')",
         name="ck_sync_jobs_kind",
     ),
     CheckConstraint("reason IN ('webhook','schedule','manual','recovery')", name="ck_sync_jobs_reason"),
@@ -560,7 +560,7 @@ source_sync_state = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     PrimaryKeyConstraint("source_kind", "source_id", name="pk_source_sync_state"),
     CheckConstraint(
-        "source_kind IN ('git','jira','confluence','connection','migration','derive','purge')",
+        "source_kind IN ('git','jira','confluence','connection','migration','derive','purge','sweep')",
         name="ck_source_sync_state_kind",
     ),
 )

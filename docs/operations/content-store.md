@@ -103,8 +103,10 @@ Each project's settings carry `sources.retention`:
 1. Sets `purged_at` on the released revisions and their derivatives. The lineage rows stay.
 2. Deletes a blob only when **no unpurged revision or derivative anywhere in the tenant** still references it.
 3. Never purges the current revision of a live item.
-4. Collects **orphan blobs** (nothing references them, and they are older than the grace period), such as a blob written by a sync that then rolled back.
+4. Leaves orphan blobs to the tenant sweep (below).
 5. Emits `content.purged`, and the job result carries the counts.
+
+**The daily `sweep` job per tenant** (`enqueue_due_sweeps`, queued by the same schedule tick for every tenant) deletes **orphan blobs**: blobs under the tenant's prefix that no unpurged revision or derivative references and that are older than `INPROOM_CONTENT_ORPHAN_GRACE_SECONDS`. Examples are a blob written by a sync that then rolled back, a derivative superseded while it was being built, or a delete that failed half-way. The sweep is tenant-level because such a blob can be a tenant's only trace: when the very first ingestion fails, no row exists to schedule from. It emits `content.swept`.
 
 **Concurrency:**
 - Syncs and derive jobs hold a **shared** per-tenant advisory lock from writing a blob until they commit.
@@ -116,7 +118,7 @@ Each project's settings carry `sources.retention`:
 | Situation | Behaviour |
 |---|---|
 | Object store down during a sync | The sync job fails with `OBJECTSTORE_UNAVAILABLE` and retries with backoff. The catalog, revisions and events roll back together, so nothing partial is visible. |
-| Worker dies after writing a blob, before the commit | No row references the blob. The retry records the revision once and reuses the blob. If nothing ever does, the purge collects the orphan. |
+| Worker dies after writing a blob, before the commit | No row references the blob. The retry records the revision once and reuses the blob. If nothing ever does, even when it was the tenant's first ingestion, the daily tenant sweep collects the orphan after the grace period. |
 | Object store down during a derive job | The job retries, and derivatives stay `PENDING`. |
 | Object store down on a raw read | `503 OBJECTSTORE_UNAVAILABLE` with `Retry-After`. |
 | Item restored after its content was purged | The same bytes are stored again as a new revision whose parent is the purged one, and its derivatives are rebuilt. |

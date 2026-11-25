@@ -7,8 +7,10 @@ A daily `purge` job per project (source_id = project id) applies the project's `
   removed are marked DELETED first, which starts that clock).
 Purging sets `purged_at` on the revision and its derivatives and keeps all lineage metadata. A blob is
 deleted only when no unpurged revision or derivative anywhere in the tenant still references it (blobs are
-shared per tenant). Blobs nothing references (a sync that rolled back after writing its blob, a derivative
-superseded while being built, a delete that failed half-way) are collected after a grace period.
+shared per tenant). Blobs nothing references at all (a sync that rolled back after writing its blob, a
+derivative superseded while being built, a delete that failed half-way) are collected by the daily per-tenant
+`sweep` job (source_id = tenant id) after a grace period: tenant-level, because such a blob may be the only
+trace a tenant has (its very first ingestion failed), so no project-level schedule could reach it.
 
 Concurrency: record_revision and the derive job hold a SHARED per-tenant advisory lock from writing a blob
 until their transaction commits; blob deletion holds it EXCLUSIVELY and re-checks references under it. So a
@@ -169,22 +171,14 @@ def purge_project(tenant: uuid.UUID, project_id: uuid.UUID, store: blobs.BlobSto
             )
         keys.discard(None)
         counts = {"items_marked_deleted": marked_deleted, "revisions_purged": len(ids)}
-    # Blob deletion: under the exclusive tenant blob lock, re-checking references at that moment.
-    deleted = orphans = 0
-    grace = timedelta(seconds=get_settings().content_orphan_grace_seconds)
+    # Released blobs: deleted under the exclusive tenant blob lock, re-checking references at that moment.
+    deleted = 0
     with tenant_session(tenant) as conn:
         blob_lock(conn, tenant, exclusive=True)
         for key in sorted(keys - _referenced(conn, keys)):
             store.delete(key)
             deleted += 1
-        live = _referenced(conn)
-        for info in store.list(blobs.tenant_prefix(tenant)):
-            if orphans >= MAX_ORPHANS:
-                break
-            if info.key not in live and info.key not in keys and info.modified <= now - grace:
-                store.delete(info.key)
-                orphans += 1
-        counts |= {"blobs_deleted": deleted, "orphans_deleted": orphans}
+        counts["blobs_deleted"] = deleted
         if any(counts.values()):
             conn.execute(
                 insert(outbox_events).values(
@@ -195,9 +189,43 @@ def purge_project(tenant: uuid.UUID, project_id: uuid.UUID, store: blobs.BlobSto
     return counts
 
 
+def sweep_tenant(tenant: uuid.UUID, store: blobs.BlobStore, now: datetime) -> dict:
+    """Delete the tenant's blobs that nothing unpurged references and that are older than the grace period:
+    left by a sync that rolled back after writing its blob (even the very first one, when no content row
+    exists anywhere), by a derivative superseded while being built, or by a delete that failed half-way.
+    Tenant-level because blobs are: a schedule derived from rows could never reach such orphans."""
+    grace = timedelta(seconds=get_settings().content_orphan_grace_seconds)
+    orphans = 0
+    with tenant_session(tenant) as conn:
+        blob_lock(conn, tenant, exclusive=True)  # no sync is between writing a blob and committing its row
+        live = _referenced(conn)
+        for info in store.list(blobs.tenant_prefix(tenant)):
+            if orphans >= MAX_ORPHANS:
+                break
+            if info.key not in live and info.modified <= now - grace:
+                store.delete(info.key)
+                orphans += 1
+        if orphans:
+            conn.execute(
+                insert(outbox_events).values(
+                    tenant_id=tenant, type="content.swept", payload={"orphans_deleted": orphans}
+                )
+            )
+    log.info("content sweep tenant=%s orphans_deleted=%s", tenant, orphans)
+    return {"orphans_deleted": orphans, "more": orphans >= MAX_ORPHANS}
+
+
 @handler("purge")
 def purge(ctx: JobContext) -> dict[str, Any]:
     result = purge_project(ctx.tenant, ctx.job["source_id"], blobs.get_store(), datetime.now(UTC))
+    with tenant_session(ctx.tenant) as conn:
+        queue.succeed(conn, ctx.job, result)
+    return result
+
+
+@handler("sweep")
+def sweep(ctx: JobContext) -> dict[str, Any]:
+    result = sweep_tenant(ctx.tenant, blobs.get_store(), datetime.now(UTC))
     with tenant_session(ctx.tenant) as conn:
         queue.succeed(conn, ctx.job, result)
     return result
