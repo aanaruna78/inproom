@@ -123,7 +123,8 @@ def test_jira_issues_are_stored_as_canonical_records(jira_env):
         {"id": record["id"], "key": "ABC-1", "fields": record["fields"]}, list(record["fields"])
     )  # canonical: re-encoding the stored record reproduces it byte for byte
     due(e.tenant)
-    assert run_sync({"jira": e.jira.transport()}, e.tenant)["result"]["content"]["revisions"] == 0
+    out = run_sync({"jira": e.jira.transport()}, e.tenant)
+    assert out["result"]["content"]["revisions"] == 0
 
 
 def test_canonical_jira_record_ignores_volatile_and_linked_issue_details():

@@ -15,7 +15,7 @@ from tests.sync_helpers import due, run_sync
 
 env = helpers.env
 selected = helpers.selected
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("no_derivatives")]
 
 
 @pytest.fixture

@@ -132,6 +132,9 @@ def record_revision(
             **fields,
         )
     )
+    from app.content import derivatives  # late: derivatives -> worker -> handlers -> ingest -> here
+
+    derivatives.on_new_revision(conn, tenant, dict(obj), revision, media_type, stored=key is not None)
     conn.execute(
         insert(outbox_events).values(
             tenant_id=tenant,

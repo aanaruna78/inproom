@@ -73,6 +73,21 @@ CATALOG: dict[str, tuple[str, str, str]] = {
         "The bytes read from the object store do not match their recorded sha256, so they were not used.",
         "Run Reconcile now to fetch the content again, and check the object store for tampering or faults.",
     ),
+    "UNKNOWN_PRODUCER": (
+        "Unknown derivative producer",
+        "A derivative names a producer version this INPROOM release does not have, so it cannot be rebuilt.",
+        "Invalidate the item's derivatives so they are rebuilt with the current producers.",
+    ),
+    "NOT_STORED": (
+        "Original not stored",
+        "The revision's original bytes are not stored (over the size limit, or removed by retention).",
+        "Nothing to rebuild from; a newer revision of the item is processed normally.",
+    ),
+    "PRODUCER_FAILED": (
+        "Could not process content",
+        "The content could not be turned into this derivative (for example, malformed text or JSON).",
+        "Check the item in its source; it is retried when the item changes or is invalidated.",
+    ),
     "PROVIDER_ERROR": (
         "Unexpected provider response",
         "The provider returned an unexpected error.",

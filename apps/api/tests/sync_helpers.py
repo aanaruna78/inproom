@@ -35,13 +35,16 @@ def payloads(e, kind):
         ]
 
 
+FOLLOW_UPS = ("connection", "derive")  # health checks (INPROOM-145), derivative builds (INPROOM-159)
+
+
 def run_sync(transports, tenant, schedule=True, worker_id="w"):
-    """Like worker.run_once, but also processes any connection health-check jobs (INPROOM-145) the scheduler
-    queued alongside, returning the first source-sync result (or None when nothing else is runnable)."""
+    """Like worker.run_once, but also processes the follow-up jobs queued alongside (connection health checks,
+    derivative builds), returning the first source-sync result (or None when nothing else is runnable)."""
     from app.sync import worker
 
     while True:
         out = worker.run_once(worker_id, transports=transports, schedule=schedule, tenant=tenant)
         schedule = False
-        if out is None or out["source_kind"] != "connection":
+        if out is None or out["source_kind"] not in FOLLOW_UPS:
             return out

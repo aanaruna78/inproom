@@ -144,6 +144,15 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
         "project",
         "project.read",
     ),
+    # INPROOM-159
+    (
+        "GET",
+        "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/derivatives",
+    ): (
+        "project",
+        "project.read",
+    ),
+    ("POST", "/v1/projects/{project_id}/content/invalidate"): ("project", "project.source.manage"),
     # INPROOM-146
     ("GET", "/v1/connections/attention"): ("tenant", "tenant.connection.manage"),
     ("GET", "/v1/connections/{connection_id}/sources"): ("connection", "tenant.connection.manage"),
@@ -165,7 +174,10 @@ AUDIT_ACTION = {("GET", "/v1/workspaces/{workspace_id}/projects"): "project.read
 TESTED = [r for r, (level, _) in ROUTE_RULES.items() if level not in ("public", "self", "webhook")]
 SUCCESS = {"GET": "200", "PATCH": "200", "PUT": "200", "DELETE": "204", "POST": "200"}
 # Routes whose success is 202 Accepted (work queued, not done): INPROOM-144 reconcile-now.
-ACCEPTED = {("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile")}
+ACCEPTED = {
+    ("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile"),
+    ("POST", "/v1/projects/{project_id}/content/invalidate"),  # INPROOM-159: rebuild queued
+}
 # Authorized callers reach a business rule instead of success: adopt needs a REVOKED same-site connection,
 # which the shared world does not have, so 409 ADOPT_NOT_ALLOWED is the authorized outcome (INPROOM-146).
 BUSINESS_RULE = {
@@ -385,6 +397,12 @@ def _call(client, method, path, world: World, headers):
         kwargs["headers"]["If-Match"] = f'"{world.project["version"]}"'
     elif method == "POST" and path.endswith("/adopt"):
         kwargs["json"] = {"from_connection_id": world.connection["id"]}
+    elif method == "POST" and path.endswith("/content/invalidate"):
+        kwargs["json"] = {
+            "kind": "confluence",
+            "source_id": world.confluence_source["id"],
+            "reason": "matrix",
+        }
     elif method == "POST" and path.endswith("/migration/confirm"):
         kwargs["headers"]["If-Match"] = '"1"'
     elif method == "PUT" and path.endswith("/migration"):

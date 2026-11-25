@@ -121,3 +121,12 @@ def fake_confluence(db_client, monkeypatch):
     fake = standard()
     db_client.app.dependency_overrides[get_confluence_transport] = fake.transport
     return fake
+
+
+@pytest.fixture
+def no_derivatives(monkeypatch):
+    """Turn off derivative producers (INPROOM-159), so storing content queues no `derive` jobs. For suites
+    about the source sync queue itself, whose job counts and listings predate the content pipeline."""
+    from app.content import producers
+
+    monkeypatch.setattr(producers, "PRODUCERS", {})

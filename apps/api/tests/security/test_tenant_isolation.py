@@ -106,6 +106,11 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/raw"): (
         "project_scoped"
     ),
+    (
+        "GET",
+        "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/derivatives",
+    ): ("project_scoped"),
+    ("POST", "/v1/projects/{project_id}/content/invalidate"): "project_scoped",
     # INPROOM-146
     ("GET", "/v1/connections/attention"): "tenant_collection",
     ("GET", "/v1/connections/{connection_id}/sources"): "connection_scoped",
@@ -282,6 +287,12 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         kwargs["json"] = {"roles": ["viewer"]}
     elif method == "POST" and path_template.endswith("/adopt"):
         kwargs["json"] = {"from_connection_id": tenant_ids.connection["id"]}
+    elif method == "POST" and path_template.endswith("/content/invalidate"):
+        kwargs["json"] = {
+            "kind": "confluence",
+            "source_id": tenant_ids.confluence_source["id"],
+            "reason": "cross-tenant",
+        }
     elif method == "POST" and path_template.endswith("/migration/confirm"):
         kwargs["headers"]["If-Match"] = '"1"'
     elif method == "PUT" and path_template.endswith("/migration"):

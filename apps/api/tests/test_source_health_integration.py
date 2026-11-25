@@ -17,7 +17,7 @@ from tests.sync_helpers import due
 
 env = helpers.env
 selected = helpers.selected
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("no_derivatives")]
 
 
 def drain(e, schedule=True):

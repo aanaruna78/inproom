@@ -12,18 +12,21 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Query, Request, Response
-from pydantic import BaseModel
+from fastapi import APIRouter, Body, Query, Request, Response
+from pydantic import BaseModel, Field
 from sqlalchemy import Connection, Text, cast, select, tuple_
 
 from app import audit
 from app.api_errors import ApiError
 from app.auth import CurrentPrincipal, Principal
 from app.authz import authorize
+from app.content import derivatives as derivatives_module
 from app.content import store as blobs
+from app.content.producers import PRODUCERS
 from app.content.revisions import IN_SCOPE, revision_bytes
 from app.db import tenant_session
 from app.db_schema import (
+    derivatives,
     project_confluence_sources,
     project_jira_sources,
     project_repositories,
@@ -298,3 +301,125 @@ def get_raw(
         media_type=rev["media_type"],
         headers={"ETag": etag, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
     )
+
+
+class Derivative(BaseModel):
+    id: uuid.UUID
+    kind: str
+    producer: str
+    producer_version: int
+    status: str
+    output_sha256: str | None
+    size_bytes: int | None
+    error: dict[str, Any] | None
+    reason: str | None
+    created_at: datetime
+    built_at: datetime | None
+    invalidated_at: datetime | None
+
+
+class Derivatives(BaseModel):
+    revision_seq: int
+    content_sha256: str
+    items: list[Derivative]
+
+
+@router.get(
+    "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/derivatives",
+    response_model=Derivatives,
+    summary="Everything derived from one revision, with producer@version and status (including history)",
+    responses={404: PROBLEM},
+)
+def get_derivatives(
+    request: Request,
+    principal: CurrentPrincipal,
+    project_id: uuid.UUID,
+    kind: Kind,
+    source_id: uuid.UUID,
+    external_id: str,
+    seq: int,
+) -> Derivatives:
+    with tenant_session(principal.tenant_id) as conn:
+        authorize(conn, principal, request, "project.read", project_id)
+        obj = _object(conn, project_id, kind, source_id, external_id)
+        rev = (
+            conn.execute(
+                select(source_revisions).where(
+                    source_revisions.c.object_id == obj["id"], source_revisions.c.seq == seq
+                )
+            )
+            .mappings()
+            .first()
+        )
+        if rev is None:
+            raise ApiError(404, "REVISION_NOT_FOUND", "Not found", "No such revision of this item")
+        rows = conn.execute(
+            select(derivatives)
+            .where(derivatives.c.revision_id == rev["id"])
+            .order_by(derivatives.c.producer, derivatives.c.created_at)
+        ).mappings()
+        items = [Derivative.model_validate(dict(x)) for x in rows]
+    return Derivatives(revision_seq=seq, content_sha256=rev["content_sha256"], items=items)
+
+
+class InvalidateRequest(BaseModel):
+    kind: Kind
+    source_id: uuid.UUID
+    external_id: str | None = Field(
+        default=None, max_length=200, description="One item; omit for the whole source"
+    )
+    producer: str | None = Field(default=None, max_length=64, description="One producer; omit for all")
+    reason: str = Field(min_length=3, max_length=300)
+
+
+class InvalidateResult(BaseModel):
+    objects: int
+    invalidated: int
+    queued: int
+    pending: int
+    job_id: uuid.UUID | None
+
+
+@router.post(
+    "/v1/projects/{project_id}/content/invalidate",
+    response_model=InvalidateResult,
+    status_code=202,
+    summary="Invalidate the current revisions' derivatives (one item or a whole source); queue a rebuild",
+    responses={404: PROBLEM, 422: PROBLEM},
+)
+def post_invalidate(
+    request: Request,
+    principal: CurrentPrincipal,
+    project_id: uuid.UUID,
+    payload: Annotated[InvalidateRequest, Body()],
+) -> InvalidateResult:
+    if payload.producer is not None and payload.producer not in PRODUCERS:
+        raise ApiError(422, "UNKNOWN_PRODUCER", "Unknown producer", f"known producers: {sorted(PRODUCERS)}")
+    with tenant_session(principal.tenant_id) as conn:
+        authorize(conn, principal, request, "project.source.manage", project_id, lock=True)
+        if payload.external_id is not None:
+            _object(conn, project_id, payload.kind, payload.source_id, payload.external_id)
+        result = derivatives_module.invalidate(
+            conn,
+            principal.tenant_id,
+            project_id,
+            kind=payload.kind,
+            source_id=payload.source_id,
+            external_id=payload.external_id,
+            producer=payload.producer,
+            reason=payload.reason,
+        )
+        if result["objects"] == 0:
+            raise ApiError(404, "CONTENT_NOT_FOUND", "Not found", "No stored content for this source")
+        audit.record(
+            conn,
+            principal,
+            "content.invalidate",
+            "content_source",
+            f"{payload.kind}/{payload.source_id}"
+            + (f"/{payload.external_id}" if payload.external_id else ""),
+            trace_id=getattr(request.state, "trace_id", None),
+            payload=payload.model_dump(mode="json") | result,
+            project_id=project_id,
+        )
+    return InvalidateResult.model_validate(result)

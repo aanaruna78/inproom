@@ -380,6 +380,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/content/invalidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Invalidate the current revisions' derivatives (one item or a whole source); queue a rebuild */
+        post: operations["post_invalidate_v1_projects__project_id__content_invalidate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}": {
         parameters: {
             query?: never;
@@ -389,6 +406,23 @@ export interface paths {
         };
         /** One stored source item: status, ACL and its full revision lineage */
         get: operations["get_object_v1_projects__project_id__content__kind___source_id___external_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/derivatives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Everything derived from one revision, with producer@version and status (including history) */
+        get: operations["get_derivatives_v1_projects__project_id__content__kind___source_id___external_id__revisions__seq__derivatives_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1262,6 +1296,50 @@ export interface components {
              */
             token: string;
         };
+        /** Derivative */
+        Derivative: {
+            /** Built At */
+            built_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Invalidated At */
+            invalidated_at: string | null;
+            /** Kind */
+            kind: string;
+            /** Output Sha256 */
+            output_sha256: string | null;
+            /** Producer */
+            producer: string;
+            /** Producer Version */
+            producer_version: number;
+            /** Reason */
+            reason: string | null;
+            /** Size Bytes */
+            size_bytes: number | null;
+            /** Status */
+            status: string;
+        };
+        /** Derivatives */
+        Derivatives: {
+            /** Content Sha256 */
+            content_sha256: string;
+            /** Items */
+            items: components["schemas"]["Derivative"][];
+            /** Revision Seq */
+            revision_seq: number;
+        };
         /** DirectoryUser */
         DirectoryUser: {
             /** Display Name */
@@ -1342,6 +1420,44 @@ export interface components {
             webhooks: {
                 [key: string]: number;
             };
+        };
+        /** InvalidateRequest */
+        InvalidateRequest: {
+            /**
+             * External Id
+             * @description One item; omit for the whole source
+             */
+            external_id?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "confluence" | "jira" | "git" | "upload";
+            /**
+             * Producer
+             * @description One producer; omit for all
+             */
+            producer?: string | null;
+            /** Reason */
+            reason: string;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+        };
+        /** InvalidateResult */
+        InvalidateResult: {
+            /** Invalidated */
+            invalidated: number;
+            /** Job Id */
+            job_id: string | null;
+            /** Objects */
+            objects: number;
+            /** Pending */
+            pending: number;
+            /** Queued */
+            queued: number;
         };
         /** InventoryIssue */
         InventoryIssue: {
@@ -4022,6 +4138,46 @@ export interface operations {
             };
         };
     };
+    post_invalidate_v1_projects__project_id__content_invalidate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvalidateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvalidateResult"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_object_v1_projects__project_id__content__kind___source_id___external_id__get: {
         parameters: {
             query?: never;
@@ -4043,6 +4199,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceObjectDetail"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_derivatives_v1_projects__project_id__content__kind___source_id___external_id__revisions__seq__derivatives_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                kind: "confluence" | "jira" | "git" | "upload";
+                source_id: string;
+                external_id: string;
+                seq: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Derivatives"];
                 };
             };
             /** @description problem+json */

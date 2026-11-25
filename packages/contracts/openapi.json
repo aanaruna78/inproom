@@ -533,6 +533,147 @@
         "title": "CredentialRotate",
         "type": "object"
       },
+      "Derivative": {
+        "properties": {
+          "built_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Built At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "invalidated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invalidated At"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "output_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Sha256"
+          },
+          "producer": {
+            "title": "Producer",
+            "type": "string"
+          },
+          "producer_version": {
+            "title": "Producer Version",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "producer",
+          "producer_version",
+          "status",
+          "output_sha256",
+          "size_bytes",
+          "error",
+          "reason",
+          "created_at",
+          "built_at",
+          "invalidated_at"
+        ],
+        "title": "Derivative",
+        "type": "object"
+      },
+      "Derivatives": {
+        "properties": {
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Derivative"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "revision_seq": {
+            "title": "Revision Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision_seq",
+          "content_sha256",
+          "items"
+        ],
+        "title": "Derivatives",
+        "type": "object"
+      },
       "DirectoryUser": {
         "properties": {
           "display_name": {
@@ -739,6 +880,105 @@
           "summary"
         ],
         "title": "Impact",
+        "type": "object"
+      },
+      "InvalidateRequest": {
+        "properties": {
+          "external_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One item; omit for the whole source",
+            "title": "External Id"
+          },
+          "kind": {
+            "enum": [
+              "confluence",
+              "jira",
+              "git",
+              "upload"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "producer": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One producer; omit for all",
+            "title": "Producer"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "source_id",
+          "reason"
+        ],
+        "title": "InvalidateRequest",
+        "type": "object"
+      },
+      "InvalidateResult": {
+        "properties": {
+          "invalidated": {
+            "title": "Invalidated",
+            "type": "integer"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "objects": {
+            "title": "Objects",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "queued": {
+            "title": "Queued",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "objects",
+          "invalidated",
+          "queued",
+          "pending",
+          "job_id"
+        ],
+        "title": "InvalidateResult",
         "type": "object"
       },
       "InventoryIssue": {
@@ -6204,6 +6444,60 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/content/invalidate": {
+      "post": {
+        "operationId": "post_invalidate_v1_projects__project_id__content_invalidate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvalidateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidateResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Invalidate the current revisions' derivatives (one item or a whole source); queue a rebuild",
+        "tags": [
+          "content"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}": {
       "get": {
         "operationId": "get_object_v1_projects__project_id__content__kind___source_id___external_id__get",
@@ -6284,6 +6578,100 @@
           }
         ],
         "summary": "One stored source item: status, ACL and its full revision lineage",
+        "tags": [
+          "content"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/derivatives": {
+      "get": {
+        "operationId": "get_derivatives_v1_projects__project_id__content__kind___source_id___external_id__revisions__seq__derivatives_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "confluence",
+                "jira",
+                "git",
+                "upload"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "external_id",
+            "required": true,
+            "schema": {
+              "title": "External Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seq",
+            "required": true,
+            "schema": {
+              "title": "Seq",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Derivatives"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Everything derived from one revision, with producer@version and status (including history)",
         "tags": [
           "content"
         ]
