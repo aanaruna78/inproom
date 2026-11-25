@@ -179,3 +179,22 @@ def test_an_object_store_outage_writes_nothing(ctx):
         ctx.record(b"never stored")
     with tenant_session(ctx.tenant) as conn:
         assert conn.execute(select(source_objects.c.id)).first() is None
+
+
+def test_same_bytes_after_a_purge_are_re_stored_as_a_new_revision(ctx):
+    """INPROOM-161: an item restored after retention purged its current revision is readable again."""
+    first = ctx.record(b"restored later")
+    with tenant_session(ctx.tenant) as conn:
+        conn.execute(
+            source_revisions.update()
+            .where(source_revisions.c.id == first.revision_id)
+            .values(purged_at=source_revisions.c.fetched_at)
+        )
+    ctx.store.delete(blobs.blob_key(ctx.tenant, first.content_sha256))
+    again = ctx.record(b"restored later")
+    assert again.created and again.seq == 2
+    revs = ctx.revisions(first.object_id)
+    assert revs[0]["purged_at"] is not None and revs[1]["purged_at"] is None  # history stays truthful
+    assert revs[1]["parent_revision_id"] == revs[0]["id"]
+    assert revision_bytes(ctx.store, revs[1]) == b"restored later"
+    assert not ctx.record(b"restored later").created  # and from now on it is unchanged again

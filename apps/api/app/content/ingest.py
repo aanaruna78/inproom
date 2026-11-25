@@ -105,9 +105,15 @@ def jira_record(issue: dict[str, Any], fields: list[str]) -> bytes:
 
 
 def current_hashes(conn: Connection, project_id, kind: str, source_id) -> dict[str, tuple[str | None, str]]:
-    """external_id -> (current revision sha256, object status) for one source."""
+    """external_id -> (current revision sha256, object status) for one source. A purged current revision has
+    no stored bytes, so it never matches (its item must be re-recorded: INPROOM-161)."""
     rows = conn.execute(
-        select(source_objects.c.external_id, source_objects.c.status, source_revisions.c.content_sha256)
+        select(
+            source_objects.c.external_id,
+            source_objects.c.status,
+            source_revisions.c.content_sha256,
+            source_revisions.c.purged_at,
+        )
         .select_from(
             source_objects.outerjoin(
                 source_revisions, source_revisions.c.id == source_objects.c.current_revision_id
@@ -119,7 +125,7 @@ def current_hashes(conn: Connection, project_id, kind: str, source_id) -> dict[s
             source_objects.c.source_id == source_id,
         )
     )
-    return {r.external_id: (r.content_sha256, r.status) for r in rows}
+    return {r.external_id: (None if r.purged_at else r.content_sha256, r.status) for r in rows}
 
 
 def mark(

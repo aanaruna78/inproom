@@ -37,7 +37,6 @@ def sql(engine, query, **values):
         return conn.execute(text(query), values)
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-161: a purged current revision stays current after restore")
 def test_restored_page_after_retention_has_readable_current_revision(selected, owner_engine):
     e = selected
     original = raw(e).content

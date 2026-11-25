@@ -98,7 +98,10 @@ def record_revision(
             .one()
         )
     fields = {"title": title, "uri": uri, "acl": acl, "updated_at": now}
-    if current is not None and current["content_sha256"] == digest:
+    # Same bytes as the current revision: nothing to append - unless retention purged that revision's bytes
+    # (an item restored after its deletion window). Then a new revision re-stores them, its parent is the
+    # purged one, and its derivatives are rebuilt (INPROOM-161).
+    if current is not None and current["content_sha256"] == digest and current["purged_at"] is None:
         if obj["status"] != status or obj["deleted_at"] is not None:
             fields |= {"status": status, "status_reason": None, "deleted_at": None}
         changed = {k: v for k, v in fields.items() if k == "updated_at" or obj[k] != v}

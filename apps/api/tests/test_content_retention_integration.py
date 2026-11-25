@@ -171,3 +171,34 @@ def test_a_crash_after_the_blob_write_leaves_no_row_and_the_retry_records_once(s
     assert run_sync({"confluence": e.conf.transport()}, e.tenant)["status"] == "SUCCEEDED"
     lineage = page(e, "101").json()["lineage"]
     assert [r["seq"] for r in lineage] == [1, 2] and lineage[1]["content_sha256"] == key.rsplit("/", 1)[1]
+
+
+def test_an_item_restored_after_its_purge_is_readable_rebuilt_and_kept(selected, owner_engine):
+    """INPROOM-161: restore after the deletion-window purge, then purge again."""
+    e = selected
+    original = page(e, "101", "/revisions/1/raw").content
+    e.conf.pages[101].status = "trashed"
+    e.sync()
+    owner_sql(
+        owner_engine,
+        "UPDATE source_objects SET deleted_at = now() - interval '31 days' "
+        "WHERE tenant_id=:t AND status='DELETED'",
+        t=e.tenant,
+    )
+    store = blobs.get_store()
+    assert retention.purge_project(e.tenant, uuid.UUID(e.pid), store, datetime.now(UTC))["blobs_deleted"] == 1
+    e.conf.pages[101].status = "current"
+    e.sync()
+    obj = page(e, "101").json()
+    assert (obj["status"], obj["revisions"]) == ("CURRENT", 2)
+    assert [(r["seq"], r["parent_seq"], r["stored"]) for r in obj["lineage"]] == [
+        (1, None, False),
+        (2, 1, True),
+    ]
+    assert page(e, "101", "/revisions/2/raw").content == original
+    derived = e.client.get(
+        f"/v1/projects/{e.pid}/content/confluence/{e.sid}/101/revisions/2/derivatives", headers=e.h()
+    ).json()["items"]
+    assert [d["status"] for d in derived] == ["PENDING"]  # rebuilt by the next derive job
+    again = retention.purge_project(e.tenant, uuid.UUID(e.pid), store, datetime.now(UTC))
+    assert again["revisions_purged"] == 0 and page(e, "101", "/revisions/2/raw").content == original
