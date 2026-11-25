@@ -99,7 +99,7 @@ Each project's settings carry `sources.retention`:
 - **`superseded_days`** (default 90): an older revision is purged this long after it was replaced.
 - **`deleted_days`** (default 30): a deleted item's content is purged this long after deletion. Items whose source is removed from the project count as deleted from that moment.
 
-**The daily `purge` job per project:**
+**The daily `purge` job per project.** The worker's schedule tick queues it (`enqueue_due_purges`) for every project that holds stored content, whatever its sources are doing: removed, paused, excluded, invalid credentials or quiet. The job:
 1. Sets `purged_at` on the released revisions and their derivatives. The lineage rows stay.
 2. Deletes a blob only when **no unpurged revision or derivative anywhere in the tenant** still references it.
 3. Never purges the current revision of a live item.
@@ -119,4 +119,6 @@ Each project's settings carry `sources.retention`:
 | Worker dies after writing a blob, before the commit | No row references the blob. The retry records the revision once and reuses the blob. If nothing ever does, the purge collects the orphan. |
 | Object store down during a derive job | The job retries, and derivatives stay `PENDING`. |
 | Object store down on a raw read | `503 OBJECTSTORE_UNAVAILABLE` with `Retry-After`. |
+| Item restored after its content was purged | The same bytes are stored again as a new revision whose parent is the purged one, and its derivatives are rebuilt. |
+| ACL, title or URI change with an unchanged body | The item's current ACL, title and URI are updated without a new revision (revisions keep the ACL they were fetched under), and `source.object.acl_changed` is emitted. |
 | Lost or corrupted blob | Reads are withheld (`BLOB_MISSING` / `BLOB_CORRUPT`) and audited. Derivatives built from it are `FAILED`. |

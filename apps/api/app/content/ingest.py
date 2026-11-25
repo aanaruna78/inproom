@@ -227,12 +227,6 @@ def mark(
     ).rowcount
 
 
-def _schedule_purge(conn: Connection, tenant: uuid.UUID, project_id) -> None:
-    from app.content import retention  # late: retention -> worker -> handlers -> here
-
-    retention.maybe_schedule(conn, tenant, project_id)
-
-
 def confluence(
     conn: Connection,
     store: blobs.BlobStore,
@@ -293,7 +287,6 @@ def confluence(
         counts["withheld"] += mark(
             conn, source["project_id"], "confluence", source["id"], ids, status, reason or status.lower()
         )
-    _schedule_purge(conn, tenant, source["project_id"])
     return counts
 
 
@@ -343,5 +336,4 @@ def jira(
     counts["withheld"] += mark(
         conn, source["project_id"], "jira", source["id"], deleted, "DELETED", "deleted or moved out of Jira"
     )
-    _schedule_purge(conn, tenant, source["project_id"])
     return counts

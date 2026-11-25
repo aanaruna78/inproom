@@ -34,13 +34,12 @@ from app.db_schema import (
     projects,
     source_objects,
     source_revisions,
-    source_sync_state,
 )
 from app.sync import queue
 from app.sync.worker import JobContext, SkipJob, handler
 
 log = logging.getLogger("inproom.content.retention")
-AUTO_SCHEDULE = True  # tests of the source queue itself switch this off (see tests/conftest.py)
+AUTO_SCHEDULE = True  # worker.schedule_tick queues due purges; source-queue test suites switch it off
 MAX_ORPHANS = 10_000
 SOURCE_TABLES = {
     "confluence": project_confluence_sources,
@@ -78,27 +77,6 @@ def purgeable(
         if newer["fetched_at"] <= cutoff:  # replaced long enough ago
             out.append(older["id"])
     return out
-
-
-def maybe_schedule(conn: Connection, tenant: uuid.UUID, project_id: uuid.UUID) -> None:
-    """Queue the project's purge if it is due (called by the syncs that store content)."""
-    if not AUTO_SCHEDULE:
-        return
-    due = conn.execute(
-        select(source_sync_state.c.next_due_at).where(
-            source_sync_state.c.source_kind == "purge", source_sync_state.c.source_id == project_id
-        )
-    ).scalar()
-    if due is None or due <= datetime.now(UTC):
-        queue.enqueue(conn, tenant, project_id, "purge", project_id, "schedule")
-        conn.execute(  # once per interval, however many syncs run meanwhile
-            text(
-                "INSERT INTO source_sync_state (tenant_id, project_id, source_kind, source_id, next_due_at) "
-                "VALUES (:t, :p, 'purge', :p, now() + make_interval(secs => :s)) "
-                "ON CONFLICT (source_kind, source_id) DO UPDATE SET next_due_at = EXCLUDED.next_due_at"
-            ),
-            {"t": tenant, "p": project_id, "s": get_settings().content_purge_interval_seconds},
-        )
 
 
 def _orphan_source_items(conn: Connection, project_id: uuid.UUID, now: datetime) -> int:

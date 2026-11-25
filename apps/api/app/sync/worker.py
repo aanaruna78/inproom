@@ -85,7 +85,12 @@ def schedule_tick(tenant: uuid.UUID | None = None) -> dict[str, int]:
     checks = _maintenance(
         "SELECT enqueue_due_health_checks(:i, :t)", i=settings.health_interval_seconds, t=tenant
     )[0][0]
-    return {"recovered": recovered, "queued": queued, "health_checks": checks}
+    purges = 0
+    if _retention.AUTO_SCHEDULE:  # content retention runs whatever its sources do (INPROOM-162)
+        purges = _maintenance(
+            "SELECT enqueue_due_purges(:i, :t)", i=settings.content_purge_interval_seconds, t=tenant
+        )[0][0]
+    return {"recovered": recovered, "queued": queued, "health_checks": checks, "purges": purges}
 
 
 def claim(worker_id: str, tenant: uuid.UUID | None = None) -> tuple[uuid.UUID, uuid.UUID] | None:

@@ -115,23 +115,40 @@ def test_unreferenced_blobs_are_collected_only_after_the_grace_period(selected, 
     assert page(e, "101", "/revisions/1/raw").status_code == 200  # referenced blobs untouched
 
 
-def test_the_purge_is_scheduled_once_per_interval_and_runs_as_a_job(selected):
-    e = selected
-    jobs = "SELECT count(*) FROM sync_jobs WHERE tenant_id=:t AND source_kind='purge'"
-    assert e.q(jobs) == 1  # the first sync that stored content queued it
-    e.sync()
-    assert e.q(jobs) == 1  # not again within the interval
+def test_the_worker_schedules_one_purge_per_project_with_content_whatever_its_sources_do(
+    selected, owner_engine
+):
+    """INPROOM-162: the schedule tick queues due purges itself, also after the last source is removed."""
     from app.sync import worker
 
+    e = selected
+    jobs = "SELECT count(*) FROM sync_jobs WHERE tenant_id=:t AND source_kind='purge' AND status=:s"
+    assert worker.schedule_tick(e.tenant)["purges"] == 1
+    assert worker.schedule_tick(e.tenant)["purges"] == 0  # coalesced, and not due again for a day
+    assert e.q(jobs, s="QUEUED") == 1
     while (out := worker.run_once("w", transports={}, schedule=False, tenant=e.tenant)) is not None:
         if out["source_kind"] == "purge":
-            assert out["status"] == "SUCCEEDED" and out["result"]["revisions_purged"] == 0
+            assert out["status"] == "SUCCEEDED"
+    assert e.q(jobs, s="SUCCEEDED") == 1
+    # The last source goes away: nothing syncs any more, but retention still runs when due.
     assert (
-        e.q(
-            "SELECT count(*) FROM sync_jobs WHERE tenant_id=:t AND source_kind='purge' AND status='SUCCEEDED'"
-        )
-        == 1
+        e.client.delete(f"/v1/projects/{e.pid}/sources/confluence/{e.cid}:ENG", headers=e.h()).status_code
+        == 204
     )
+    owner_sql(
+        owner_engine,
+        "UPDATE source_sync_state SET next_due_at = now() WHERE tenant_id=:t AND source_kind='purge'",
+        t=e.tenant,
+    )
+    assert worker.schedule_tick(e.tenant)["purges"] == 1
+    out = worker.run_once("w", transports={}, schedule=False, tenant=e.tenant)
+    assert out["source_kind"] == "purge" and out["result"]["items_marked_deleted"] == 3
+
+
+def test_projects_without_stored_content_get_no_purge(env):
+    from app.sync import worker
+
+    assert worker.schedule_tick(env.tenant)["purges"] == 0
 
 
 def test_object_store_outage_during_a_sync_retries_and_recovers_exactly(selected, monkeypatch):

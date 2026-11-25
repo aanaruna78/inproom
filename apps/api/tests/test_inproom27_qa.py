@@ -61,7 +61,6 @@ def test_restored_page_after_retention_has_readable_current_revision(selected, o
     ), f"restored CURRENT page still unreadable: HTTP {read.status_code}, {read.text}"
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-162: purge is only scheduled by content ingestion")
 def test_purge_due_after_source_removed_is_scheduled(selected, owner_engine):
     e = selected
     while worker.run_once("qa", transports={}, schedule=False, tenant=e.tenant):
