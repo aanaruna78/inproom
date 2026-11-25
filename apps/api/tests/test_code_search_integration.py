@@ -241,3 +241,24 @@ def test_owners_come_from_codeowners_at_each_hits_own_commit(repo):
     params = {"repository": "acme/api", "branch": "main", "path": "src/billing.py"}
     body = e.client.get(f"/v1/projects/{e.pid}/code/files", params=params, headers=e.h()).json()
     assert (body["citation"]["commit"], body["owners"]) == (first, ["@acme/payments"])
+
+
+@pytest.mark.parametrize(
+    ("path", "encoded"),
+    [
+        ("src/a#b.py", "src/a%23b.py"),
+        ("src/what?.py", "src/what%3F.py"),
+        ("src/100%.py", "src/100%25.py"),
+        ("src/my file.py", "src/my%20file.py"),
+        ("src/ünïcode/日本.py", "src/%C3%BCn%C3%AFcode/%E6%97%A5%E6%9C%AC.py"),
+    ],
+)
+def test_permalinks_encode_the_git_path_but_keep_separators_and_the_line_fragment(repo, path, encoded):
+    """INPROOM-181: special characters in paths never break the citation link."""
+    e = repo
+    head = e.gh.repos[1].commit("main", {path: b"def unusual_path():\n    pass\n"})
+    due(e.tenant)
+    drain(e)
+    [hit] = search(e, "unusual_path")["items"]
+    assert hit["citation"]["path"] == path  # the path itself is reported as-is
+    assert hit["citation"]["permalink"] == f"https://github.com/acme/api/blob/{head}/{encoded}#L1-L2"

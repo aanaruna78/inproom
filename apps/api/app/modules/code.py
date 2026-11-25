@@ -14,6 +14,7 @@ import json
 import uuid
 from datetime import datetime
 from typing import Annotated, Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
@@ -184,7 +185,10 @@ class _Context:
         """`commit`: the item's verified_ref - a commit that contains exactly this content (INPROOM-177)."""
         repo = self.repos[source_id]
         commit = commit or ""
-        permalink = f"{_web_base(repo.base_url)}/{repo.full_name}/blob/{commit}/{path}#L{start}-L{end}"
+        # Each path segment is URL-encoded ("#", "?", "%", spaces, Unicode); "/" separators and the line
+        # fragment stay literal, so the URL names exactly the git path (INPROOM-181).
+        encoded = quote(path, safe="/")
+        permalink = f"{_web_base(repo.base_url)}/{repo.full_name}/blob/{commit}/{encoded}#L{start}-L{end}"
         return Citation(
             repository=repo.full_name,
             branch=branch,

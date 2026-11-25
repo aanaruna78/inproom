@@ -1,6 +1,6 @@
 """QA acceptance probes for INPROOM-29 at 55fa98a (apps/api/tests/qa_inproom29.py), committed as regressions.
 
-Unfixed cases are strict xfails naming their defect: INPROOM-177 (citation commit), INPROOM-178 (rollback),
+They covered, and now guard against: INPROOM-177 (citation commit), INPROOM-178 (rollback),
 INPROOM-179 (deselected branches), INPROOM-180 (owners at the cited commit), INPROOM-181 (permalink paths).
 """
 
@@ -101,7 +101,6 @@ def test_deselected_branch_is_no_longer_searchable(repo):
     assert not hits and file.status_code in (404, 409), {"hits": hits, "file_status": file.status_code}
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-181: permalink path not encoded")
 def test_citation_permalink_encodes_the_actual_git_path(repo):
     e = repo
     path = "src/a#b.py"
