@@ -41,7 +41,6 @@ def test_heading_path_anchors_survive_inserting_another_branch():
     assert alpha_anchor(original) == alpha_anchor(inserted)
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-170: heading-only documents are EMPTY_DOCUMENT")
 @pytest.mark.parametrize(
     ("data", "media"),
     [(b"# A useful title", f.MARKDOWN), (b"<h1>A useful title</h1>", f.HTML)],
@@ -73,7 +72,6 @@ def test_nested_html_table_keeps_every_cell_text():
     assert all(word in cells for word in ("Before", "Inner", "After", "Sibling")), cells
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-170: heading-only upload fails to parse")
 @pytest.mark.integration
 def test_heading_only_upload_can_be_read_as_a_document(env):
     e = env

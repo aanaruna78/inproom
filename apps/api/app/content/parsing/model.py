@@ -88,6 +88,7 @@ class Builder:
         self.warnings: list[dict[str, Any]] = []
         self.chars = 0
         self.cells = 0
+        self.headings = 0  # real headings from the document (not synthetic labels like "Page 3")
 
     def _anchor(self, base: str) -> str:
         """`base`, or the first free `base-N`: checked against EVERY anchor already emitted, so a heading that
@@ -117,6 +118,7 @@ class Builder:
         if not text:
             return
         self._spend(len(text))
+        self.headings += 1
         while self.stack and self.stack[-1][0] >= level:
             self.stack.pop()
         # The anchor follows the heading PATH: the parent's (already unique) anchor + "--" + this heading's
@@ -167,7 +169,9 @@ class Builder:
 
     def result(self) -> dict[str, Any]:
         sections = [s.as_dict(i + 1) for i, s in enumerate(self.sections)]
-        if not any(s["text"] or s["tables"] for s in sections):
+        # A heading is content too: a title-only document is valid (INPROOM-170). Synthetic section labels
+        # ("Page 3", "Summary") are not, so a document with no text, tables or headings is still empty.
+        if not self.headings and not any(s["text"] or s["tables"] for s in sections):
             raise ParseError("EMPTY_DOCUMENT", "the document has no text")
         return {
             "schema": SCHEMA,

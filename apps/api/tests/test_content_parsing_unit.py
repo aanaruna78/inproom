@@ -267,3 +267,21 @@ def test_docx_table_cells_count_against_the_text_limit(monkeypatch):
     data = fx.docx(build)
     monkeypatch.setattr(model, "MAX_TEXT_CHARS", 10)
     assert code_of(data, f.DOCX) == "PARSE_LIMIT_EXCEEDED"
+
+
+@pytest.mark.parametrize(
+    ("data", "media_type"),
+    [
+        (b"# A useful title", f.MARKDOWN),
+        (b"<h1>A useful title</h1>", f.HTML),
+        (b"<h2>A useful title</h2>", f.CONFLUENCE),
+        (fx.docx(lambda d: d.add_heading("A useful title", 0)), f.DOCX),  # Title only
+        (fx.docx(lambda d: d.add_heading("A useful title", 2)), f.DOCX),  # Heading 2 only
+    ],
+    ids=["markdown", "html", "confluence", "docx-title", "docx-heading"],
+)
+def test_heading_only_documents_parse(data, media_type):
+    """INPROOM-170: a document whose only content is a heading is valid, not EMPTY_DOCUMENT."""
+    doc = parse_document(data, media_type)
+    assert [(s["heading"], s["text"]) for s in doc["sections"]] == [("A useful title", "")]
+    assert doc["sections"][0]["anchor"] == "a-useful-title"
