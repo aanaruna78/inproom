@@ -18,7 +18,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Connection, and_, insert, or_, select, text, update
+from sqlalchemy import Connection, and_, insert, or_, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.content import store as blobs
@@ -104,8 +104,8 @@ def invalidate(
     producer: str | None,
     reason: str,
 ) -> dict[str, Any]:
-    """Invalidate the current revisions' derivatives in scope and queue their rebuild. Idempotent: rows
-    already PENDING stay as they are; missing ones for registered producers are created."""
+    """Invalidate current revisions' derivatives and queue their rebuild. Current-version PENDING rows
+    remain idempotent; obsolete queued versions are invalidated before replacement (INPROOM-172)."""
     o, r, d = source_objects, source_revisions, derivatives
     scope = [o.c.project_id == project_id, o.c.source_kind == kind, o.c.source_id == source_id]
     if external_id is not None:
@@ -117,14 +117,18 @@ def invalidate(
     )
     revisions = [dict(x) for x in conn.execute(current).mappings()]
     ids = [x["id"] for x in revisions]
-    stale = [d.c.revision_id.in_(ids), d.c.status.in_(("READY", "FAILED"))]
+    derivative_scope = [d.c.tenant_id == tenant, d.c.project_id == project_id, d.c.revision_id.in_(ids)]
     if producer:
-        stale.append(d.c.producer == producer)
+        derivative_scope.append(d.c.producer == producer)
+    registered = [(p.name, p.version) for p in PRODUCERS.values()]
+    obsolete_pending = and_(
+        d.c.status == "PENDING", tuple_(d.c.producer, d.c.producer_version).not_in(registered)
+    )
     now = datetime.now(UTC)
     dropped = (
         conn.execute(
             update(d)
-            .where(*stale)
+            .where(*derivative_scope, or_(d.c.status.in_(("READY", "FAILED")), obsolete_pending))
             .values(status="INVALIDATED", invalidated_at=now, reason=reason[:300])
             .returning(d.c.id)
         )
@@ -138,9 +142,7 @@ def invalidate(
         if rev["blob_key"] is None or rev["purged_at"] is not None:
             continue  # nothing to rebuild from
         queued += _pending(conn, tenant, project_id, rev["id"], rev["media_type"], reason[:300])
-    pending = conn.execute(
-        select(d.c.id).where(d.c.revision_id.in_(ids), d.c.status == "PENDING", *(stale[2:]))
-    ).all()
+    pending = conn.execute(select(d.c.id).where(*derivative_scope, d.c.status == "PENDING")).all()
     job = None
     if pending:
         job = queue.enqueue(conn, tenant, project_id, "derive", source_id, "manual")["id"]
