@@ -70,7 +70,6 @@ def test_returning_to_an_already_indexed_commit_restores_that_index(repo):
     assert base.search(e, "refund")["items"] == []
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-180: owners from another commit")
 def test_partial_snapshot_owners_match_the_cited_commit(repo):
     e = repo
     old = e.gh.repos[1].branches["main"]

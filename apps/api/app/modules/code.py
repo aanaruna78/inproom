@@ -130,6 +130,7 @@ class _Context:
         }
         latest: dict[tuple, dict] = {}
         running: set[tuple] = set()
+        self.by_commit: dict[tuple, dict] = {}
         for (
             s
         ) in conn.execute(  # the latest FINISHED snapshot is the one a branch's files reflect (INPROOM-178)
@@ -138,6 +139,7 @@ class _Context:
             .order_by(code_snapshots.c.finished_at.asc().nulls_first(), code_snapshots.c.started_at)
         ).mappings():
             key = (s["source_id"], s["branch"])
+            self.by_commit[(s["source_id"], s["branch"], s["commit_sha"])] = dict(s)
             if s["status"] == "RUNNING":
                 running.add((key, s["commit_sha"]))
             elif s["status"] != "RETIRED":
@@ -164,10 +166,11 @@ class _Context:
         snap, head = self.snapshot(source_id, branch), self.head(source_id, branch)
         return snap is None or (head is not None and snap["commit_sha"] != head)
 
-    def owners(self, source_id, branch, path: str) -> list[str]:
-        key = (source_id, branch)
+    def owners(self, source_id, branch, path: str, commit: str) -> list[str]:
+        """Owners by CODEOWNERS AT `commit` - the commit the citation names (INPROOM-180)."""
+        key = (source_id, branch, commit)
         if key not in self._owners:
-            snap = self.snapshot(source_id, branch)
+            snap = self.by_commit.get(key)
             text = ((snap or {}).get("codeowners") or {}).get("text")
             self._owners[key] = parse(text)[0] if text else []
         return owners_of(self._owners[key], path)
@@ -287,7 +290,9 @@ def search(
                     x["line_start"],
                     x["line_end"],
                 ),
-                owners=ctx.owners(x["source_id"], x["branch"], x["path"]),
+                owners=ctx.owners(
+                    x["source_id"], x["branch"], x["path"], x["verified_ref"] or x["commit_sha"]
+                ),
                 behind=ctx.behind_at(x["source_id"], x["branch"], x["verified_ref"] or x["commit_sha"]),
                 snapshot_status=snap["status"] if snap else None,
                 item={
@@ -421,7 +426,7 @@ def file_symbols(
     return CodeFile(
         citation=ctx.citation(repo["id"], branch, path, commit, rev["provider_version"] or "", 1, last),
         language=doc["language"],
-        owners=ctx.owners(repo["id"], branch, path),
+        owners=ctx.owners(repo["id"], branch, path, commit or ""),
         behind=ctx.behind_at(repo["id"], branch, commit or ""),
         definitions=doc["definitions"],
         imports=doc["imports"],

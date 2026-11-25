@@ -268,6 +268,15 @@ def _index_branch(
         tree = provider.tree(repo["provider_repo_id"], commit)
     except NotFoundOrNoAccess:
         return {"commit": commit, "status": "COMMIT_NOT_FOUND"}, budget, False
+    if snap["codeowners"] is None or not snap["counts"]:
+        # CODEOWNERS of THIS commit, recorded on the first run: files verified at this commit - even while
+        # the snapshot is still running - get their owners from it (INPROOM-180).
+        owners = _codeowners(provider, repo, tree, snap["codeowners"])
+        with tenant_session(tenant) as conn:
+            conn.execute(
+                update(code_snapshots).where(code_snapshots.c.id == snap["id"]).values(codeowners=owners)
+            )
+        snap["codeowners"] = owners
     # Blobs this snapshot already turned down are not fetched again. Content verdicts (LFS, binary, size)
     # belong to the blob itself, so they carry over from the branch's previous snapshot; "not accessible"
     # is retried at the next commit.
@@ -423,7 +432,6 @@ def _index_branch(
             values |= {
                 "status": "COMPLETE" if complete else "PARTIAL",
                 "renames": renames,
-                "codeowners": _codeowners(provider, repo, tree, snap.get("codeowners")),
                 "finished_at": datetime.now(UTC),
             }
             files = conn.execute(  # items of this branch indexed now

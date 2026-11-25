@@ -223,3 +223,21 @@ def test_a_deselected_branch_is_withheld_and_reselecting_restores_it(repo):
     [hit] = search(e, "feature_only")["items"]
     assert hit["citation"]["branch"] == "feature" and e.client.get(raw, headers=e.h()).status_code == 200
     assert sum(1 for _, p in e.gh.calls if "/git/blobs/" in p) == fetched  # re-activated from the store
+
+
+def test_owners_come_from_codeowners_at_each_hits_own_commit(repo):
+    """INPROOM-180: in a partial snapshot, files verified at the new commit get its owners and files still
+    verified at the old commit keep the old owners - each from CODEOWNERS at its cited commit."""
+    e = repo
+    first = e.gh.repos[1].branches["main"]
+    second = e.gh.repos[1].commit("main", {".github/CODEOWNERS": b"* @acme/new-team\n"})
+    e.gh.repos[1].truncate_trees = True  # keeps .github/... and cmd/...; cuts src/ and web/
+    due(e.tenant)
+    drain(e)
+    go = search(e, "HandleRequest")["items"][0]  # cmd/main.go: listed, verified at the new commit
+    assert (go["citation"]["commit"], go["owners"]) == (second, ["@acme/new-team"])
+    py = search(e, "charge")["items"][0]  # src/billing.py: cut from the tree, still verified at the old one
+    assert (py["citation"]["commit"], py["owners"]) == (first, ["@acme/payments"])
+    params = {"repository": "acme/api", "branch": "main", "path": "src/billing.py"}
+    body = e.client.get(f"/v1/projects/{e.pid}/code/files", params=params, headers=e.h()).json()
+    assert (body["citation"]["commit"], body["owners"]) == (first, ["@acme/payments"])
