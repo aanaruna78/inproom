@@ -60,6 +60,14 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
             <Link href={`/projects/${p.id}/members`} data-testid="members-link">
               {can("project.member.manage") ? "Manage members" : "View members"}
             </Link>
+            {p.mode === "MIGRATION" && (
+              <>
+                {" · "}
+                <Link href={`/projects/${p.id}/migration`} data-testid="migration-link">
+                  Migration{p.status === "PENDING_SOURCES" ? " (set up the baseline)" : ""}
+                </Link>
+              </>
+            )}
           </p>
         </section>
         <section className="card" aria-labelledby="settings">

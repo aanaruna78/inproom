@@ -581,3 +581,54 @@ export async function adoptSources(_prev: FormState, form: FormData): Promise<Fo
   if (data.kept_excluded.length) message += ` Kept excluded ${data.kept_excluded.length}.`;
   return { status: "success", message };
 }
+
+// ---------------------------------------------------------------- migration projects (INPROOM-153 / INPROOM-19)
+
+export async function saveMigrationPlan(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const submitted = values(form, ["jira_source_id", "history_since"]);
+  const version = String(form.get("version") ?? "");
+  const api = await apiClient(`/projects/${projectId}/migration`);
+  const { data, error, response } = await api.PUT("/v1/projects/{project_id}/migration", {
+    params: { path: { project_id: projectId }, header: version ? { "If-Match": `"${version}"` } : {} } as never,
+    body: {
+      jira_source_id: submitted.jira_source_id,
+      import_mode: "jira_authoritative",
+      history_since: submitted.history_since || null,
+    },
+  });
+  if (error || !data) return problemState(error, response.status, submitted);
+  revalidatePath(`/projects/${projectId}/migration`);
+  return { status: "success", message: `Plan saved: ${data.plan?.jira_key} stays authoritative. Next: scan it.` };
+}
+
+export async function startMigrationScan(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const api = await apiClient(`/projects/${projectId}/migration`);
+  const { error, response } = await api.POST("/v1/projects/{project_id}/migration/scan", {
+    params: { path: { project_id: projectId } },
+  });
+  if (error) return problemState(error, response.status);
+  revalidatePath(`/projects/${projectId}/migration`);
+  return { status: "success", message: "Scan started. It runs in the background; refresh to see progress." };
+}
+
+export async function confirmMigrationBaseline(_prev: FormState, form: FormData): Promise<FormState> {
+  const projectId = String(form.get("project_id"));
+  const api = await apiClient(`/projects/${projectId}/migration`);
+  const { data, error, response } = await api.POST("/v1/projects/{project_id}/migration/confirm", {
+    params: { path: { project_id: projectId }, header: { "If-Match": `"${String(form.get("version"))}"` } } as never,
+  });
+  if (error || !data) {
+    const state = problemState(error, response.status);
+    if (state.code === "PRECONDITION_FAILED") state.message = "The plan changed while you were reviewing. Reload and check again.";
+    return state;
+  }
+  revalidatePath(`/projects/${projectId}/migration`);
+  revalidatePath(`/projects/${projectId}`);
+  const baseline = (data.plan?.baseline ?? {}) as { counts?: { issues?: number } };
+  return {
+    status: "success",
+    message: `Baseline confirmed (${baseline.counts?.issues ?? 0} issues). The project is ${data.project_status}.`,
+  };
+}
