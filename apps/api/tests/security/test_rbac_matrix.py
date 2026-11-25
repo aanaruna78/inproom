@@ -153,6 +153,10 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
         "project.read",
     ),
     ("POST", "/v1/projects/{project_id}/content/invalidate"): ("project", "project.source.manage"),
+    # INPROOM-165
+    ("POST", "/v1/projects/{project_id}/documents"): ("project", "project.content.upload"),
+    ("PUT", "/v1/projects/{project_id}/documents/{document_id}"): ("project", "project.content.upload"),
+    ("DELETE", "/v1/projects/{project_id}/documents/{document_id}"): ("project", "project.content.upload"),
     # INPROOM-146
     ("GET", "/v1/connections/attention"): ("tenant", "tenant.connection.manage"),
     ("GET", "/v1/connections/{connection_id}/sources"): ("connection", "tenant.connection.manage"),
@@ -178,6 +182,8 @@ ACCEPTED = {
     ("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile"),
     ("POST", "/v1/projects/{project_id}/content/invalidate"),  # INPROOM-159: rebuild queued
 }
+# Routes whose success is 201 Created (INPROOM-165 uploads).
+CREATED = {("POST", "/v1/projects/{project_id}/documents")}
 # Authorized callers reach a business rule instead of success: adopt needs a REVOKED same-site connection,
 # which the shared world does not have, so 409 ADOPT_NOT_ALLOWED is the authorized outcome (INPROOM-146).
 BUSINESS_RULE = {
@@ -247,6 +253,10 @@ class World:
     jira_source: dict
     confluence: dict
     confluence_source: dict
+    document: dict
+
+
+WORLD_DOCUMENT = ("world.md", b"# World document")  # PUT re-sends these bytes: same seq, repeatable
 
 
 @pytest.fixture
@@ -305,7 +315,12 @@ def world(db_client, tokens, fake_github, fake_jira, fake_confluence):
         headers=owner,
     )
     assert r.status_code == 200, r.text
-    return World(tenant, ws, project, owner, connection, jira, jira_source, confluence, r.json()["source"])
+    space = r.json()["source"]
+    doc = db_client.post(
+        f"/v1/projects/{project['id']}/documents", files={"file": WORLD_DOCUMENT}, headers=owner
+    )
+    assert doc.status_code == 201, doc.text
+    return World(tenant, ws, project, owner, connection, jira, jira_source, confluence, space, doc.json())
 
 
 def _tenant_allows(roles: tuple[str, ...], permission: str) -> bool:
@@ -374,6 +389,7 @@ def _call(client, method, path, world: World, headers):
         kind="confluence",
         external_id="101",
         seq=1,
+        document_id=world.document["document_id"],
     )
     if path.startswith("/v1/connections/{connection_id}/") and path.endswith(
         ("/repositories", "/projects", "/spaces")
@@ -397,6 +413,11 @@ def _call(client, method, path, world: World, headers):
         kwargs["headers"]["If-Match"] = f'"{world.project["version"]}"'
     elif method == "POST" and path.endswith("/adopt"):
         kwargs["json"] = {"from_connection_id": world.connection["id"]}
+    elif method == "POST" and path.endswith("/documents"):
+        kwargs["files"] = {"file": ("new.md", b"# New document")}
+    elif method == "PUT" and "/documents/" in path:
+        kwargs["files"] = {"file": WORLD_DOCUMENT}
+        kwargs["headers"]["If-Match"] = '"1"'
     elif method == "POST" and path.endswith("/content/invalidate"):
         kwargs["json"] = {
             "kind": "confluence",
@@ -448,6 +469,8 @@ def test_route_x_role(db_client, tokens, world, owner_engine, method, path, acto
         assert r.status_code == 200, r.text
 
     expected = _expected(method, level, permission, roles, member, same)
+    if expected == "200" and (method, path) in CREATED:
+        expected = "201"
     if expected == "200" and (method, path) in ACCEPTED:
         expected = "202"
     if expected in ("200", "201") and (method, path) in BUSINESS_RULE:

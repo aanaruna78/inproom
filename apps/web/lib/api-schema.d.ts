@@ -448,6 +448,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload a document (PDF, DOCX, Markdown, HTML, text); it is stored, versioned and parsed */
+        post: operations["upload_v1_projects__project_id__documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace a document's content (If-Match: the current revision seq); identical bytes add nothing */
+        put: operations["replace_v1_projects__project_id__documents__document_id__put"];
+        post?: never;
+        /** Delete a document: its content is withheld at once and purged by the retention policy */
+        delete: operations["remove_v1_projects__project_id__documents__document_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/lifecycle": {
         parameters: {
             query?: never;
@@ -1120,6 +1155,28 @@ export interface components {
             provider: string;
             /** Status */
             status: string;
+        };
+        /** Body_replace_v1_projects__project_id__documents__document_id__put */
+        Body_replace_v1_projects__project_id__documents__document_id__put: {
+            /**
+             * File
+             * Format: binary
+             * @description The new content
+             */
+            file: string;
+            /** Title */
+            title?: string | null;
+        };
+        /** Body_upload_v1_projects__project_id__documents_post */
+        Body_upload_v1_projects__project_id__documents_post: {
+            /**
+             * File
+             * Format: binary
+             * @description The document
+             */
+            file: string;
+            /** Title */
+            title?: string | null;
         };
         /** ConfluenceScopeItem */
         ConfluenceScopeItem: {
@@ -2920,6 +2977,29 @@ export interface components {
             /** Sources */
             sources: components["schemas"]["SourceSyncStatus"][];
         };
+        /** UploadedDocument */
+        UploadedDocument: {
+            /** Content Sha256 */
+            content_sha256: string;
+            /** Created */
+            created: boolean;
+            /** Document Id */
+            document_id: string;
+            /** Filename */
+            filename: string;
+            /** First Seen At */
+            first_seen_at?: string | null;
+            /** Media Type */
+            media_type: string;
+            /** Seq */
+            seq: number;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -4310,6 +4390,193 @@ export interface operations {
                     "application/json": unknown;
                     "application/octet-stream": unknown;
                 };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_v1_projects__project_id__documents_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_v1_projects__project_id__documents_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadedDocument"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    replace_v1_projects__project_id__documents__document_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
+            path: {
+                project_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_replace_v1_projects__project_id__documents__document_id__put"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadedDocument"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description problem+json */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    remove_v1_projects__project_id__documents__document_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description problem+json */
             404: {

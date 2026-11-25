@@ -30,6 +30,7 @@ from app.db_schema import (
     project_confluence_sources,
     project_jira_sources,
     project_repositories,
+    projects,
     source_objects,
     source_revisions,
 )
@@ -124,6 +125,12 @@ def _object(conn: Connection, project_id, kind: str, source_id, external_id: str
 
 
 def _source_status(conn: Connection, obj: dict[str, Any]) -> str:
+    if obj["source_kind"] == "upload":  # INPROOM-165: uploads are on while the project's settings allow them
+        from app.modules import settings as settings_module
+
+        project = conn.execute(select(projects).where(projects.c.id == obj["project_id"])).mappings().one()
+        allowed = settings_module.current_settings(conn, project["tenant_id"], dict(project)).settings
+        return "ACTIVE" if "upload" in allowed.sources.allowed_kinds else "DISABLED"
     table = SOURCE_TABLES.get(obj["source_kind"])
     if table is None:
         return "ACTIVE"

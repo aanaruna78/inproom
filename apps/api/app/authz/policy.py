@@ -59,6 +59,7 @@ PROJECT_PERMISSIONS: dict[str, Kind] = {
     "project.member.manage": Kind.ADMIN,
     "project.settings.update": Kind.ADMIN,
     "project.source.manage": Kind.ADMIN,
+    "project.content.upload": Kind.PROPOSE,  # INPROOM-165: add, replace and delete uploaded documents
     "audit.read": Kind.READ,
     "artifact.propose": Kind.PROPOSE,
     "artifact.review": Kind.PROPOSE,
@@ -74,6 +75,7 @@ PROJECT_MATRIX: dict[str, frozenset[str]] = {
     "project.member.manage": frozenset({PROJECT_ADMIN}),
     "project.settings.update": frozenset({PROJECT_ADMIN}),
     "project.source.manage": frozenset({PROJECT_ADMIN}),
+    "project.content.upload": frozenset({PROJECT_ADMIN, "product_owner", "tech_lead", "qa_lead"}),
     "audit.read": frozenset({PROJECT_ADMIN}),
     "artifact.propose": frozenset(
         {PROJECT_ADMIN, "product_owner", "tech_lead", "developer", "qa_lead", "tester"}

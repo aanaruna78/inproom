@@ -102,6 +102,9 @@ ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/v1/projects/{project_id}/migration/confirm"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/migration/drift"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/content"): "project_scoped",
+    ("POST", "/v1/projects/{project_id}/documents"): "project_scoped",
+    ("PUT", "/v1/projects/{project_id}/documents/{document_id}"): "project_scoped",
+    ("DELETE", "/v1/projects/{project_id}/documents/{document_id}"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/raw"): (
         "project_scoped"
@@ -154,6 +157,7 @@ class Tenant:
     jira_source: dict
     confluence: dict
     confluence_source: dict
+    document: dict
 
     def secrets(self) -> list[str]:
         """Identifiers and names that must never appear in another tenant's responses."""
@@ -173,6 +177,7 @@ class Tenant:
             self.confluence["id"],
             self.confluence["display_name"],
             self.confluence_source["id"],
+            self.document["document_id"],
         ]
 
 
@@ -234,7 +239,15 @@ def world(db_client, tokens, fake_github, fake_jira, fake_confluence):
             headers=h,
         )
         assert space.status_code == 200, space.text
-        return Tenant(tid, h, ws, pj, conn, jira, source.json(), confluence, space.json()["source"])
+        doc = db_client.post(
+            f"/v1/projects/{pj['id']}/documents",
+            files={"file": (f"secret-{label}.md", b"# Secret")},
+            headers=h,
+        )
+        assert doc.status_code == 201, doc.text
+        return Tenant(
+            tid, h, ws, pj, conn, jira, source.json(), confluence, space.json()["source"], doc.json()
+        )
 
     return make("a"), make("b")
 
@@ -270,6 +283,7 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         kind="confluence",
         external_id="101",
         seq=1,
+        document_id=tenant_ids.document["document_id"],
     )
     if (
         path_template.endswith(("/repositories", "/jira/projects", "/confluence/spaces"))
@@ -287,6 +301,11 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         kwargs["json"] = {"roles": ["viewer"]}
     elif method == "POST" and path_template.endswith("/adopt"):
         kwargs["json"] = {"from_connection_id": tenant_ids.connection["id"]}
+    elif method == "POST" and path_template.endswith("/documents"):
+        kwargs["files"] = {"file": ("x.md", b"# cross-tenant")}
+    elif method == "PUT" and "/documents/" in path_template:
+        kwargs["files"] = {"file": ("x.md", b"# cross-tenant")}
+        kwargs["headers"]["If-Match"] = '"1"'
     elif method == "POST" and path_template.endswith("/content/invalidate"):
         kwargs["json"] = {
             "kind": "confluence",
@@ -325,6 +344,7 @@ def _ghost(tenant_id: uuid.UUID) -> Tenant:
         {"id": str(uuid.uuid4())},
         {"id": str(uuid.uuid4()), "display_name": "Ghost Confluence"},
         {"id": str(uuid.uuid4())},
+        {"document_id": str(uuid.uuid4())},
     )
 
 
