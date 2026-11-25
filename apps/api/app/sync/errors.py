@@ -119,6 +119,16 @@ CATALOG: dict[str, tuple[str, str, str]] = {
         "too much).",
         "Split the document into smaller parts.",
     ),
+    "CODE_SYNTAX_ERROR": (
+        "Source file does not parse",
+        "The file has a syntax error at the line shown, so its symbols could not be extracted.",
+        "Fix the syntax in the repository; the next commit is indexed automatically.",
+    ),
+    "LONG_LINES_NOT_SCANNED": (
+        "Some lines were not scanned",
+        "Very long lines (usually minified or generated code) were skipped when looking for symbols.",
+        "Nothing to do for generated code; otherwise split the long lines.",
+    ),
     "PROVIDER_ERROR": (
         "Unexpected provider response",
         "The provider returned an unexpected error.",

@@ -31,6 +31,7 @@ package = false
 [tool.ruff]
 line-length = 110
 target-version = "py312"
+extend-exclude = ["tests/code_fixtures"]  # parser fixtures: their exact lines are asserted
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]

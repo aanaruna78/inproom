@@ -155,3 +155,21 @@ def test_large_snapshots_resume_across_runs_without_duplicates(repo, monkeypatch
     assert all(i.seq == 1 for i in items(e).values())  # nothing recorded twice
     revisions = e.q("SELECT count(*) FROM source_revisions WHERE tenant_id=:t")
     assert revisions == 4
+
+
+def test_indexed_code_gets_symbols_and_a_syntax_error_fails_alone(repo):
+    """INPROOM-174: symbols@1 runs on every indexed code file; one broken file does not block the others."""
+    e = repo
+    e.gh.repos[1].commit("main", {"src/broken.py": b"def broken(:\n    pass\n"})
+    due(e.tenant)
+    index(e)
+
+    def symbols(path):
+        url = f"/v1/projects/{e.pid}/content/git/{e.rid}/main:{path}/revisions/1/derivatives"
+        return [d for d in e.client.get(url, headers=e.h()).json()["items"] if d["producer"] == "symbols"]
+
+    [good] = symbols("src/app.py")
+    assert (good["kind"], good["status"]) == ("code", "READY")
+    [bad] = symbols("src/broken.py")
+    assert bad["status"] == "FAILED" and bad["error"]["code"] == "CODE_SYNTAX_ERROR"
+    assert symbols("README.md") == []  # docs are parsed (parse@2), not symbol-indexed

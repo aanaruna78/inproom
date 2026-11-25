@@ -28,6 +28,7 @@ CODES = (
     "EMPTY_DOCUMENT",
     "UNSUPPORTED_FORMAT",
     "PARSE_LIMIT_EXCEEDED",
+    "CODE_SYNTAX_ERROR",  # INPROOM-174: source code that does not parse
 )
 
 

@@ -124,7 +124,24 @@ PARSE = Producer(
     "application/vnd.inproom.document+json",
     _parse,
 )
-PRODUCERS: dict[str, Producer] = {PARSE.name: PARSE, TEXT.name: TEXT}
+
+
+def _symbols(data: bytes, media_type: str) -> bytes:
+    from app.content.code.symbols import build  # late: code.symbols -> parsing.model -> producers
+
+    return build(data, media_type)
+
+
+# INPROOM-174: definitions and imports of source files (Python exact via ast; JS/TS, Go, Java scanned).
+SYMBOLS = Producer(
+    "symbols",
+    1,
+    "code",
+    ("text/x-python", "text/javascript", "text/x-typescript", "text/x-go", "text/x-java"),
+    "application/vnd.inproom.symbols+json",
+    _symbols,
+)
+PRODUCERS: dict[str, Producer] = {PARSE.name: PARSE, SYMBOLS.name: SYMBOLS, TEXT.name: TEXT}
 
 
 def for_media_type(media_type: str) -> list[Producer]:
