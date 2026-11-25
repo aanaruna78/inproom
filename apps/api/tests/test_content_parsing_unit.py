@@ -59,7 +59,8 @@ def test_docx_headings_paragraphs_and_tables():
 
     doc = parse_document(fx.docx(build), f.DOCX)
     assert doc["title"] == "Requirements"
-    assert anchors(doc) == ["requirements", "login", "errors", "login-2"]
+    # heading-path anchors (INPROOM-168); the document title is not a prefix
+    assert anchors(doc) == ["requirements", "login", "login--errors", "login-2"]
     login = doc["sections"][1]
     assert login["text"] == "Users sign in with SSO." and login["tables"] == [
         [["Field", "Rule"], ["email", "required"]]
@@ -73,7 +74,7 @@ def test_markdown_headings_tables_code_and_links():
         "| Step | Cmd |\n|---|---|\n| 1 | `make up` |\n\n```\nmake test\n```\n"
     )
     doc = parse_document(md.encode(), f.MARKDOWN)
-    assert anchors(doc) == ["preamble", "guide", "setup"]
+    assert anchors(doc) == ["preamble", "guide", "guide--setup"]
     assert doc["sections"][2]["tables"] == [[["Step", "Cmd"], ["1", "make up"]]]
     assert "make test" in doc["sections"][2]["text"] and doc["links"] == ["https://example.com/d"]
     assert doc["title"] == "Guide"
@@ -90,11 +91,11 @@ def test_confluence_storage_sections_tables_attachments_and_macros():
         "</ac:structured-macro><script>alert(1)</script>"
     )
     doc = parse_document(storage.encode(), f.CONFLUENCE + "; charset=utf-8")
-    assert anchors(doc) == ["architecture", "diagrams"]
+    assert anchors(doc) == ["architecture", "architecture--diagrams"]
     assert doc["sections"][0]["text"] == "Overview." and doc["sections"][0]["tables"] == [
         [["Svc", "Owner"], ["api", "Ada"]]
     ]
-    assert doc["attachments"] == [{"filename": "flow.pdf", "section": "diagrams"}]
+    assert doc["attachments"] == [{"filename": "flow.pdf", "section": "architecture--diagrams"}]
     assert (
         'print("hi")' in doc["sections"][1]["text"]
         and "alert" not in json.dumps(doc)
@@ -230,3 +231,14 @@ def test_every_parse_failure_code_is_explained():
     from app.sync.errors import CATALOG
 
     assert set(model.CODES) <= set(CATALOG)
+
+
+def test_anchors_are_unique_and_follow_the_heading_path():
+    """INPROOM-168: every anchor in a document is unique; children inherit their parent's anchor."""
+    md = b"Intro.\n\n# Preamble\n\na\n\n# A\n\n## Sub\n\nb\n\n# A\n\n## Sub\n\nc\n\n# A-2\n\n## Sub\n\nd"
+    got = anchors(parse_document(md, f.MARKDOWN))
+    assert got == ["preamble", "preamble-2", "a", "a--sub", "a-2", "a-2--sub", "a-2-2", "a-2-2--sub"]
+    assert len(got) == len(set(got))
+    before = parse_document(b"# Alpha\n\n## Setup\n\nx", f.MARKDOWN)
+    after = parse_document(b"# Beta\n\n## Setup\n\ny\n\n# Alpha\n\n## Setup\n\nx", f.MARKDOWN)
+    assert anchors(before)[1] == "alpha--setup" and "alpha--setup" in anchors(after)

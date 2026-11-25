@@ -21,14 +21,12 @@ env = conf.env
 selected = conf.selected
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-168: anchors collide")
 def test_anchors_do_not_collide_with_numbered_headings():
     doc = parse_document(b"# A\n\nfirst\n\n# A\n\nsecond\n\n# A-2\n\nthird", f.MARKDOWN)
     anchors = [s["anchor"] for s in doc["sections"]]
     assert len(anchors) == len(set(anchors)), anchors
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-168: anchors ignore the heading path")
 def test_heading_path_anchors_survive_inserting_another_branch():
     original = b"# Alpha\n\n## Setup\n\nalpha instructions"
     inserted = b"# Beta\n\n## Setup\n\nbeta instructions\n\n" + original

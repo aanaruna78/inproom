@@ -113,9 +113,12 @@ PDF = "application/pdf"
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 TEXT = Producer("text", 1, "text", (CONFLUENCE, JIRA), "text/plain; charset=utf-8", _text)
 # INPROOM-164: anchored sections, tables and references for every supported format.
+# Version 2 (INPROOM-168..171, before release): heading-path anchors, unique per document; headings and table
+# cells count against the text limit; heading-only documents parse; nested tables keep their text. Outputs of
+# version 1 are rebuilt by invalidating producer "parse".
 PARSE = Producer(
     "parse",
-    1,
+    2,
     "document",
     (PDF, DOCX, "text/markdown", "text/html", "text/plain", CONFLUENCE, JIRA),
     "application/vnd.inproom.document+json",

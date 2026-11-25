@@ -40,10 +40,14 @@ class ParseError(ProducerError):
         self.code = code
 
 
+PATH_SEPARATOR = "--"  # between heading slugs in an anchor; slug() collapses any run of "-" to one
+
+
 def slug(text: str) -> str:
     """URL-fragment-safe anchor from a heading: Unicode letters and digits kept, the rest collapsed to '-'."""
     text = unicodedata.normalize("NFKC", text).lower()
     text = re.sub(r"[^\w]+", "-", text, flags=re.UNICODE).strip("-_")
+    text = re.sub(r"-{2,}", "-", text)
     return text[:80].strip("-") or "section"
 
 
@@ -77,8 +81,8 @@ class Builder:
         self.format = fmt
         self.title = title
         self.sections: list[Section] = []
-        self.stack: list[tuple[int, str]] = []  # (level, heading) of the open headings
-        self.used: dict[str, int] = {}
+        self.stack: list[tuple[int, str, str]] = []  # (level, heading, anchor) of the open headings
+        self.used: set[str] = set()  # every anchor emitted so far (INPROOM-168: unique per document)
         self.attachments: list[dict[str, Any]] = []
         self.links: list[str] = []
         self.warnings: list[dict[str, Any]] = []
@@ -86,9 +90,14 @@ class Builder:
         self.cells = 0
 
     def _anchor(self, base: str) -> str:
-        n = self.used.get(base, 0) + 1
-        self.used[base] = n
-        return base if n == 1 else f"{base}-{n}"
+        """`base`, or the first free `base-N`: checked against EVERY anchor already emitted, so a heading that
+        is literally "A-2" can never collide with the second "A" (INPROOM-168)."""
+        anchor, n = base, 1
+        while anchor in self.used:
+            n += 1
+            anchor = f"{base}-{n}"
+        self.used.add(anchor)
+        return anchor
 
     def _new(self, section: Section) -> Section:
         if len(self.sections) >= MAX_SECTIONS:
@@ -102,9 +111,15 @@ class Builder:
             return
         while self.stack and self.stack[-1][0] >= level:
             self.stack.pop()
-        self.stack.append((level, text))
-        path = [h for _, h in self.stack]
-        self._new(Section(self._anchor(slug(text)), text, path, level, page))
+        # The anchor follows the heading PATH: the parent's (already unique) anchor + "--" + this heading's
+        # slug, so "Alpha > Setup" keeps its anchor when another "Setup" is added elsewhere, and children of
+        # duplicate headings stay distinct (INPROOM-168). A document title (level 0) is not a prefix.
+        parent = next((a for lvl, _, a in reversed(self.stack) if lvl > 0), None)
+        base = f"{parent}{PATH_SEPARATOR}{slug(text)}" if parent and level > 0 else slug(text)
+        anchor = self._anchor(base)
+        self.stack.append((level, text, anchor))
+        path = [h for _, h, _ in self.stack]
+        self._new(Section(anchor, text, path, level, page))
 
     def section(self, anchor_base: str, heading: str | None, page: int | None = None) -> None:
         """A section that is not a heading (a PDF page, a paragraph, a Jira field)."""

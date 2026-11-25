@@ -40,9 +40,9 @@ def test_a_parsed_upload_is_served_with_anchors_and_tables(env):
     r = document(e, "upload", e.pid, doc)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert (body["producer"], body["producer_version"], body["seq"]) == ("parse", 1, 1)
+    assert (body["producer"], body["producer_version"], body["seq"]) == ("parse", 2, 1)
     sections = body["document"]["sections"]
-    assert [s["anchor"] for s in sections] == ["guide", "setup"]
+    assert [s["anchor"] for s in sections] == ["guide", "guide--setup"]
     assert sections[1]["path"] == ["Guide", "Setup"] and sections[1]["tables"] == [
         [["Step", "Cmd"], ["1", "make up"]]
     ]

@@ -146,7 +146,7 @@ def test_a_synced_page_gets_an_anchored_parse_of_its_revision(selected):
     e = selected
     drain(e)
     [parsed] = derived(e, "101", 1, producer="parse")["items"]
-    assert (parsed["kind"], parsed["producer_version"], parsed["status"]) == ("document", 1, "READY")
+    assert (parsed["kind"], parsed["producer_version"], parsed["status"]) == ("document", 2, "READY")
     doc = json.loads(text_of(e, parsed))
     assert doc["format"] == "confluence" and doc["sections"][0]["anchor"] == "architecture"
     assert doc["sections"][0]["heading"] == "Architecture" and "api" in doc["sections"][0]["text"]

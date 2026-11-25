@@ -94,13 +94,20 @@ The job results show `content: {revisions, unchanged, withheld}`.
 
 ## Documents and parsing (INPROOM-28)
 
-Every stored revision of a supported type gets a **`parse@1`** derivative (kind `document`): a structured document whose sections have stable anchors, so citations can point at a page or section.
+Every stored revision of a supported type gets a **`parse@2`** derivative (kind `document`): a structured document whose sections have stable anchors, so citations can point at a page or section.
+
+**Anchors** are unique within a document:
+- A heading's anchor is its parent heading's anchor, then `--`, then its own slug (for example `guide--setup`). A document title is never a prefix.
+- A collision takes the next free `-2`, `-3` suffix, checked against every anchor in the document.
+- Inserting another branch of headings elsewhere does not change an existing heading's anchor.
+
+`parse@1` outputs (before INPROOM-168) are rebuilt by `POST /content/invalidate` with `producer: "parse"`.
 
 | Format | How it gets in | Sections and anchors |
 |---|---|---|
 | PDF | upload, Confluence attachment | one per page, `page-N` |
-| DOCX | upload, Confluence attachment | Title and Heading N styles; heading slugs (`-2`, `-3` for duplicates); tables |
-| Markdown | upload, attachment (`.md`) | headings; GFM tables; code blocks |
+| DOCX | upload, Confluence attachment | Title and Heading N styles; heading-path anchors; tables |
+| Markdown | upload, attachment (`.md`) | headings (path anchors); GFM tables; code blocks |
 | HTML, Confluence storage | upload, attachment, Confluence pages | h1–h6; tables; `ri:attachment` references |
 | Plain text | upload, attachment (`.txt`) | paragraph groups of about 4,000 characters, `para-N` |
 | Jira issue | Jira sync | `field-summary`, `field-description`, `field-environment`, text custom fields |

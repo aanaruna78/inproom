@@ -1,0 +1,133 @@
+INPROOM-28 QA validation — 25 November 2026
+
+Candidate: b4c7b8d207cc24e7699a80ad71fd37440493fbd6 (local HEAD).
+Story: https://aanaruna78.atlassian.net/browse/INPROOM-28
+CI: https://github.com/aanaruna78/inproom/actions/runs/45619314225
+CI run independently verified as completed/success for the candidate SHA.
+
+VERDICT: FAIL — remediation and QA retest required before sign-off.
+
+Four reproduced defects
+=======================
+
+QA-28-1 — High: ambiguous citation anchors (AC 1).
+Location: apps/api/app/content/parsing/model.py, Builder._anchor / Builder.heading.
+Input: Markdown headings A, A, A-2, each followed by body text.
+Actual: anchors [a, a-2, a-2]. Two sections have the same citation target.
+Expected: unique anchors throughout a document.
+The heading path is also ignored when constructing anchors: adding Beta/Setup
+before Alpha/Setup changes Alpha/Setup from setup to setup-2 despite its unchanged
+path and text. The story specifies heading-path slugs.
+Recommendation: derive anchors from the heading path and reserve every emitted
+anchor globally, including generated suffixes and the preamble anchor.
+Probes: test_anchors_do_not_collide_with_numbered_headings;
+test_heading_path_anchors_survive_inserting_another_branch.
+
+QA-28-2 — High: table content bypasses the parser's text budget (AC 2, 5).
+Location: apps/api/app/content/parsing/model.py, Builder.table.
+Input: a single HTML or Markdown table cell containing 10,000,001 ASCII x's.
+The input fits the default 25 MiB upload cap.
+Actual: parse succeeds despite exceeding MAX_TEXT_CHARS=10,000,000.
+Expected: PARSE_LIMIT_EXCEEDED. The runbook explicitly promises this limit.
+Only Builder.text increments the budget; table cells and headings do not.
+Recommendation: account for all emitted text, including cells and headings,
+and enforce budgets before allocating large intermediate results where possible.
+Probe: test_table_text_is_subject_to_the_real_text_limit (HTML and Markdown).
+
+QA-28-3 — Medium: valid heading-only documents fail as empty (AC 1, 2).
+Location: apps/api/app/content/parsing/model.py, Builder.result.
+Inputs: '# A useful title'; '<h1>A useful title</h1>'.
+Actual: EMPTY_DOCUMENT, because the emptiness check ignores heading text.
+API reproduction: upload title.md -> 201; run derive jobs; GET document ->
+409 NOT_PARSED, parse_status=FAILED, failure=EMPTY_DOCUMENT.
+Expected: READY document containing the heading and its anchor.
+Recommendation: count nonempty headings when determining whether a document
+contains text. Cover DOCX heading/title-only documents as well.
+Probes: test_heading_only_documents_are_not_empty (Markdown and HTML);
+test_heading_only_upload_can_be_read_as_a_document.
+
+QA-28-4 — Medium: nested HTML tables silently lose content (AC 1).
+Location: apps/api/app/content/parsing/formats.py, _Html cell/table handling.
+Input:
+<table><tr><td>Before<table><tr><td>Inner</td></tr></table>After</td>
+<td>Sibling</td></tr></table>
+Actual: retained table cell text is only 'Sibling'; Before, Inner and After
+are absent from the parsed table. The parser reports success without a warning.
+Expected: retain the enclosing cell text and nested table text, or explicitly
+report unsupported/truncated structure rather than silently dropping it.
+Recommendation: maintain a cell buffer with each nested table frame and merge
+the nested result back into its enclosing cell in reading order.
+Probe: test_nested_html_table_keeps_every_cell_text.
+
+Evidence and reproducibility
+============================
+
+Independent probes: apps/api/tests/qa_inproom28.py
+Result: 8 failed, 4 passed. Failures above group into four defects.
+All four additional access probes passed: attachment raw bytes AND parsed
+documents are withheld after parent restriction, exclusion, deletion, and
+source pause through connection revocation.
+
+From the repository root, with the local stack running:
+  set -a
+  source .env
+  set +a
+  cd apps/api
+  uv run pytest tests/qa_inproom28.py -v
+
+The qa_ filename keeps these explicit acceptance probes out of pytest's default
+test_ collection. They intentionally fail against the unmodified candidate.
+No application implementation has been changed as part of this QA validation.
+
+Scope and limitations
+=====================
+
+Read the story, all four subtasks, and QA hand-off directly from Jira.
+Reviewed parser, upload, attachment ingestion/download, reference resolution,
+document API, failure listing, migration 0015 and the operations runbook.
+API/integration validation uses real local PostgreSQL and SeaweedFS with signed
+test identities and fake provider HTTP transports. It does not validate live
+Confluence attachment downloads against a deployed environment.
+No browser E2E is required by this API-only story.
+Jira status and comments were not changed.
+
+Verification results
+====================
+
+- make migrate: passed; local database is at 0015_content_attachments.
+- make lint: passed, including the added probes and web typecheck.
+- npm run gen:api:check: passed; generated web types match the contract.
+- Exhaustive role matrix for the five new routes: 120 passed, 1574 deselected.
+  Command (from apps/api, with .env exported):
+  INPROOM_FULL_MATRIX=1 uv run pytest tests/security/test_rbac_matrix.py \
+    -k 'documents or document or parse-failures' -q
+- Independent probes: 8 failed, 4 passed (the four defects detailed above).
+- make test: passed; 1,177 tests in 367.12 seconds, no skipped/xfail tests.
+  Includes real-database isolation/RBAC, content pipeline regression, migration
+  upgrade/downgrade/upgrade in a scratch database, and schema-drift validation.
+  OpenAPI contract, generated role-matrix drift check and web typecheck passed.
+  One existing Starlette/AnyIO deprecation warning was reported.
+
+Acceptance assessment
+=====================
+
+AC 1: FAIL — unique/path-based anchors, heading-only content, nested tables.
+AC 2: FAIL — valid heading-only content is misclassified as EMPTY_DOCUMENT;
+      oversized table text is not classified as PARSE_LIMIT_EXCEEDED.
+AC 3: PASS in existing fake-provider integration coverage.
+AC 4: PASS in existing Unicode and deterministic-output tests.
+AC 5: FAIL — table-cell text bypasses the advertised text limit.
+AC 6: PASS — existing isolation/audit checks and 120 exhaustive route/role checks.
+AC 7: PASS — four independent raw/document withholding scenarios, plus regressions.
+AC 8: PASS for existing scope checks and pending/failed response contracts.
+
+Full executed output (local, ignored build artifacts):
+apps/api/build/qa/inproom28/suite.txt
+apps/api/build/qa/inproom28/probes.txt
+apps/api/build/qa/inproom28/role-matrix.txt
+apps/api/build/qa/inproom28/lint.txt
+apps/api/build/qa/inproom28/web-types.txt
+
+Retest recommendation: fix QA-28-1 through QA-28-4; run all independent probes
+and the normal regression/contract/type checks against the replacement commit.
+Move corrected probes into normal regression collection as part of remediation.
