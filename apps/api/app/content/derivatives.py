@@ -230,17 +230,25 @@ def derive(ctx: JobContext) -> dict[str, Any]:
             done = _finish(tenant, row["id"], status="FAILED", error=error, built_at=datetime.now(UTC))
             counts["failed" if done else "skipped"] += 1
             continue
-        digest, key, _ = blobs.put(store, tenant, output, producer.output_media_type)  # outage: job retries
-        done = _finish(
-            tenant,
-            row["id"],
-            status="READY",
-            output_sha256=digest,
-            size_bytes=len(output),
-            blob_key=key,
-            error=None,
-            built_at=datetime.now(UTC),
-        )
+        with tenant_session(tenant) as conn:
+            from app.content.retention import blob_lock
+
+            blob_lock(conn, tenant)  # shared: the output blob cannot be purged before this commits
+            digest, key, _ = blobs.put(store, tenant, output, producer.output_media_type)  # outage: retries
+            done = bool(
+                conn.execute(
+                    update(derivatives)
+                    .where(derivatives.c.id == row["id"], derivatives.c.status == "PENDING")
+                    .values(
+                        status="READY",
+                        output_sha256=digest,
+                        size_bytes=len(output),
+                        blob_key=key,
+                        error=None,
+                        built_at=datetime.now(UTC),
+                    )
+                ).rowcount
+            )
         counts["built" if done else "skipped"] += 1  # skipped: superseded or invalidated meanwhile
     with tenant_session(tenant) as conn:
         if more:

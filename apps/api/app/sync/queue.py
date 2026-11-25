@@ -147,11 +147,11 @@ def succeed(
 
 def _interval(job: dict[str, Any]) -> int:
     settings = get_settings()
-    return (
-        settings.health_interval_seconds
-        if job["source_kind"] == "connection"
-        else settings.sync_interval_seconds
-    )
+    if job["source_kind"] == "connection":
+        return settings.health_interval_seconds
+    if job["source_kind"] == "purge":
+        return settings.content_purge_interval_seconds
+    return settings.sync_interval_seconds
 
 
 def skip(conn: Connection, job: dict[str, Any], reason: str) -> None:

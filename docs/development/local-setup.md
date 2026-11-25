@@ -40,7 +40,7 @@ make web       # http://localhost:3000  (shows live API status)
 |---|---|---|
 | PostgreSQL 16 + pgvector | localhost:55432, db `inproom` | inproom / inproom |
 | Keycloak 26 (realm `inproom`) | http://localhost:18080 | admin / admin |
-| S3-compatible object store (SeaweedFS) | http://localhost:18333 | anonymous (local only) |
+| S3-compatible object store (SeaweedFS) | http://localhost:18333 | anonymous (local only); holds synced source content, see [content-store.md](../operations/content-store.md) |
 | API | http://localhost:8000 | — |
 | Web | http://localhost:3000 | — |
 

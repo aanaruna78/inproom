@@ -35,7 +35,8 @@ def payloads(e, kind):
         ]
 
 
-FOLLOW_UPS = ("connection", "derive")  # health checks (INPROOM-145), derivative builds (INPROOM-159)
+# health checks (INPROOM-145), derivative builds (INPROOM-159), retention purges (INPROOM-160)
+FOLLOW_UPS = ("connection", "derive", "purge")
 
 
 def run_sync(transports, tenant, schedule=True, worker_id="w"):

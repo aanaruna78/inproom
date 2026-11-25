@@ -17,7 +17,7 @@ from tests.sync_helpers import run_sync
 
 env = helpers.env
 selected = helpers.selected
-pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("no_derivatives")]
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("no_content_jobs")]
 
 
 def run(e, **kw):

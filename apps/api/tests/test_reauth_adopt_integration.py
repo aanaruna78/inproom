@@ -10,7 +10,7 @@ from tests.fakes import jira as fj
 
 env = helpers.env
 selected = helpers.selected
-pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("no_derivatives")]
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("no_content_jobs")]
 
 
 @pytest.fixture

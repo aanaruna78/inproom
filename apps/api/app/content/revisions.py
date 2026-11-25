@@ -62,6 +62,9 @@ def record_revision(
     too_large = len(data) > get_settings().content_max_bytes
     key = None
     if not too_large:
+        from app.content.retention import blob_lock  # late: retention -> worker -> handlers -> here
+
+        blob_lock(conn, tenant)  # shared: a purge cannot delete this blob before we commit
         digest, key, _ = blobs.put(store, tenant, data, media_type)  # blob first, row second
     status = "TOO_LARGE" if too_large else IN_SCOPE
     now = datetime.now(UTC)

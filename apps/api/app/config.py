@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     objectstore_secret_key: str | None = None
     objectstore_timeout_s: int = 5
     content_max_bytes: int = 25 * 1024 * 1024
+    # Retention purge per project (INPROOM-160); orphaned blobs are only collected after this grace period.
+    content_purge_interval_seconds: int = 86400
+    content_orphan_grace_seconds: int = 86400
 
     @property
     def jwks_url(self) -> str:

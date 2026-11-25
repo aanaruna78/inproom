@@ -181,5 +181,6 @@ def run_once(
 
 # Register the per-kind handlers.
 from app.content import derivatives as _derivatives  # noqa: E402, F401
+from app.content import retention as _retention  # noqa: E402, F401
 from app.migration import scan as _migration_scan  # noqa: E402, F401
 from app.sync import handlers as _handlers  # noqa: E402, F401

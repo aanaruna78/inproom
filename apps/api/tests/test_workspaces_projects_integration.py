@@ -168,6 +168,7 @@ def test_create_project_atomically_writes_owner_settings_audit_outbox(api, owner
             "allowed_kinds": ["git", "jira", "confluence", "upload"],
             "max_classification": "internal",
             "approve_new_sources": True,
+            "retention": {"keep_revisions": 10, "superseded_days": 90, "deleted_days": 30},  # INPROOM-160
         },
         "production": {"actions_enabled": False, "environments": [], "enabled_by": None, "enabled_at": None},
     }

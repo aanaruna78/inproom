@@ -124,9 +124,11 @@ def fake_confluence(db_client, monkeypatch):
 
 
 @pytest.fixture
-def no_derivatives(monkeypatch):
-    """Turn off derivative producers (INPROOM-159), so storing content queues no `derive` jobs. For suites
-    about the source sync queue itself, whose job counts and listings predate the content pipeline."""
-    from app.content import producers
+def no_content_jobs(monkeypatch):
+    """Turn off the content pipeline's follow-up jobs: derivative producers (INPROOM-159) and the retention
+    purge schedule (INPROOM-160). For suites about the source sync queue itself, whose job counts and
+    listings predate the content pipeline (which has its own suites)."""
+    from app.content import producers, retention
 
     monkeypatch.setattr(producers, "PRODUCERS", {})
+    monkeypatch.setattr(retention, "AUTO_SCHEDULE", False)

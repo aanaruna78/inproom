@@ -3340,6 +3340,38 @@
         "title": "RepositoryOptions",
         "type": "object"
       },
+      "Retention": {
+        "additionalProperties": false,
+        "description": "How long stored source content lives (INPROOM-160). Lineage metadata is always kept.",
+        "properties": {
+          "deleted_days": {
+            "default": 30,
+            "description": "Content of deleted items is purged this long after deletion",
+            "maximum": 3650.0,
+            "minimum": 1.0,
+            "title": "Deleted Days",
+            "type": "integer"
+          },
+          "keep_revisions": {
+            "default": 10,
+            "description": "Newest revisions always kept per item",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Keep Revisions",
+            "type": "integer"
+          },
+          "superseded_days": {
+            "default": 90,
+            "description": "Older revisions are purged this long after being replaced",
+            "maximum": 3650.0,
+            "minimum": 1.0,
+            "title": "Superseded Days",
+            "type": "integer"
+          }
+        },
+        "title": "Retention",
+        "type": "object"
+      },
       "Revision": {
         "properties": {
           "acl": {
@@ -4488,6 +4520,9 @@
             ],
             "title": "Max Classification",
             "type": "string"
+          },
+          "retention": {
+            "$ref": "#/components/schemas/Retention"
           }
         },
         "title": "Sources",

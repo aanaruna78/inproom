@@ -2334,6 +2334,30 @@ export interface components {
             /** Next Page */
             next_page: number | null;
         };
+        /**
+         * Retention
+         * @description How long stored source content lives (INPROOM-160). Lineage metadata is always kept.
+         */
+        Retention: {
+            /**
+             * Deleted Days
+             * @description Content of deleted items is purged this long after deletion
+             * @default 30
+             */
+            deleted_days: number;
+            /**
+             * Keep Revisions
+             * @description Newest revisions always kept per item
+             * @default 10
+             */
+            keep_revisions: number;
+            /**
+             * Superseded Days
+             * @description Older revisions are purged this long after being replaced
+             * @default 90
+             */
+            superseded_days: number;
+        };
         /** Revision */
         Revision: {
             /** Acl */
@@ -2770,6 +2794,7 @@ export interface components {
              * @enum {string}
              */
             max_classification: "public" | "internal" | "confidential";
+            retention?: components["schemas"]["Retention"];
         };
         /** SpaceFilters */
         SpaceFilters: {

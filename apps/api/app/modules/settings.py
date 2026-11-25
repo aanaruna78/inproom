@@ -61,11 +61,25 @@ class Approvals(BaseModel):
         return _ordered(v, APPROVAL_SCOPES)
 
 
+class Retention(BaseModel):
+    """How long stored source content lives (INPROOM-160). Lineage metadata is always kept."""
+
+    model_config = ConfigDict(extra="forbid")
+    keep_revisions: int = Field(default=10, ge=1, le=100, description="Newest revisions always kept per item")
+    superseded_days: int = Field(
+        default=90, ge=1, le=3650, description="Older revisions are purged this long after being replaced"
+    )
+    deleted_days: int = Field(
+        default=30, ge=1, le=3650, description="Content of deleted items is purged this long after deletion"
+    )
+
+
 class Sources(BaseModel):
     model_config = ConfigDict(extra="forbid")
     allowed_kinds: list[SourceKind] = Field(default_factory=lambda: list(SOURCE_KINDS), min_length=1)
     max_classification: Literal["public", "internal", "confidential"] = "internal"
     approve_new_sources: bool = True
+    retention: Retention = Field(default_factory=Retention)
 
     @field_validator("allowed_kinds")
     @classmethod
