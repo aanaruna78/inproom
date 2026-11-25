@@ -57,7 +57,9 @@ $$;
 
 
 def upgrade() -> None:
-    op.execute("CREATE POLICY sync_maintenance ON source_objects TO CURRENT_USER USING (true) WITH CHECK (true)")
+    op.execute(
+        "CREATE POLICY sync_maintenance ON source_objects TO CURRENT_USER USING (true) WITH CHECK (true)"
+    )
     op.execute(FUNCTION)
     op.execute(f"REVOKE ALL ON FUNCTION {SIGNATURE} FROM PUBLIC")
     op.execute(f"GRANT EXECUTE ON FUNCTION {SIGNATURE} TO {APP_ROLE}")
