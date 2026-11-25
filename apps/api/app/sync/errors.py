@@ -88,6 +88,37 @@ CATALOG: dict[str, tuple[str, str, str]] = {
         "The content could not be turned into this derivative (for example, malformed text or JSON).",
         "Check the item in its source; it is retried when the item changes or is invalidated.",
     ),
+    "PARSE_MALFORMED": (
+        "Document could not be read",
+        "The file is damaged, truncated or not what its type says (for example, not UTF-8, or not a PDF).",
+        "Open the file in its own application; re-save or re-export it, then upload it again.",
+    ),
+    "PDF_ENCRYPTED": (
+        "PDF is password-protected",
+        "The PDF needs a password to open, so INPROOM cannot read its text.",
+        "Remove the password (or export an unprotected copy) and upload it again.",
+    ),
+    "NO_TEXT_LAYER": (
+        "No text in the document",
+        "No page of the PDF has a text layer: it is probably a scan. OCR is not available yet.",
+        "Upload a text-based PDF or the original document (for example, the DOCX).",
+    ),
+    "EMPTY_DOCUMENT": (
+        "Document is empty",
+        "The document has no text or tables to index.",
+        "Check that the right file was uploaded or that the page has content.",
+    ),
+    "UNSUPPORTED_FORMAT": (
+        "Format not supported",
+        "INPROOM cannot parse this file type (supported: PDF, DOCX, Markdown, HTML, plain text).",
+        "Convert the document to a supported format.",
+    ),
+    "PARSE_LIMIT_EXCEEDED": (
+        "Document too large to parse",
+        "The document exceeds a parsing limit (pages, sections, text size, or a compressed file that expands "
+        "too much).",
+        "Split the document into smaller parts.",
+    ),
     "PROVIDER_ERROR": (
         "Unexpected provider response",
         "The provider returned an unexpected error.",

@@ -1,6 +1,8 @@
 """INPROOM-159 (story INPROOM-27 AC 1, 3): derivatives name their canonical revision; a new revision
 supersedes them; invalidation rebuilds them idempotently."""
 
+import json
+
 import pytest
 from sqlalchemy import select
 
@@ -28,9 +30,11 @@ def drain(e):
     return results
 
 
-def derived(e, page_id, seq):
+def derived(e, page_id, seq, producer="text"):
+    """The revision's derivatives of one producer (these tests exercise the contract through text@1)."""
     url = f"/v1/projects/{e.pid}/content/confluence/{e.sid}/{page_id}/revisions/{seq}/derivatives"
-    return e.client.get(url, headers=e.h()).json()
+    body = e.client.get(url, headers=e.h()).json()
+    return body | {"items": [d for d in body["items"] if d["producer"] == producer]}
 
 
 def invalidate(e, **body):
@@ -49,7 +53,7 @@ def text_of(e, derivative):
 
 def live(e):
     with tenant_session(e.tenant) as conn:
-        return derivatives.live(conn, e.pid)
+        return derivatives.live(conn, e.pid, kind="text")
 
 
 def test_each_revision_gets_its_derivative_and_a_new_revision_supersedes_it(selected):
@@ -57,7 +61,7 @@ def test_each_revision_gets_its_derivative_and_a_new_revision_supersedes_it(sele
     assert derived(e, "101", 1)["items"][0]["status"] == "PENDING"  # queued by the sync that stored it
     [run] = drain(e)
     assert run["status"] == "SUCCEEDED" and run["result"] == {
-        "built": 3,
+        "built": 6,  # parse@1 and text@1 for each of the three pages
         "failed": 0,
         "skipped": 0,
         "more": False,
@@ -82,10 +86,12 @@ def test_invalidation_rebuilds_identically_and_never_duplicates_pending_work(sel
     e = selected
     drain(e)
     before = derived(e, "101", 1)["items"][0]
-    r = invalidate(e, external_id="101")
+    r = invalidate(e, external_id="101", producer="text")
     assert r.status_code == 202, r.text
     assert (r.json()["invalidated"], r.json()["queued"], r.json()["pending"]) == (1, 1, 1)
-    again = invalidate(e, external_id="101").json()  # nothing built yet: nothing new is queued
+    again = invalidate(
+        e, external_id="101", producer="text"
+    ).json()  # nothing built yet: nothing new is queued
     assert (again["invalidated"], again["queued"], again["pending"]) == (0, 0, 1)
     assert [x["external_id"] for x in live(e)] == ["100", "102"]  # invalidated output is not served
     drain(e)
@@ -93,7 +99,7 @@ def test_invalidation_rebuilds_identically_and_never_duplicates_pending_work(sel
     assert [x["status"] for x in items] == ["INVALIDATED", "READY"]
     assert items[1]["output_sha256"] == before["output_sha256"]  # same revision, same producer => same bytes
     whole = invalidate(e).json()
-    assert (whole["objects"], whole["invalidated"]) == (3, 3)
+    assert (whole["objects"], whole["invalidated"]) == (3, 6)  # both producers of all three pages
     assert e.q("SELECT count(*) FROM audit_events WHERE tenant_id=:t AND action='content.invalidate'") == 3
     assert (
         e.q(
@@ -132,3 +138,14 @@ def test_corrupt_input_fails_the_derivative_and_an_outage_retries_the_job(select
         assert derived(e, "101", 1)["items"][0]["status"] == "READY"
     finally:
         store.put_if_absent(key, original, "text/plain")
+
+
+def test_a_synced_page_gets_an_anchored_parse_of_its_revision(selected):
+    """INPROOM-164: parse@1 runs as a derivative of every stored Confluence revision."""
+    e = selected
+    drain(e)
+    [parsed] = derived(e, "101", 1, producer="parse")["items"]
+    assert (parsed["kind"], parsed["producer_version"], parsed["status"]) == ("document", 1, "READY")
+    doc = json.loads(text_of(e, parsed))
+    assert doc["format"] == "confluence" and doc["sections"][0]["anchor"] == "architecture"
+    assert doc["sections"][0]["heading"] == "Architecture" and "api" in doc["sections"][0]["text"]

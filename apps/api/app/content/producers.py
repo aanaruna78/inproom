@@ -103,8 +103,25 @@ def _text(data: bytes, media_type: str) -> bytes:
     return _tidy("".join(parser.parts)).encode()
 
 
+def _parse(data: bytes, media_type: str) -> bytes:
+    from app.content.parsing import parse  # late: parsing.model -> producers
+
+    return parse(data, media_type)
+
+
+PDF = "application/pdf"
+DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 TEXT = Producer("text", 1, "text", (CONFLUENCE, JIRA), "text/plain; charset=utf-8", _text)
-PRODUCERS: dict[str, Producer] = {TEXT.name: TEXT}
+# INPROOM-164: anchored sections, tables and references for every supported format.
+PARSE = Producer(
+    "parse",
+    1,
+    "document",
+    (PDF, DOCX, "text/markdown", "text/html", "text/plain", CONFLUENCE, JIRA),
+    "application/vnd.inproom.document+json",
+    _parse,
+)
+PRODUCERS: dict[str, Producer] = {PARSE.name: PARSE, TEXT.name: TEXT}
 
 
 def for_media_type(media_type: str) -> list[Producer]:

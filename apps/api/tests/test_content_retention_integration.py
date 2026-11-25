@@ -215,7 +215,7 @@ def test_an_item_restored_after_its_purge_is_readable_rebuilt_and_kept(selected,
     derived = e.client.get(
         f"/v1/projects/{e.pid}/content/confluence/{e.sid}/101/revisions/2/derivatives", headers=e.h()
     ).json()["items"]
-    assert [d["status"] for d in derived] == ["PENDING"]  # rebuilt by the next derive job
+    assert [d["status"] for d in derived] == ["PENDING", "PENDING"]  # parse and text, rebuilt next
     again = retention.purge_project(e.tenant, uuid.UUID(e.pid), store, datetime.now(UTC))
     assert again["revisions_purged"] == 0 and page(e, "101", "/revisions/2/raw").content == original
 

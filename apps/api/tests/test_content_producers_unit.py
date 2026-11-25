@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from app.content.producers import CONFLUENCE, JIRA, TEXT, ProducerError, for_media_type
+from app.content.producers import CONFLUENCE, JIRA, PARSE, TEXT, ProducerError, for_media_type
 
 
 def test_confluence_storage_becomes_plain_text_without_macro_parameters():
@@ -39,5 +39,5 @@ def test_jira_record_becomes_key_summary_and_description():
 
 
 def test_producers_are_chosen_by_input_media_type():
-    assert for_media_type(CONFLUENCE + "; charset=utf-8") == [TEXT]
+    assert for_media_type(CONFLUENCE + "; charset=utf-8") == [PARSE, TEXT]
     assert for_media_type("image/png") == []
