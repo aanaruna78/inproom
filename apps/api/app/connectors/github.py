@@ -4,6 +4,8 @@ Transport hardening (timeouts, bounded retries, rate limits, no redirects, error
 app.connectors.http core (INPROOM-130). GitHub hides private repositories it won't show as 404.
 """
 
+import base64
+import hashlib
 import re
 import time
 from collections.abc import Callable
@@ -12,14 +14,15 @@ from urllib.parse import quote
 
 import httpx
 
-from app.connectors.base import Account, NotFoundOrNoAccess, Repository
+from app.connectors.base import Account, NotFoundOrNoAccess, ProviderError, Repository, Tree, TreeEntry
 from app.connectors.egress import validate_base_url
-from app.connectors.http import ProviderHttp
+from app.connectors.http import DownloadTooLarge, ProviderHttp
 from app.connectors.vault import Secret
 
 API_VERSION = "2022-11-28"
 MAX_PAGES = 10  # hard cap when walking paginated lists
 _NEXT = re.compile(r'<[^>]+[?&]page=(\d+)[^>]*>;\s*rel="next"')
+_SHA = re.compile(r"[0-9a-f]{40}")
 
 
 class GitHubProvider:
@@ -136,3 +139,38 @@ class GitHubProvider:
             self._request("DELETE", f"/repositories/{int(repo_id)}/hooks/{int(hook_id)}")
         except NotFoundOrNoAccess:
             pass  # already gone: deletion is idempotent
+
+    # ------------------------------------------------------------ git data (INPROOM-173)
+
+    def tree(self, repo_id: str, commit: str) -> Tree:
+        """Every entry of the commit's tree (recursive); GitHub truncates huge trees (see `truncated`)."""
+        if not _SHA.fullmatch(commit):
+            raise ProviderError("invalid commit sha")
+        data = self._request(
+            "GET", f"/repositories/{int(repo_id)}/git/trees/{commit}", params={"recursive": "1"}
+        ).json()
+        entries = [
+            TreeEntry(
+                path=str(e["path"]),
+                mode=str(e.get("mode", "")),
+                type=str(e.get("type", "")),
+                sha=str(e.get("sha", "")),
+                size=e.get("size"),
+            )
+            for e in data.get("tree") or []
+        ]
+        return Tree(commit=commit, entries=entries, truncated=bool(data.get("truncated")))
+
+    def blob(self, repo_id: str, sha: str, max_bytes: int) -> bytes:
+        """A blob's bytes by its git sha; refuses sizes above max_bytes and checks the sha of what arrives."""
+        if not _SHA.fullmatch(sha):
+            raise ProviderError("invalid blob sha")
+        data = self._request("GET", f"/repositories/{int(repo_id)}/git/blobs/{sha}").json()
+        if int(data.get("size") or 0) > max_bytes:
+            raise DownloadTooLarge(f"{data.get('size')} bytes (limit {max_bytes})")
+        if data.get("encoding") != "base64":
+            raise ProviderError("unexpected blob encoding")
+        raw = base64.b64decode(data.get("content") or "")
+        if hashlib.sha1(b"blob %d\0" % len(raw) + raw).hexdigest() != sha:  # noqa: S324 - git's own id
+            raise ProviderError("blob content does not match its sha")
+        return raw

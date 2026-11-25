@@ -154,6 +154,9 @@ def git(ctx: JobContext) -> dict[str, Any]:
         missing = sorted(b for b, sha in heads.items() if sha is None)
         result = {"changed_branches": changed, "missing_branches": missing}
         queue.succeed(conn, ctx.job, result, {"heads": {b: s for b, s in heads.items() if s}})
+        from app.content.code import snapshot  # INPROOM-173: index the heads (cheap if already indexed)
+
+        snapshot.schedule(conn, ctx.tenant, repo["project_id"], repo["id"], ctx.job["reason"])
     return result
 
 

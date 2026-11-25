@@ -57,6 +57,22 @@ class Repository:
         return [p for p in ("admin", "maintain", "push") if self.permissions.get(p)]
 
 
+@dataclass(frozen=True)
+class TreeEntry:
+    path: str
+    mode: str  # git file mode: 100644 file, 100755 executable, 120000 symlink, 160000 submodule
+    type: str  # blob | tree | commit
+    sha: str  # git object id
+    size: int | None = None
+
+
+@dataclass(frozen=True)
+class Tree:
+    commit: str
+    entries: list[TreeEntry]
+    truncated: bool  # the provider cut the listing short (very large trees)
+
+
 class GitProvider(Protocol):
     def whoami(self) -> Account: ...
 
@@ -71,3 +87,7 @@ class GitProvider(Protocol):
     def create_hook(self, repo_id: str, url: str, secret: str, events: list[str]) -> str: ...
 
     def delete_hook(self, repo_id: str, hook_id: str) -> None: ...
+
+    def tree(self, repo_id: str, commit: str) -> Tree: ...  # INPROOM-173
+
+    def blob(self, repo_id: str, sha: str, max_bytes: int) -> bytes: ...

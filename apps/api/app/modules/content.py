@@ -204,12 +204,16 @@ def _lineage(conn: Connection, obj: dict[str, Any]) -> list[dict[str, Any]]:
     return [_summary(r) | {"parent_seq": seq_of.get(r["parent_revision_id"])} for r in revs]
 
 
-@router.get(
-    "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}",
+# registered at the END of the module (see below): `{external_id:path}` would otherwise swallow the more
+# specific .../revisions/{seq}/... routes. Item ids may contain "/" (git items are "branch:path").
+_get_object_route = dict(
+    path="/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id:path}",
     response_model=SourceObjectDetail,
     summary="One stored source item: status, ACL and its full revision lineage",
     responses={404: PROBLEM},
 )
+
+
 def get_object(
     request: Request,
     principal: CurrentPrincipal,
@@ -281,7 +285,7 @@ def _readable(
 
 
 @router.get(
-    "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/raw",
+    "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id:path}/revisions/{seq}/raw",
     summary="The original bytes of one revision (ETag = sha256); withheld unless the item is in scope",
     responses={
         200: {"content": {"application/octet-stream": {}}, "description": "the original bytes"},
@@ -346,7 +350,7 @@ class Derivatives(BaseModel):
 
 
 @router.get(
-    "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/derivatives",
+    "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id:path}/revisions/{seq}/derivatives",
     response_model=Derivatives,
     summary="Everything derived from one revision, with producer@version and status (including history)",
     responses={404: PROBLEM},
@@ -463,7 +467,7 @@ class ParsedDocument(BaseModel):
 
 
 @router.get(
-    "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/document",
+    "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id:path}/revisions/{seq}/document",
     response_model=ParsedDocument,
     summary="The parsed document of one revision: sections with anchors, tables and resolved attachment refs",
     responses={404: PROBLEM, 409: PROBLEM},
@@ -607,3 +611,6 @@ def _decode_failure_cursor(cursor: str) -> tuple[datetime, str]:
         return datetime.fromisoformat(when), last
     except ValueError as exc:
         raise ApiError(400, "INVALID_CURSOR", "Invalid cursor", "cursor is malformed") from exc
+
+
+router.add_api_route(endpoint=get_object, methods=["GET"], **_get_object_route)

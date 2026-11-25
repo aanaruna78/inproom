@@ -129,6 +129,8 @@ def no_content_jobs(monkeypatch):
     purge schedule (INPROOM-160). For suites about the source sync queue itself, whose job counts and
     listings predate the content pipeline (which has its own suites)."""
     from app.content import producers, retention
+    from app.content.code import snapshot
 
     monkeypatch.setattr(producers, "PRODUCERS", {})
     monkeypatch.setattr(retention, "AUTO_SCHEDULE", False)
+    monkeypatch.setattr(snapshot, "AUTO_INDEX", False)  # INPROOM-173

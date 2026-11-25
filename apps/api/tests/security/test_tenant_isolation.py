@@ -139,7 +139,7 @@ def app_routes() -> set[tuple[str, str]]:
     for route in create_app().routes:
         if isinstance(route, APIRoute):
             for method in route.methods - {"HEAD", "OPTIONS"}:
-                found.add((method, route.path))
+                found.add((method, route.path_format))  # "{external_id:path}" -> "{external_id}"
     return found
 
 

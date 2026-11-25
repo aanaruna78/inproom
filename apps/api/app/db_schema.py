@@ -12,6 +12,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Identity,
     Index,
     Integer,
     LargeBinary,
@@ -57,6 +58,8 @@ TENANT_SCOPED_TABLES = (
     "source_objects",
     "source_revisions",
     "derivatives",
+    "code_snapshots",
+    "code_symbols",
 )
 
 # Project roles allowed in project_members (mirrors app.authz.policy.PROJECT_ROLES; checked by a unit test).
@@ -533,7 +536,7 @@ sync_jobs = Table(
     Column("started_at", DateTime(timezone=True)),
     Column("finished_at", DateTime(timezone=True)),
     CheckConstraint(
-        "source_kind IN ('git','jira','confluence','connection','migration','derive','purge','sweep')",
+        "source_kind IN ('git','jira','confluence','connection','migration','derive','purge','sweep','code')",
         name="ck_sync_jobs_kind",
     ),
     CheckConstraint("reason IN ('webhook','schedule','manual','recovery')", name="ck_sync_jobs_reason"),
@@ -560,7 +563,7 @@ source_sync_state = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     PrimaryKeyConstraint("source_kind", "source_id", name="pk_source_sync_state"),
     CheckConstraint(
-        "source_kind IN ('git','jira','confluence','connection','migration','derive','purge','sweep')",
+        "source_kind IN ('git','jira','confluence','connection','migration','derive','purge','sweep','code')",
         name="ck_source_sync_state_kind",
     ),
 )
@@ -746,6 +749,57 @@ derivatives = Table(
     ),
 )
 
+code_snapshots = Table(
+    "code_snapshots",
+    metadata,
+    _id(),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("source_id", UUID(as_uuid=True), nullable=False),
+    Column("branch", Text, nullable=False),
+    Column("commit_sha", Text, nullable=False),
+    Column("status", Text, nullable=False, server_default="RUNNING"),
+    Column("truncated", Boolean, nullable=False, server_default=text("false")),
+    Column("counts", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("skipped", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("renames", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("skipped_blobs", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("codeowners", JSONB),
+    Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("finished_at", DateTime(timezone=True)),
+    UniqueConstraint("source_id", "branch", "commit_sha", name="uq_code_snapshots_commit"),
+    UniqueConstraint("tenant_id", "id", name="uq_code_snapshots_tenant_id"),
+    ForeignKeyConstraint(
+        ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_code_snapshots_project"
+    ),
+    CheckConstraint("status IN ('RUNNING','COMPLETE','PARTIAL')", name="ck_code_snapshots_status"),
+)
+
+code_symbols = Table(
+    "code_symbols",
+    metadata,
+    Column("id", BigInteger, Identity(), primary_key=True),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("derivative_id", UUID(as_uuid=True), nullable=False),
+    Column("revision_id", UUID(as_uuid=True), nullable=False),
+    Column("object_id", UUID(as_uuid=True), nullable=False),
+    Column("source_id", UUID(as_uuid=True), nullable=False),
+    Column("branch", Text, nullable=False),
+    Column("path", Text, nullable=False),
+    Column("blob_sha", Text, nullable=False),
+    Column("language", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("container", Text),
+    Column("signature", Text),
+    Column("line_start", Integer, nullable=False),
+    Column("line_end", Integer, nullable=False),
+    ForeignKeyConstraint(
+        ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_code_symbols_project"
+    ),
+)
+
 Index("ix_audit_events_tenant_time", audit_events.c.tenant_id, audit_events.c.occurred_at)
 Index("ix_outbox_unpublished", outbox_events.c.created_at, postgresql_where=text("published_at IS NULL"))
 Index("ix_idempotency_created", idempotency_keys.c.created_at)
@@ -802,3 +856,17 @@ Index(
     derivatives.c.producer,
     derivatives.c.status,
 )
+Index(
+    "ix_code_snapshots_branch",
+    code_snapshots.c.tenant_id,
+    code_snapshots.c.source_id,
+    code_snapshots.c.branch,
+    code_snapshots.c.started_at,
+)
+Index(
+    "ix_code_symbols_name",
+    code_symbols.c.tenant_id,
+    code_symbols.c.project_id,
+    func.lower(code_symbols.c.name),
+)
+Index("ix_code_symbols_derivative", code_symbols.c.derivative_id)

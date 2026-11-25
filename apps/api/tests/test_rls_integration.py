@@ -179,6 +179,11 @@ SEED_SQL = [
     "VALUES (:v, :t, :o, 1, 'x', 1, 'text/plain')",
     "INSERT INTO derivatives (tenant_id, project_id, revision_id, kind, producer, producer_version) "
     "VALUES (:t, :p, :v, 'text', 'text', 1)",
+    "INSERT INTO code_snapshots (tenant_id, project_id, source_id, branch, commit_sha) "
+    "VALUES (:t, :p, :s, 'main', 'c0ffee')",
+    "INSERT INTO code_symbols (tenant_id, project_id, derivative_id, revision_id, object_id, source_id, "
+    "branch, path, blob_sha, language, kind, name, line_start, line_end) "
+    "VALUES (:t, :p, :v, :v, :o, :s, 'main', 'a.py', 'b10b', 'python', 'function', 'f', 1, 2)",
 ]
 
 

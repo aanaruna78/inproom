@@ -5,6 +5,8 @@ In-process via `transport()` (httpx.MockTransport) for API tests, or as a real H
 revoke tokens, change permissions, delete branches and inject failures.
 """
 
+import base64
+import hashlib
 import itertools
 import json
 import re
@@ -17,6 +19,11 @@ import httpx
 FULL = {"admin": False, "maintain": False, "push": False, "triage": False, "pull": True}
 
 
+def git_blob_sha(data: bytes) -> str:
+    """Git's object id for a blob: sha1 of "blob <size>\\0" + data."""
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()  # noqa: S324 - git's own scheme
+
+
 @dataclass
 class FakeRepo:
     id: int
@@ -24,6 +31,25 @@ class FakeRepo:
     private: bool = False
     default_branch: str = "main"
     branches: dict[str, str] = field(default_factory=lambda: {"main": "a" * 40})
+    # INPROOM-173 git data: commit sha -> {path: bytes}; special entries are ("symlink", target) or
+    # ("submodule", sha) tuples instead of bytes.
+    commits: dict[str, dict[str, Any]] = field(default_factory=dict)
+    truncate_trees: bool = False
+    denied_blobs: set[str] = field(default_factory=set)  # blob shas answering 404 (e.g. no access)
+
+    def commit(self, branch: str, files: dict[str, Any], *, base: bool = True) -> str:
+        """A new commit on `branch`: the branch's current files updated with `files` (None deletes a path)."""
+        current = dict(self.commits.get(self.branches.get(branch, ""), {})) if base else {}
+        for path, data in files.items():
+            if data is None:
+                current.pop(path, None)
+            else:
+                current[path] = data
+        digest = hashlib.sha1(repr(sorted((p, repr(d)) for p, d in current.items())).encode())  # noqa: S324
+        sha = digest.hexdigest()
+        self.commits[sha] = current
+        self.branches[branch] = sha
+        return sha
 
 
 @dataclass
@@ -122,6 +148,58 @@ class FakeGitHub:
             if name in repo.branches:
                 return self._json(200, {"name": name, "commit": {"sha": repo.branches[name]}})
             return self._json(404, {"message": "Branch not found"})
+        tm = re.fullmatch(r"/git/trees/([0-9a-f]{40})", rest)
+        if tm and request.method == "GET":
+            sha = tm.group(1)
+            if sha not in repo.commits and sha not in repo.branches.values():
+                return self._json(404, {"message": "Not Found"})
+            entries = []
+            for p, data in sorted(repo.commits.get(sha, {}).items()):
+                if isinstance(data, tuple) and data[0] == "symlink":
+                    entries.append(
+                        {
+                            "path": p,
+                            "mode": "120000",
+                            "type": "blob",
+                            "sha": git_blob_sha(data[1].encode()),
+                            "size": len(data[1]),
+                        }
+                    )
+                elif isinstance(data, tuple) and data[0] == "submodule":
+                    entries.append({"path": p, "mode": "160000", "type": "commit", "sha": data[1]})
+                else:
+                    entries.append(
+                        {
+                            "path": p,
+                            "mode": "100644",
+                            "type": "blob",
+                            "sha": git_blob_sha(data),
+                            "size": len(data),
+                        }
+                    )
+            dirs = sorted({p.rsplit("/", 1)[0] for p in repo.commits.get(sha, {}) if "/" in p})
+            entries += [{"path": d, "mode": "040000", "type": "tree", "sha": "0" * 40} for d in dirs]
+            if repo.truncate_trees:
+                entries = entries[: max(1, len(entries) // 2)]
+            return self._json(200, {"sha": sha, "tree": entries, "truncated": repo.truncate_trees})
+        blm = re.fullmatch(r"/git/blobs/([0-9a-f]{40})", rest)
+        if blm and request.method == "GET":
+            sha = blm.group(1)
+            if sha in repo.denied_blobs:
+                return self._json(404, {"message": "Not Found"})
+            for files in repo.commits.values():
+                for data in files.values():
+                    if isinstance(data, bytes) and git_blob_sha(data) == sha:
+                        return self._json(
+                            200,
+                            {
+                                "sha": sha,
+                                "size": len(data),
+                                "encoding": "base64",
+                                "content": base64.encodebytes(data).decode(),
+                            },
+                        )
+            return self._json(404, {"message": "Not Found"})
         if rest == "/hooks":
             # Fine-grained tokens can hold "Webhooks: read and write" without repository admin.
             if not (visible[rid].get("admin") or visible[rid].get("hooks")):
