@@ -285,3 +285,18 @@ def test_heading_only_documents_parse(data, media_type):
     doc = parse_document(data, media_type)
     assert [(s["heading"], s["text"]) for s in doc["sections"]] == [("A useful title", "")]
     assert doc["sections"][0]["anchor"] == "a-useful-title"
+
+
+def test_nested_and_irregular_html_tables_keep_all_their_text():
+    """INPROOM-171: nothing inside a table is silently dropped."""
+    nested = (
+        b"<table><caption>Owners</caption><tr><td>Before<table><tr><td>Inner</td><td>Two</td></tr></table>"
+        b"After</td><td>Sibling</td></tr></table>"
+    )
+    doc = parse_document(nested, f.HTML)
+    assert doc["sections"][0]["tables"] == [[["Before Inner Two After", "Sibling"]]]
+    assert doc["sections"][0]["text"] == "Owners"  # the caption is kept as text
+    assert parse_document(b"<table><td>a<td>b</table>", f.HTML)["sections"][0]["tables"] == [[["a", "b"]]]
+    assert parse_document(b"<table><tr><td>open cell", f.HTML)["sections"][0]["tables"] == [[["open cell"]]]
+    blocks = parse_document(b"<table><tr><td><p>one</p><p>two</p></td></tr></table>", f.HTML)
+    assert blocks["sections"][0]["tables"] == [[["one two"]]]

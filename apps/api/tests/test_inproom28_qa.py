@@ -1,7 +1,7 @@
 """Independent QA probes for INPROOM-28 at b4c7b8d (INPROOM-28-qa-evidence.zip), committed as regressions.
 
-QA asked for these to join the normal regression collection, hence the test_ name. Unfixed cases are strict
-xfails naming their defect:
+QA asked for these to join the normal regression collection, hence the test_ name. They covered, and now
+guard against:
 - INPROOM-168: unique anchors, derived from the heading path;
 - INPROOM-169: table cells (and headings) count against the text limit;
 - INPROOM-170: heading-only documents are not empty;
@@ -61,7 +61,6 @@ def test_table_text_is_subject_to_the_real_text_limit(media):
     assert caught.value.code == "PARSE_LIMIT_EXCEEDED"
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-171: nested tables lose the enclosing cell text")
 def test_nested_html_table_keeps_every_cell_text():
     data = (
         b"<table><tr><td>Before<table><tr><td>Inner</td></tr></table>After</td>"

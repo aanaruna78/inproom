@@ -16,6 +16,7 @@ resolve entities (no XXE); the zip is size- and ratio-checked before it is opene
 import io
 import json
 import zipfile
+from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from typing import Any
 
@@ -188,14 +189,32 @@ _BLOCKS = {"p", "div", "li", "pre", "blockquote", "br", "ul", "ol", "section", "
 _SKIP = {"script", "style", "ac:parameter", "head", "title", "noscript"}
 
 
+@dataclass
+class _Table:
+    """One open <table>: its rows, the cell being read, and text inside the table but outside any cell."""
+
+    rows: list[list[str]] = field(default_factory=list)
+    cell: list[str] | None = None
+    loose: list[str] = field(default_factory=list)
+
+    def close_cell(self) -> None:
+        if self.cell is not None:
+            if not self.rows:  # a cell without <tr>
+                self.rows.append([])
+            self.rows[-1].append("".join(self.cell))
+            self.cell = None
+
+    def text(self) -> str:
+        return " ".join(" ".join(c for c in row if c.strip()) for row in self.rows if row)
+
+
 class _Html(HTMLParser):
     def __init__(self, builder: Builder):
         super().__init__(convert_charrefs=True)
         self.b = builder
         self.buf: list[str] = []
         self.heading: tuple[int, list[str]] | None = None
-        self.tables: list[list[list[str]]] = []  # nested tables: a stack
-        self.cell: list[str] | None = None
+        self.tables: list[_Table] = []  # open tables, innermost last
         self.skip = 0
 
     def flush(self) -> None:
@@ -212,15 +231,19 @@ class _Html(HTMLParser):
             self.heading = (_HEADINGS[tag], [])
         elif tag == "table":
             self.flush()
-            self.tables.append([])
+            self.tables.append(_Table())
         elif tag == "tr" and self.tables:
-            self.tables[-1].append([])
+            self.tables[-1].close_cell()
+            self.tables[-1].rows.append([])
         elif tag in ("td", "th") and self.tables:
-            self.cell = []
+            self.tables[-1].close_cell()
+            self.tables[-1].cell = []
         elif tag == "ri:attachment" and attrs.get("ri:filename"):
             self.b.attachment(attrs["ri:filename"])
         elif tag == "a" and str(attrs.get("href") or "").startswith(("http://", "https://")):
             self.b.links.append(attrs["href"])
+        elif tag in _BLOCKS and self.tables and self.tables[-1].cell is not None:
+            self.tables[-1].cell.append(" ")  # keep words in separate blocks of a cell apart
         elif tag in _BLOCKS and not self.tables and self.heading is None:
             self.flush()
 
@@ -236,18 +259,22 @@ class _Html(HTMLParser):
             level, parts = self.heading
             self.heading = None
             self.b.heading(level, "".join(parts))
-        elif tag in ("td", "th") and self.cell is not None and self.tables and self.tables[-1]:
-            self.tables[-1][-1].append("".join(self.cell))
-            self.cell = None
+        elif tag in ("td", "th", "tr") and self.tables:
+            self.tables[-1].close_cell()
         elif tag == "table" and self.tables:
-            rows = self.tables.pop()
-            if self.tables and self.tables[-1] and self.tables[-1][-1] is not None:
-                # a nested table: keep its text in the enclosing cell
-                text = " ".join(" ".join(r) for r in rows)
-                if self.cell is not None:
-                    self.cell.append(text)
+            table = self.tables.pop()
+            table.close_cell()
+            loose = " ".join("".join(table.loose).split())
+            if self.tables:
+                # A nested table: its text (and any loose text) goes back into the enclosing cell, in reading
+                # order, so "Before <table>Inner</table> After" keeps all three (INPROOM-171).
+                outer = self.tables[-1]
+                target = outer.cell if outer.cell is not None else outer.loose
+                target.append(" " + " ".join(t for t in (table.text(), loose) if t) + " ")
             else:
-                self.b.table(rows)
+                self.b.table(table.rows)
+                if loose:  # e.g. a <caption>: kept as text after the table, never dropped
+                    self.b.text(loose)
         elif tag in _BLOCKS and not self.tables and self.heading is None:
             self.flush()
 
@@ -256,14 +283,20 @@ class _Html(HTMLParser):
             return
         if self.heading is not None:
             self.heading[1].append(data)
-        elif self.cell is not None:
-            self.cell.append(data)
-        elif not self.tables:
+        elif self.tables:
+            table = self.tables[-1]
+            (table.cell if table.cell is not None else table.loose).append(data)
+        else:
             self.buf.append(data)
 
     def unknown_decl(self, data):
         if data.startswith("CDATA[") and not self.skip:  # Confluence code macros keep their body in CDATA
             self.handle_data(data[6:])
+
+    def close(self):
+        super().close()
+        while self.tables:  # unclosed tables at the end of the input still count
+            self.handle_endtag("table")
 
 
 def html(data: bytes, fmt: str = "html") -> dict[str, Any]:
