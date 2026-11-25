@@ -86,6 +86,42 @@ def _snapshot(conn: Connection, tenant, repo: dict[str, Any], branch: str, commi
     )
 
 
+def _active(conn: Connection, src, branch: str):
+    """The snapshot the branch's files currently reflect: the most recently FINISHED one."""
+    return conn.execute(
+        select(code_snapshots.c.id)
+        .where(
+            code_snapshots.c.source_id == src,
+            code_snapshots.c.branch == branch,
+            code_snapshots.c.status.in_(("COMPLETE", "PARTIAL")),
+        )
+        .order_by(code_snapshots.c.finished_at.desc().nulls_last())
+        .limit(1)
+    ).scalar()
+
+
+def _reopen(conn: Connection, snap: dict[str, Any]) -> dict[str, Any]:
+    content_verdicts = {k: v for k, v in (snap["skipped_blobs"] or {}).items() if not v.get("access")}
+    return dict(
+        conn.execute(
+            update(code_snapshots)
+            .where(code_snapshots.c.id == snap["id"])
+            .values(
+                status="RUNNING",
+                counts={},
+                skipped=[],
+                renames=[],
+                skipped_blobs=content_verdicts,
+                started_at=datetime.now(UTC),
+                finished_at=None,
+            )
+            .returning(*code_snapshots.c)
+        )
+        .mappings()
+        .one()
+    )
+
+
 def _stored_blobs(conn: Connection, project_id, repo_source_id) -> dict[str, str]:
     """git blob sha -> content-store key, for blobs this repository already holds (any branch or path)."""
     rows = conn.execute(
@@ -148,12 +184,16 @@ def _verify(conn: Connection, project, src, commit: str, run: dict[str, Any]) ->
         ingest.mark(conn, project, "git", src, ids, "EXCLUDED", f"{reason} at {commit[:12]}")
 
 
-def _codeowners(provider, repo: dict[str, Any], tree: Tree) -> dict[str, Any] | None:
+def _codeowners(
+    provider, repo: dict[str, Any], tree: Tree, known: dict | None = None
+) -> dict[str, Any] | None:
     paths = {e.path: e for e in tree.entries if e.type == "blob"}
     for path in filters.CODEOWNERS_PATHS:
         entry = paths.get(path)
         if entry is None:
             continue
+        if known and known.get("sha") == entry.sha and known.get("text") is not None:
+            return known  # already read for this commit (e.g. a re-activated snapshot): not fetched again
         try:
             data = provider.blob(repo["provider_repo_id"], entry.sha, filters.MAX_CODEOWNERS_BYTES)
             return {"path": path, "sha": entry.sha, "text": data.decode("utf-8", errors="replace")}
@@ -169,8 +209,13 @@ def _index_branch(
     tenant, project, src = ctx.tenant, repo["project_id"], repo["id"]
     with tenant_session(tenant) as conn:
         snap = _snapshot(conn, tenant, repo, branch, commit)
-    if snap["status"] != "RUNNING":
-        return {"commit": commit, "status": snap["status"]}, budget, False
+        if snap["status"] != "RUNNING":
+            if _active(conn, src, branch) == snap["id"]:
+                return {"commit": commit, "status": snap["status"]}, budget, False
+            # The branch went back to a commit indexed before (a rollback or force-push, INPROOM-178): the
+            # files now reflect another commit, so this one is indexed again - stored blobs are reused and
+            # content verdicts are kept, so nothing is downloaded twice.
+            snap = _reopen(conn, snap)
     try:
         tree = provider.tree(repo["provider_repo_id"], commit)
     except NotFoundOrNoAccess:
@@ -330,7 +375,7 @@ def _index_branch(
             values |= {
                 "status": "COMPLETE" if complete else "PARTIAL",
                 "renames": renames,
-                "codeowners": _codeowners(provider, repo, tree),
+                "codeowners": _codeowners(provider, repo, tree, snap.get("codeowners")),
                 "finished_at": datetime.now(UTC),
             }
             files = conn.execute(  # items of this branch indexed now

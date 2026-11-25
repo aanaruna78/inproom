@@ -130,15 +130,17 @@ class _Context:
         }
         latest: dict[tuple, dict] = {}
         running: set[tuple] = set()
-        for s in conn.execute(
+        for (
+            s
+        ) in conn.execute(  # the latest FINISHED snapshot is the one a branch's files reflect (INPROOM-178)
             select(code_snapshots)
             .where(code_snapshots.c.project_id == project_id)
-            .order_by(code_snapshots.c.started_at)
+            .order_by(code_snapshots.c.finished_at.asc().nulls_first(), code_snapshots.c.started_at)
         ).mappings():
             key = (s["source_id"], s["branch"])
             if s["status"] == "RUNNING":
                 running.add((key, s["commit_sha"]))
-            else:
+            elif s["status"] != "RETIRED":
                 latest[key] = dict(s)
         self.latest, self.running = latest, running
         self.heads = {

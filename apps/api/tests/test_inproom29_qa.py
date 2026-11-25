@@ -53,7 +53,6 @@ def test_new_symbols_during_a_batch_never_cite_the_previous_snapshot(repo, monke
     assert hit["citation"]["commit"] == new, hit
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-178: a rollback is not re-indexed")
 def test_returning_to_an_already_indexed_commit_restores_that_index(repo):
     e = repo
     old = e.gh.repos[1].branches["main"]

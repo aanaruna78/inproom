@@ -167,3 +167,32 @@ def test_content_that_cannot_be_indexed_at_a_commit_withholds_the_old_code(repo)
     drain(e)
     [hit] = search(e, "charge")["items"]
     assert hit["citation"]["commit"] == back and hit["behind"] is False
+
+
+def test_a_rollback_and_back_again_restores_each_index_without_downloads(repo):
+    """INPROOM-178: A -> B -> A -> B: the index always reflects the head; stored blobs are never fetched
+    again and no symbol is duplicated."""
+    e = repo
+    a = e.gh.repos[1].branches["main"]
+    b = e.gh.repos[1].commit("main", {"src/billing.py": b"def refund():\n    pass\n"})
+    due(e.tenant)
+    drain(e)
+    fetched = sum(1 for _, p in e.gh.calls if "/git/blobs/" in p)
+    for head, present, absent in ((a, "charge", "refund"), (b, "refund", "charge")):
+        e.gh.repos[1].branches["main"] = head
+        due(e.tenant)
+        drain(e)
+        [hit] = search(e, present)["items"]
+        assert (hit["citation"]["commit"], hit["behind"]) == (head, False)
+        assert search(e, absent)["items"] == []
+        snaps = e.client.get(f"/v1/projects/{e.pid}/code/snapshots", headers=e.h()).json()
+        main = next(s for s in snaps if s["branch"] == "main")
+        assert (main["indexed_commit"], main["behind"]) == (head, False)
+    assert sum(1 for _, p in e.gh.calls if "/git/blobs/" in p) == fetched  # all from the content store
+    assert (
+        e.q(
+            "SELECT count(*) FROM code_symbols s JOIN derivatives d ON d.id = s.derivative_id "
+            "WHERE s.tenant_id=:t AND s.name='refund' AND d.status='READY'"
+        )
+        == 1
+    )
