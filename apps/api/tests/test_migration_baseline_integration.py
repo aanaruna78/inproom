@@ -128,3 +128,27 @@ def test_empty_inventory_baseline_carries_a_warning(mig):
     scan(e)
     body = confirm(e, state(e)["plan"]["version"]).json()
     assert body["plan"]["baseline"]["warnings"] == ["EMPTY_INVENTORY"] and body["project_status"] == "ACTIVE"
+
+
+def test_changed_plan_supersedes_in_flight_scan_and_needs_a_new_one(mig):
+    """INPROOM-155: a scan running when the plan changes is superseded; only a scan of the new revision
+    (here: a narrower history scope) can be confirmed."""
+    e = mig
+    plan(e)
+    e.client.post(f"/v1/projects/{e.mpid}/migration/scan", headers=e.h())  # queued, not yet run
+    version = state(e)["plan"]["version"]
+    changed = e.client.put(
+        f"/v1/projects/{e.mpid}/migration",
+        json={"jira_source_id": e.jsid, "history_since": "2026-01-01"},
+        headers=e.h(**{"If-Match": f'"{version}"'}),
+    )
+    assert changed.status_code == 200
+    old = state(e)["latest_run"]
+    assert old["status"] == "FAILED" and old["error"]["code"] == "PLAN_CHANGED"
+    refused = confirm(e, changed.json()["plan"]["version"])
+    assert refused.status_code == 409 and refused.json()["code"] == "SCAN_REQUIRED"
+    assert state(e)["project_status"] == "PENDING_SOURCES"
+    assert e.q("SELECT count(*) FROM audit_events WHERE tenant_id=:t AND action='migration.baselined'") == 0
+    assert scan(e)["status"] == "SUCCEEDED"  # a scan of the revised plan
+    ok = confirm(e, state(e)["plan"]["version"])
+    assert ok.status_code == 200 and ok.json()["plan"]["baseline"]["scope"]["history_since"] == "2026-01-01"

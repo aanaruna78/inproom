@@ -1,7 +1,7 @@
 """QA probes for INPROOM-19 (build/qa/INPROOM-19/test_probes.py at ff1ff2b), committed as regressions.
 
 Unfixed cases are strict xfails naming their defect:
-- INPROOM-155: confirming must need a completed scan of the CURRENT plan revision (source and scope);
+- INPROOM-155: confirming must need a completed scan of the CURRENT plan revision (fixed);
 - INPROOM-156: write-readiness must fail closed for unusable connections and archived projects.
 """
 
@@ -19,7 +19,6 @@ def confirm(e):
     return e.client.post(f"/v1/projects/{e.mpid}/migration/confirm", headers=e.h(**{"If-Match": f'"{v}"'}))
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-155: confirm accepts a scan of an older plan revision")
 @pytest.mark.parametrize("change", ["scope", "source"])
 def test_changed_plan_cannot_confirm_previous_scope_scan(mig, change):
     e = mig
@@ -38,7 +37,7 @@ def test_changed_plan_cannot_confirm_previous_scope_scan(mig, change):
     result = confirm(e)
     assert (
         result.status_code == 409
-    ), f"unscanned revised plan confirmed: HTTP {result.status_code}, baseline={result.json().get('plan',{}).get('baseline')}"
+    ), f"revised plan confirmed: HTTP {result.status_code}, {result.json().get('plan', {}).get('baseline')}"
 
 
 @pytest.mark.xfail(strict=True, reason="INPROOM-156: readiness ignores connection / project state")

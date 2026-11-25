@@ -596,6 +596,7 @@ migration_runs = Table(
     Column("tenant_id", UUID(as_uuid=True), nullable=False),
     Column("project_id", UUID(as_uuid=True), nullable=False),
     Column("plan_id", UUID(as_uuid=True), nullable=False),
+    Column("plan_version", Integer, nullable=False, server_default="0"),
     Column("status", Text, nullable=False, server_default="QUEUED"),
     Column("cursor", Text),
     Column("pages_done", Integer, nullable=False, server_default="0"),

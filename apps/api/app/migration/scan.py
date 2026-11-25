@@ -24,6 +24,7 @@ from app.db_schema import (
     projects,
 )
 from app.migration.inventory import FIELDS, MAX_ISSUES, diagnose, normalise
+from app.modules.migration import supersede_runs
 from app.sync import queue
 from app.sync.handlers import load_connection_and_token
 from app.sync.worker import JobContext, PermanentFailure, SkipJob, handler
@@ -32,11 +33,15 @@ PAGE = 100
 DONE = "<done>"  # cursor sentinel: every page is in, only the final pass remains
 
 
-def _active_run(conn, plan_id) -> dict[str, Any]:
+def _active_run(conn, plan) -> dict[str, Any]:
     row = (
         conn.execute(
             select(migration_runs)
-            .where(migration_runs.c.plan_id == plan_id, migration_runs.c.status.in_(("QUEUED", "RUNNING")))
+            .where(
+                migration_runs.c.plan_id == plan["id"],
+                migration_runs.c.status.in_(("QUEUED", "RUNNING")),
+                migration_runs.c.plan_version == plan["version"],  # INPROOM-155: only the current revision
+            )
             .order_by(migration_runs.c.created_at.desc())
             .limit(1)
         )
@@ -69,12 +74,18 @@ def migration_scan(ctx: JobContext) -> dict[str, Any]:
         )
         if source is None or source["status"] != "ACTIVE":
             raise SkipJob("the plan's Jira source is not active")
-        run = _active_run(conn, plan["id"])
+        supersede_runs(conn, dict(plan))  # a run for an older plan revision never completes
+        run = _active_run(conn, plan)
         if not run:
             run = dict(
                 conn.execute(
                     insert(migration_runs)
-                    .values(tenant_id=tenant, project_id=plan["project_id"], plan_id=plan["id"])
+                    .values(
+                        tenant_id=tenant,
+                        project_id=plan["project_id"],
+                        plan_id=plan["id"],
+                        plan_version=plan["version"],
+                    )
                     .returning(*migration_runs.c)
                 )
                 .mappings()

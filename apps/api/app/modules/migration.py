@@ -107,6 +107,23 @@ def latest_run(conn: Connection, project_id: uuid.UUID) -> dict[str, Any] | None
     return dict(row) if row else None
 
 
+def supersede_runs(conn: Connection, plan: dict[str, Any]) -> int:
+    """Queued / running scans of an OLDER plan revision can never qualify for a baseline (INPROOM-155)."""
+    return conn.execute(
+        update(migration_runs)
+        .where(
+            migration_runs.c.plan_id == plan["id"],
+            migration_runs.c.status.in_(("QUEUED", "RUNNING")),
+            migration_runs.c.plan_version != plan["version"],
+        )
+        .values(
+            status="FAILED",
+            finished_at=func.now(),
+            error={"code": "PLAN_CHANGED", "message": "the plan changed; this scan was superseded"},
+        )
+    ).rowcount
+
+
 def require_migration_project(project: dict[str, Any]) -> None:
     if project["mode"] != "MIGRATION":
         raise conflict("NOT_A_MIGRATION_PROJECT", "Only projects created with mode MIGRATION can be migrated")
@@ -229,6 +246,7 @@ def put_plan(
                         version=migration_plans.c.version + 1,
                     )
                 )
+                supersede_runs(conn, plan_of(conn, project_id))
                 _audit(
                     conn,
                     principal,
@@ -264,17 +282,25 @@ def scan(request: Request, principal: CurrentPrincipal, project_id: uuid.UUID) -
         run = (
             conn.execute(
                 select(migration_runs).where(
-                    migration_runs.c.plan_id == plan["id"], migration_runs.c.status.in_(("QUEUED", "RUNNING"))
+                    migration_runs.c.plan_id == plan["id"],
+                    migration_runs.c.status.in_(("QUEUED", "RUNNING")),
+                    migration_runs.c.plan_version == plan["version"],
                 )
             )
             .mappings()
             .first()
         )
         if run is None:
+            supersede_runs(conn, plan)
             run = (
                 conn.execute(
                     insert(migration_runs)
-                    .values(tenant_id=principal.tenant_id, project_id=project_id, plan_id=plan["id"])
+                    .values(
+                        tenant_id=principal.tenant_id,
+                        project_id=project_id,
+                        plan_id=plan["id"],
+                        plan_version=plan["version"],
+                    )
                     .returning(*migration_runs.c)
                 )
                 .mappings()
@@ -455,8 +481,12 @@ def confirm(
         if plan["status"] == "BASELINED":
             raise conflict("PLAN_BASELINED", "The baseline is already confirmed")
         run = latest_run(conn, project_id)
-        if run is None or run["status"] != "SUCCEEDED":
-            raise conflict("SCAN_REQUIRED", "Confirm needs a completed scan; run one and review it first")
+        if run is None or run["status"] != "SUCCEEDED" or run["plan_version"] != plan["version"]:
+            # INPROOM-155: only a completed scan of THIS plan revision (source + history scope) qualifies
+            raise conflict(
+                "SCAN_REQUIRED",
+                "Confirm needs a completed scan of the current plan (source and scope); scan it, then review",
+            )
         if datetime.now(UTC) - run["finished_at"] > SCAN_MAX_AGE:
             raise conflict("SCAN_STALE", "The last scan is older than 24 hours; scan again before confirming")
         now = datetime.now(UTC)
