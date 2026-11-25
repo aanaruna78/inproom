@@ -196,3 +196,30 @@ def test_a_rollback_and_back_again_restores_each_index_without_downloads(repo):
         )
         == 1
     )
+
+
+def test_a_deselected_branch_is_withheld_and_reselecting_restores_it(repo):
+    """INPROOM-179: search, files and content serve only selected branches; reselecting restores them."""
+    e = repo
+    e.gh.repos[1].commit("feature", {"feature.py": b"def feature_only():\n    pass\n"}, base=False)
+    assert e.select("1", ["main", "feature"]).status_code == 200
+    due(e.tenant)
+    drain(e)
+    assert search(e, "feature_only")["items"]
+    rid = e.q("SELECT id FROM project_repositories WHERE tenant_id=:t AND provider_repo_id='1'")
+    raw = f"/v1/projects/{e.pid}/content/git/{rid}/feature:feature.py/revisions/1/raw"
+    assert e.select("1", ["main"]).status_code == 200
+    assert search(e, "feature_only")["items"] == []  # at once, before any job runs
+    r = e.client.get(raw, headers=e.h())
+    assert r.status_code == 409 and r.json()["reason"] == "SOURCE_BRANCH_NOT_SELECTED"
+    due(e.tenant)
+    drain(e)
+    item = e.client.get(f"/v1/projects/{e.pid}/content/git/{rid}/feature:feature.py", headers=e.h()).json()
+    assert item["status"] == "EXCLUDED" and "not selected" in item["status_reason"]
+    fetched = sum(1 for _, p in e.gh.calls if "/git/blobs/" in p)
+    assert e.select("1", ["main", "feature"]).status_code == 200
+    due(e.tenant)
+    drain(e)
+    [hit] = search(e, "feature_only")["items"]
+    assert hit["citation"]["branch"] == "feature" and e.client.get(raw, headers=e.h()).status_code == 200
+    assert sum(1 for _, p in e.gh.calls if "/git/blobs/" in p) == fetched  # re-activated from the store

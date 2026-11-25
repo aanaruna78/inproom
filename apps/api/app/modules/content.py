@@ -134,6 +134,16 @@ def _source_status(conn: Connection, obj: dict[str, Any]) -> str:
     table = SOURCE_TABLES.get(obj["source_kind"])
     if table is None:
         return "ACTIVE"
+    if obj["source_kind"] == "git":  # INPROOM-179: a repository serves only its selected branches
+        row = conn.execute(
+            select(table.c.status, table.c.branches).where(
+                table.c.id == obj["source_id"], table.c.project_id == obj["project_id"]
+            )
+        ).first()
+        if row is None:
+            return "REMOVED"
+        branch = obj["external_id"].split(":", 1)[0]
+        return row.status if branch in row.branches else "BRANCH_NOT_SELECTED"
     status = conn.execute(
         select(table.c.status).where(table.c.id == obj["source_id"], table.c.project_id == obj["project_id"])
     ).scalar()

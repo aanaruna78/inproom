@@ -250,6 +250,7 @@ def search(
             o.c.current_revision_id == s.c.revision_id,
             o.c.status == "CURRENT",
             r.c.status == "ACTIVE",  # a paused or excluded repository's code is withheld
+            s.c.branch == func.any(r.c.branches),  # and so is a branch no longer selected (INPROOM-179)
         )
     )
     if kind:
@@ -377,6 +378,8 @@ def file_symbols(
         )
         if repo is None:
             raise ApiError(404, "CODE_NOT_FOUND", "Not found", "No such repository in this project")
+        if branch not in repo["branches"]:  # INPROOM-179: only selected branches are served
+            raise ApiError(404, "CODE_NOT_FOUND", "Not found", "This branch is not selected for the project")
         obj = conn.execute(
             select(source_objects.c.revisions).where(
                 source_objects.c.project_id == project_id,

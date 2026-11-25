@@ -83,7 +83,6 @@ def test_partial_snapshot_owners_match_the_cited_commit(repo):
     assert hit["owners"] == ["@acme/payments"], hit
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-179: deselected branch still searchable")
 def test_deselected_branch_is_no_longer_searchable(repo):
     e = repo
     e.gh.repos[1].commit("feature", {"feature.py": b"def feature_only():\n    pass\n"}, base=False)

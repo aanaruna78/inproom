@@ -19,7 +19,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Connection, select, update
+from sqlalchemy import Connection, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.connectors.base import NotFoundOrNoAccess, Tree
@@ -84,6 +84,54 @@ def _snapshot(conn: Connection, tenant, repo: dict[str, Any], branch: str, commi
         .mappings()
         .one()
     )
+
+
+def _retire_deselected(conn: Connection, repo: dict[str, Any]) -> list[str]:
+    """Branches indexed before but no longer selected (INPROOM-179): their files are withheld (EXCLUDED) and
+    their snapshots RETIRED. History is kept; reselecting re-activates them from stored blobs."""
+    indexed = {
+        b
+        for (b,) in conn.execute(
+            select(func.split_part(source_objects.c.external_id, ":", 1))
+            .where(
+                source_objects.c.project_id == repo["project_id"],
+                source_objects.c.source_kind == "git",
+                source_objects.c.source_id == repo["id"],
+                source_objects.c.status == IN_SCOPE,
+            )
+            .distinct()
+        )
+    } | set(
+        conn.execute(
+            select(code_snapshots.c.branch)
+            .where(code_snapshots.c.source_id == repo["id"], code_snapshots.c.status != "RETIRED")
+            .distinct()
+        ).scalars()
+    )
+    gone = sorted(indexed - set(repo["branches"]))
+    for branch in gone:
+        ids = (
+            conn.execute(
+                select(source_objects.c.external_id).where(
+                    source_objects.c.project_id == repo["project_id"],
+                    source_objects.c.source_kind == "git",
+                    source_objects.c.source_id == repo["id"],
+                    source_objects.c.external_id.like(f"{branch}:%"),
+                    source_objects.c.status == IN_SCOPE,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        ingest.mark(
+            conn, repo["project_id"], "git", repo["id"], ids, "EXCLUDED", f"branch {branch} not selected"
+        )
+        conn.execute(
+            update(code_snapshots)
+            .where(code_snapshots.c.source_id == repo["id"], code_snapshots.c.branch == branch)
+            .values(status="RETIRED")
+        )
+    return gone
 
 
 def _active(conn: Connection, src, branch: str):
@@ -420,6 +468,8 @@ def code(ctx: JobContext) -> dict[str, Any]:
         repo = dict(repo)
         heads = _heads(conn, repo["id"])
         row, token = load_connection_and_token(conn, tenant, repo["connection_id"])
+    with tenant_session(tenant) as conn:
+        retired = _retire_deselected(conn, repo)
     provider = provider_for(row["provider"], row["base_url"], token, ctx.transports)
     store = blobs.get_store()
     budget, more, branches = filters.BLOBS_PER_RUN, False, {}
@@ -431,7 +481,7 @@ def code(ctx: JobContext) -> dict[str, Any]:
         branches[branch], budget, more = _index_branch(ctx, provider, store, repo, branch, commit, budget)
         if more:
             break
-    result = {"branches": branches, "more": more}
+    result = {"branches": branches, "more": more, "retired_branches": retired}
     with tenant_session(tenant) as conn:
         if more:
             queue.enqueue(conn, tenant, repo["project_id"], "code", repo["id"], ctx.job["reason"])
