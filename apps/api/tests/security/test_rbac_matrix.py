@@ -134,6 +134,16 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("GET", "/v1/projects/{project_id}/migration/issues"): ("project", "project.read"),
     ("POST", "/v1/projects/{project_id}/migration/confirm"): ("project", "project.source.manage"),
     ("GET", "/v1/projects/{project_id}/migration/drift"): ("project", "project.read"),
+    # INPROOM-158
+    ("GET", "/v1/projects/{project_id}/content"): ("project", "project.read"),
+    ("GET", "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}"): (
+        "project",
+        "project.read",
+    ),
+    ("GET", "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/raw"): (
+        "project",
+        "project.read",
+    ),
     # INPROOM-146
     ("GET", "/v1/connections/attention"): ("tenant", "tenant.connection.manage"),
     ("GET", "/v1/connections/{connection_id}/sources"): ("connection", "tenant.connection.manage"),
@@ -350,6 +360,8 @@ def _call(client, method, path, world: World, headers):
         )["id"],
         page_id="101",
         kind="confluence",
+        external_id="101",
+        seq=1,
     )
     if path.startswith("/v1/connections/{connection_id}/") and path.endswith(
         ("/repositories", "/projects", "/spaces")

@@ -13,6 +13,8 @@ from sqlalchemy import insert, select
 from app.connectors import vault
 from app.connectors.base import NotFoundOrNoAccess
 from app.connectors.registry import confluence_for, jira_for, provider_for
+from app.content import ingest
+from app.content.store import get_store
 from app.db import tenant_session
 from app.db_schema import (
     outbox_events,
@@ -85,7 +87,9 @@ def confluence(ctx: JobContext) -> dict[str, Any]:
         found = sources(conn, ctx.tenant, id=ctx.job["source_id"])
         if not found:
             raise SkipJob("space no longer selected")
-        counts, changed = apply_sync(conn, ctx.principal, ctx.trace_id, found[0], space, listing, write_mode)
+        counts, changed = apply_sync(
+            conn, ctx.principal, ctx.trace_id, found[0], space, listing, write_mode, ctx.job["id"]
+        )
         result = {"counts": counts, "changed": changed, "truncated": listing.truncated}
         queue.succeed(conn, ctx.job, result)
     return result
@@ -221,9 +225,8 @@ def jira(ctx: JobContext) -> dict[str, Any]:
     if not full and known.get("updated"):
         since = _ts(known["updated"]) - timedelta(minutes=1)
         jql += f' AND updated >= "{since.strftime("%Y-%m-%d %H:%M")}"'
-    issues = list(
-        provider.iter_issues(jql + " ORDER BY updated ASC", ["updated"], limit=JIRA_MAX_SEARCH_PAGES)
-    )
+    fields = ingest.jira_fields(source.get("mapping"))  # the record is stored (INPROOM-158)
+    issues = list(provider.iter_issues(jql + " ORDER BY updated ASC", fields, limit=JIRA_MAX_SEARCH_PAGES))
     schema = capabilities = None
     if full:
         schema, capabilities = jira_schema.discover(provider, source["jira_project_id"])
@@ -245,6 +248,7 @@ def jira(ctx: JobContext) -> dict[str, Any]:
             )
         for issue_id in deleted:
             _event(conn, ctx, "source.jira.issue.deleted", base | {"issue_id": issue_id})
+        content = ingest.jira(conn, get_store(), ctx.tenant, source, issues, deleted, fields, ctx.job["id"])
         schema_changed = False
         if schema is not None:
             current = jira_sources._sources(conn, ctx.tenant, id=source["id"])[0]
@@ -267,6 +271,7 @@ def jira(ctx: JobContext) -> dict[str, Any]:
             "schema_changed": schema_changed,
             "full": full,
             "ids_tracked": watermark["ids"] is not None,
+            "content": content,
         }
         queue.succeed(conn, ctx.job, result, watermark)
     return result

@@ -41,13 +41,15 @@ def test_jira_updates_deletions_and_schema_once(jira_selected_env):
         "schema_changed": False,
         "full": True,
         "ids_tracked": True,
+        "content": {"revisions": 5, "unchanged": 0, "withheld": 0},  # INPROOM-158: records stored
     }
     due(e.tenant)
     assert _run_jira(e)["result"]["changed"] == 0  # re-reading the overlap emits nothing
     _issue(e, "ABC-2")["fields"]["updated"] = "2026-11-25T10:00:00.000+0000"  # missed webhook
     _issue(e, "ABC-3")["fields"]["updated"] = "2026-11-01T10:00:00.000+0000"  # an older (out-of-order) update
     due(e.tenant)
-    assert _run_jira(e)["result"]["changed"] == 1
+    changed = _run_jira(e)["result"]
+    assert changed["changed"] == 1 and changed["content"]["revisions"] == 1
     keys = [p["key"] for p in payloads(e, "source.jira.issue.changed")]
     assert keys.count("ABC-2") == 2 and keys.count("ABC-3") == 1  # baseline + the one real change
     # A deleted issue and a changed schema are picked up by the full reconcile.
@@ -57,6 +59,8 @@ def test_jira_updates_deletions_and_schema_once(jira_selected_env):
         queue.enqueue(conn, e.tenant, uuid.UUID(e.pid), "jira", uuid.UUID(e.sid), "manual", mode="full")
     full = _run_jira(e, schedule=False)
     assert full["result"]["deleted"] == 1 and full["result"]["schema_changed"] is True
+    # ABC-3's out-of-order edit was not re-read incrementally; the full read stores it. ABC-5 is withheld.
+    assert full["result"]["content"] == {"revisions": 1, "unchanged": 3, "withheld": 1}
     assert [p["issue_id"] for p in payloads(e, "source.jira.issue.deleted")] == ["20005"]
     assert events(e, "source.jira.schema.changed") == 1
     with tenant_session(e.tenant) as conn:

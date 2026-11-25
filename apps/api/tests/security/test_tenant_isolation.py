@@ -101,6 +101,11 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/v1/projects/{project_id}/migration/issues"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/migration/confirm"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/migration/drift"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/content"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/raw"): (
+        "project_scoped"
+    ),
     # INPROOM-146
     ("GET", "/v1/connections/attention"): "tenant_collection",
     ("GET", "/v1/connections/{connection_id}/sources"): "connection_scoped",
@@ -258,6 +263,8 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         )["id"],
         page_id="101",
         kind="confluence",
+        external_id="101",
+        seq=1,
     )
     if (
         path_template.endswith(("/repositories", "/jira/projects", "/confluence/spaces"))

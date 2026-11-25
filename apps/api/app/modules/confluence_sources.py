@@ -22,6 +22,8 @@ from app.authz import authorize
 from app.connectors.base import NotFoundOrNoAccess, ProviderError
 from app.connectors.confluence import ConfluenceProvider, PageListing, Space
 from app.connectors.registry import Transports, confluence_for, provider_errors
+from app.content import ingest
+from app.content.store import get_store
 from app.db import tenant_session
 from app.db_schema import (
     confluence_page_versions,
@@ -240,8 +242,10 @@ def apply_sync(
     space: Space,
     listing: PageListing,
     write_mode: str,
+    job_id: uuid.UUID | None = None,
 ) -> tuple[dict[str, int], bool]:
-    """Write the planned catalog changes (caller holds the project lock in this transaction)."""
+    """Write the planned catalog changes (caller holds the project lock in this transaction), then store the
+    in-scope pages' bodies as source revisions (INPROOM-158)."""
     tenant = principal.tenant_id
     existing = {
         r["page_id"]: dict(r)
@@ -287,7 +291,8 @@ def apply_sync(
     }
     for kind, payload in plan.events:
         conn.execute(insert(outbox_events).values(tenant_id=tenant, type=kind, payload=base | payload))
-    summary = plan.counts | {"pages_listed": len(listing.pages)}
+    content = ingest.confluence(conn, get_store(), tenant, source, space, listing, job_id)
+    summary = plan.counts | {"pages_listed": len(listing.pages), "content": content}
     conn.execute(
         update(project_confluence_sources)
         .where(

@@ -76,6 +76,7 @@ class PageMeta:
     attachments: list[Attachment]
     content_sha256: str
     web_url: str | None
+    storage: str = field(default="", repr=False, compare=False)  # the body, kept as stored (INPROOM-158)
 
 
 @dataclass(frozen=True)
@@ -323,6 +324,7 @@ class ConfluenceProvider:
                     attachments=self._v2_attachments(pid),
                     content_sha256=content_hash(storage),
                     web_url=(item.get("_links") or {}).get("webui"),
+                    storage=storage,
                 )
             )
         return listing
@@ -358,6 +360,7 @@ class ConfluenceProvider:
             ],
             content_sha256=content_hash(storage),
             web_url=(data.get("_links") or {}).get("webui"),
+            storage=storage,
         )
 
     def _v1_pages(self, space: Space, cap: int) -> PageListing:

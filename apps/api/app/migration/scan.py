@@ -26,7 +26,6 @@ from app.db_schema import (
 from app.migration.inventory import FIELDS, MAX_ISSUES, diagnose, normalise
 from app.modules.migration import supersede_runs
 from app.sync import queue
-from app.sync.handlers import load_connection_and_token
 from app.sync.worker import JobContext, PermanentFailure, SkipJob, handler
 
 PAGE = 100
@@ -91,6 +90,8 @@ def migration_scan(ctx: JobContext) -> dict[str, Any]:
                 .mappings()
                 .one()
             )
+        from app.sync.handlers import load_connection_and_token  # handlers -> worker -> here: import late
+
         row, token = load_connection_and_token(conn, tenant, source["connection_id"])
     provider = jira_for(row, token, ctx.transports)
     try:
