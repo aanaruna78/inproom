@@ -54,7 +54,9 @@ def test_schedule_runs_due_sources_and_records_state(selected):
     first = run(e)
     assert first["status"] == "SUCCEEDED" and first["reason"] == "schedule" and first["mode"] == "full"
     assert run(e) is None  # nothing due until the interval passes
-    state = e.q("SELECT row_to_json(s)::text FROM source_sync_state s WHERE tenant_id=:t")
+    state = e.q(  # the space's row (a health-check row for the connection may exist too)
+        "SELECT row_to_json(s)::text FROM source_sync_state s WHERE tenant_id=:t AND source_kind='confluence'"
+    )
     assert '"consecutive_failures":0' in state and '"last_full_at":"' in state
     e.conf.edit(101, "<p>scheduled pickup</p>")
     make_due(e)

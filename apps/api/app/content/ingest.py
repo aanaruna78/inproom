@@ -114,8 +114,10 @@ def current_items(conn: Connection, project_id, kind: str, source_id) -> dict[st
             source_objects.c.acl,
             source_objects.c.title,
             source_objects.c.uri,
+            source_objects.c.parent_external_id,
             source_revisions.c.content_sha256,
             source_revisions.c.purged_at,
+            source_revisions.c.provider_version,
         )
         .select_from(
             source_objects.outerjoin(
@@ -135,6 +137,8 @@ def current_items(conn: Connection, project_id, kind: str, source_id) -> dict[st
             "acl": r.acl,
             "title": r.title,
             "uri": r.uri,
+            "parent": r.parent_external_id,
+            "version": r.provider_version,
         }
         for r in rows
     }
@@ -143,13 +147,10 @@ def current_items(conn: Connection, project_id, kind: str, source_id) -> dict[st
 def _unchanged(have: dict[str, Any] | None, data: bytes, title: str, uri: str | None, acl: dict) -> bool:
     """Nothing to write: same bytes, in scope, and the same ACL, title and URI (INPROOM-163: an ACL-only
     change must still reach the stored object)."""
-    return have is not None and have == {
-        "sha": blobs.sha256(data),
-        "status": IN_SCOPE,
-        "acl": acl,
-        "title": title,
-        "uri": uri,
-    }
+    if have is None:
+        return False
+    wanted = {"sha": blobs.sha256(data), "status": IN_SCOPE, "acl": acl, "title": title, "uri": uri}
+    return {k: have[k] for k in wanted} == wanted
 
 
 def refresh_acl(
@@ -287,7 +288,131 @@ def confluence(
         counts["withheld"] += mark(
             conn, source["project_id"], "confluence", source["id"], ids, status, reason or status.lower()
         )
+    counts["attachments"] = attachments(conn, store, tenant, source, space, listing, catalog, have, job_id)
     return counts
+
+
+MAX_ATTACHMENT_DOWNLOADS = 50  # per sync, to bound the sync transaction; the rest follow next time
+MAX_SKIPPED_LISTED = 50
+
+
+def attachments(
+    conn: Connection,
+    store: blobs.BlobStore,
+    tenant: uuid.UUID,
+    source: dict[str, Any],
+    space: Space,
+    listing: PageListing,
+    catalog: dict[str, Any],
+    have: dict[str, dict[str, Any]],
+    job_id: uuid.UUID | None,
+) -> dict[str, Any]:
+    """Attachments of in-scope pages become items `att:<id>` linked to their page (INPROOM-166). They follow
+    the page: its ACL, and its status when it leaves scope. Removed attachments become DELETED."""
+    from app.config import get_settings
+    from app.connectors.base import CredentialInvalid, NotFoundOrNoAccess, ProviderError, RateLimited
+    from app.connectors.http import DownloadTooLarge
+    from app.content.sniff import Unsupported, detect, looks_parseable
+
+    limit = get_settings().content_max_bytes
+    out: dict[str, Any] = {"stored": 0, "unchanged": 0, "skipped": 0, "deferred": 0, "skipped_items": []}
+    project, src = source["project_id"], source["id"]
+    downloads = 0
+
+    def skip(page_id: str, att, reason: str) -> None:
+        out["skipped"] += 1
+        if len(out["skipped_items"]) < MAX_SKIPPED_LISTED:
+            out["skipped_items"].append(
+                {"page_id": page_id, "attachment_id": att.id, "title": att.title, "reason": reason}
+            )
+
+    children: dict[str, list[str]] = {}
+    for external, item in have.items():
+        if item["parent"]:
+            children.setdefault(item["parent"], []).append(external)
+    for page in listing.pages:
+        row = catalog.get(page.id)
+        if row is None or row.status != IN_SCOPE:
+            continue
+        acl = {
+            "space_id": space.id,
+            "space_key": space.key,
+            "restrictions": row.restrictions,
+            "page_id": page.id,
+        }
+        listed = set()
+        for att in page.attachments:
+            external = f"att:{att.id}"
+            listed.add(external)
+            if not looks_parseable(att.title):
+                skip(page.id, att, "not a document type INPROOM parses")
+                continue
+            if att.size is not None and att.size > limit:
+                skip(page.id, att, f"larger than the content size limit ({limit} bytes)")
+                continue
+            current = have.get(external)
+            if (
+                current is not None
+                and current["sha"] is not None
+                and {k: current[k] for k in ("status", "version", "acl", "title")}
+                == {"status": IN_SCOPE, "version": str(att.version), "acl": acl, "title": att.title}
+            ):
+                out["unchanged"] += 1  # same attachment version: not downloaded again
+                continue
+            if listing.downloader is None or downloads >= MAX_ATTACHMENT_DOWNLOADS:
+                out["deferred"] += 1
+                continue
+            try:
+                downloads += 1
+                data = listing.downloader(page.id, att.id, limit)
+                media_type = detect(data, att.title)
+            except (CredentialInvalid, RateLimited):
+                raise
+            except DownloadTooLarge:
+                skip(page.id, att, f"larger than the content size limit ({limit} bytes)")
+                continue
+            except NotFoundOrNoAccess:
+                skip(page.id, att, "no longer accessible")
+                continue
+            except ProviderError as exc:
+                skip(page.id, att, f"download failed ({exc.code}); retried next sync")
+                continue
+            except Unsupported as exc:
+                skip(page.id, att, f"content is {exc}")
+                continue
+            done = record_revision(
+                conn,
+                store,
+                tenant=tenant,
+                project_id=project,
+                source_kind="confluence",
+                source_id=src,
+                external_id=external,
+                parent_external_id=page.id,
+                data=data,
+                media_type=media_type,
+                title=att.title,
+                uri=None,
+                provider_version=str(att.version),
+                acl=acl,
+                job_id=job_id,
+            )
+            out["stored" if done.created else "unchanged"] += 1
+        if not listing.truncated:
+            gone = [e for e in children.get(page.id, []) if e not in listed]
+            mark(conn, project, "confluence", src, gone, "DELETED", "removed from its page")
+    for page_id, row in catalog.items():  # pages out of scope take their attachments with them
+        if row.status != IN_SCOPE and children.get(page_id):
+            mark(
+                conn,
+                project,
+                "confluence",
+                src,
+                children[page_id],
+                row.status,
+                f"its page is {row.status.lower()}",
+            )
+    return out
 
 
 def jira(

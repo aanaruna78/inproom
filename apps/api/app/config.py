@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     jira_allowed_hosts: str = "*.atlassian.net"
     # Confluence sites (INPROOM-134): same rules as the Jira list.
     confluence_allowed_hosts: str = "*.atlassian.net"
+    # Where a Confluence attachment download may redirect (INPROOM-166): Atlassian's media service on Cloud.
+    # Same entry rules; the site itself is always allowed. Redirected requests never carry the credential.
+    confluence_attachment_hosts: str = "api.media.atlassian.com"
     # Source sync worker (INPROOM-141): incremental reconcile interval, full reconcile interval, job lease.
     sync_interval_seconds: int = 900
     sync_full_interval_seconds: int = 86400

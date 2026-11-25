@@ -84,6 +84,57 @@ class ProviderHttp:
         return response
 
 
+class DownloadTooLarge(ProviderError):
+    code = "DOWNLOAD_TOO_LARGE"
+
+
+def _read_capped(response: httpx.Response, max_bytes: int) -> bytes:
+    declared = response.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > max_bytes:
+        raise DownloadTooLarge(f"{declared} bytes (limit {max_bytes})")
+    out = bytearray()
+    for chunk in response.iter_bytes():
+        out += chunk
+        if len(out) > max_bytes:
+            raise DownloadTooLarge(f"more than {max_bytes} bytes (limit)")
+    return bytes(out)
+
+
+def download(
+    http: "ProviderHttp",
+    path: str,
+    max_bytes: int,
+    redirect_allowed: Callable[[str], bool],
+) -> bytes:
+    """GET a file with a size cap enforced while streaming. At most ONE redirect is followed, only to a URL
+    `redirect_allowed` accepts, and that request carries no credential (a fresh client, no auth header)."""
+    client = http._client
+    with client.stream("GET", path) as response:
+        if 300 <= response.status_code < 400:
+            target = str(response.url.join(response.headers.get("location", "")))
+        else:
+            http._check(response)
+            return _read_capped(response, max_bytes)
+    if not redirect_allowed(target):
+        raise ProviderError(f"{http.name} redirected a download to a host that is not allowed")
+    with (
+        httpx.Client(
+            headers={"User-Agent": "inproom-connector"},
+            timeout=httpx.Timeout(30.0, connect=5.0),
+            follow_redirects=False,
+            transport=client._transport,
+        ) as plain,
+        plain.stream("GET", target) as response,
+    ):
+        if 300 <= response.status_code < 400:
+            raise ProviderError(f"{http.name} download redirected more than once (not followed)")
+        if response.status_code == 404:
+            raise NotFoundOrNoAccess("the file is gone")
+        if response.status_code >= 400:
+            raise ProviderUnavailable(f"{http.name} file service returned HTTP {response.status_code}")
+        return _read_capped(response, max_bytes)
+
+
 def _retry_after(response: httpx.Response) -> int:
     retry = response.headers.get("retry-after")
     if retry is None and response.headers.get("x-ratelimit-reset"):

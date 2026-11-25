@@ -8,11 +8,9 @@ The media type is decided from the bytes, never from the client: PDF and DOCX by
 HTML and text by file extension, and only if the bytes are UTF-8 text. Anything else gets 415.
 """
 
-import io
 import re
 import unicodedata
 import uuid
-import zipfile
 from datetime import datetime
 from typing import Annotated, Any
 
@@ -28,6 +26,7 @@ from app.config import get_settings
 from app.content import ingest
 from app.content import store as blobs
 from app.content.revisions import record_revision
+from app.content.sniff import SUPPORTED, Unsupported, detect
 from app.db import tenant_session
 from app.db_schema import source_objects
 from app.idempotency import request_fingerprint, run_idempotent
@@ -35,18 +34,6 @@ from app.modules import settings as settings_module
 
 router = APIRouter(tags=["documents"])
 PROBLEM = {"description": "problem+json"}
-PDF = "application/pdf"
-DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-TEXT_TYPES = {
-    ".md": "text/markdown",
-    ".markdown": "text/markdown",
-    ".html": "text/html",
-    ".htm": "text/html",
-    ".txt": "text/plain",
-    ".text": "text/plain",
-    "": "text/plain",
-}
-SUPPORTED = "PDF, DOCX, Markdown (.md), HTML (.html) or plain text (.txt)"
 
 
 class UploadedDocument(BaseModel):
@@ -71,35 +58,13 @@ def clean_filename(name: str | None) -> str:
 
 
 def sniff(data: bytes, filename: str) -> str:
-    """The media type, from the bytes (signatures) and, for text, the extension. 415 when unsupported."""
-    if data.startswith(b"%PDF-"):
-        return PDF
-    if data.startswith(b"PK\x03\x04"):
-        try:
-            with zipfile.ZipFile(io.BytesIO(data)) as z:
-                if "word/document.xml" in z.namelist():
-                    return DOCX
-        except zipfile.BadZipFile:
-            pass
-        raise _unsupported("a zip archive that is not a Word document")
-    ext = ""
-    if "." in filename:
-        ext = "." + filename.rsplit(".", 1)[1].lower()
-    if ext not in TEXT_TYPES:
-        raise _unsupported(f"files of type {ext}")
-    if b"\x00" in data:
-        raise _unsupported("binary content")
+    """The media type, decided from the bytes; 415 when unsupported."""
     try:
-        data.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise _unsupported("text that is not UTF-8") from exc
-    return TEXT_TYPES[ext]
-
-
-def _unsupported(what: str) -> ApiError:
-    return ApiError(
-        415, "UNSUPPORTED_MEDIA_TYPE", "Unsupported document", f"Cannot accept {what}; use {SUPPORTED}"
-    )
+        return detect(data, filename)
+    except Unsupported as exc:
+        raise ApiError(
+            415, "UNSUPPORTED_MEDIA_TYPE", "Unsupported document", f"Cannot accept {exc}; use {SUPPORTED}"
+        ) from exc
 
 
 async def _read(file: UploadFile) -> bytes:

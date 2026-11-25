@@ -662,6 +662,7 @@ source_objects = Table(
     Column("source_kind", Text, nullable=False),
     Column("source_id", UUID(as_uuid=True), nullable=False),
     Column("external_id", Text, nullable=False),
+    Column("parent_external_id", Text),
     Column("title", Text, nullable=False, server_default=""),
     Column("uri", Text),
     Column("status", Text, nullable=False, server_default="CURRENT"),
@@ -786,3 +787,18 @@ Index(
     "ix_derivatives_project_status", derivatives.c.tenant_id, derivatives.c.project_id, derivatives.c.status
 )
 Index("ix_derivatives_sha", derivatives.c.tenant_id, derivatives.c.output_sha256)
+Index(
+    "ix_source_objects_parent",
+    source_objects.c.project_id,
+    source_objects.c.source_kind,
+    source_objects.c.source_id,
+    source_objects.c.parent_external_id,
+    postgresql_where=text("parent_external_id IS NOT NULL"),
+)
+Index(
+    "ix_derivatives_producer_status",
+    derivatives.c.tenant_id,
+    derivatives.c.project_id,
+    derivatives.c.producer,
+    derivatives.c.status,
+)

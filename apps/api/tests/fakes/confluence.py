@@ -58,6 +58,7 @@ class FakeConfluence:
         self.spaces: dict[str, dict[str, Any]] = {}
         self.pages: dict[int, FakePage] = {}
         self.users: dict[str, FakeUser] = {}
+        self.media_requests: list[dict[str, Any]] = []  # downloads that reached another host (INPROOM-166)
         self.failures: list[str] = []  # "timeout" | "500" | "ratelimit" | "redirect"
         self.fail_after: int | None = None  # inject the next failure only after this many more calls
         self.calls: list[tuple[str, str]] = []
@@ -287,9 +288,51 @@ class FakeConfluence:
         return out
 
     # ---- request handling
+    def add_attachment(
+        self,
+        pid: int,
+        aid: str,
+        title: str,
+        data: bytes,
+        media_type: str,
+        *,
+        version: int = 1,
+        redirect: str | None = None,
+    ) -> dict[str, Any]:
+        """An attachment with downloadable bytes (INPROOM-166). `redirect`: where the download redirects to
+        (Cloud sends downloads to its media service)."""
+        page = self.pages[pid]
+        page.attachments = [a for a in page.attachments if a["id"] != aid]
+        att = {
+            "id": aid,
+            "title": title,
+            "metadata": {"mediaType": media_type},
+            "extensions": {"fileSize": len(data)},
+            "version": {"number": version},
+            "_bytes": data,
+            "_redirect": redirect,
+        }
+        page.attachments.append(att)
+        return att
+
+    def _attachment(self, aid: str) -> dict[str, Any] | None:
+        for page in self.pages.values():
+            for att in page.attachments:
+                if att["id"] == aid:
+                    return att
+        return None
+
     def handle(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         self.calls.append((request.method, path))
+        fm = re.fullmatch(r"/file/([A-Za-z0-9]+)/binary", path)
+        if fm:
+            # Atlassian's media service (where Cloud downloads redirect): no auth expected.
+            self.media_requests.append({"host": request.url.host, "headers": dict(request.headers)})
+            att = self._attachment(fm.group(1))
+            if att is None:
+                return self._json(404, {"message": "no such file"})
+            return httpx.Response(200, content=att["_bytes"])
         if self.failures and (self.fail_after is None or self.fail_after <= 0):
             failure = self.failures.pop(0)
             if failure == "timeout":
@@ -312,6 +355,17 @@ class FakeConfluence:
             return self._json(404, {"message": "not found"})
         prefix, rest, params = (m.group(1) or "") + "/rest/api", m.group(2), request.url.params
         expand = params.get("expand", "")
+        dm = re.fullmatch(r"/content/(\d+)/child/attachment/([^/]+)/download", rest)
+        if dm:
+            page = self.pages.get(int(dm.group(1)))
+            att = self._attachment(dm.group(2))
+            if page is None or not self._visible(page, user) or att is None or att not in page.attachments:
+                return self._json(404, {"message": "No attachment found"})
+            if att.get("_redirect"):
+                return httpx.Response(302, headers={"location": att["_redirect"]})
+            return httpx.Response(
+                200, content=att["_bytes"], headers={"content-length": str(len(att["_bytes"]))}
+            )
         rm = re.fullmatch(r"/content/(\d+)/restriction/byOperation/read", rest)
         if rm:  # v1 on Cloud too (v2 has no restrictions API)
             page = self.pages.get(int(rm.group(1)))

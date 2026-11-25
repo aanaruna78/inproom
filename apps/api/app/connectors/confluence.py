@@ -12,6 +12,7 @@ Shares the hardened HTTP core. Only reads: write capability comes from the space
 
 import base64
 import hashlib
+import re
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -20,9 +21,9 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 import httpx
 
-from app.connectors.base import Account, NotFoundOrNoAccess
+from app.connectors.base import Account, NotFoundOrNoAccess, ProviderError
 from app.connectors.egress import validate_confluence_url
-from app.connectors.http import ProviderHttp
+from app.connectors.http import ProviderHttp, download
 from app.connectors.vault import Secret
 
 PAGE_SIZE = 50
@@ -120,6 +121,8 @@ class LivePage:
 class PageListing:
     pages: list[PageMeta] = field(default_factory=list)
     truncated: bool = False
+    # (page_id, attachment_id, max_bytes) -> bytes, bound to the provider that listed (INPROOM-166)
+    downloader: Callable[[str, str, int], bytes] | None = field(default=None, repr=False, compare=False)
 
 
 def content_hash(storage: str) -> str:
@@ -265,6 +268,30 @@ class ConfluenceProvider:
             for a in self._all(f"{self.v2}/pages/{int(page_id)}/attachments", {"limit": PAGE_SIZE}, 5)
         ]
 
+    def download_attachment(self, page_id: str, attachment_id: str, max_bytes: int) -> bytes:
+        """An attachment's bytes (INPROOM-166), via the fixed REST download path only: never a URL taken from
+        a provider response. Cloud redirects to its media service; that hop must be allowlisted."""
+        if not re.fullmatch(r"[A-Za-z0-9]{1,64}", attachment_id):
+            raise ProviderError("invalid attachment id")
+        path = f"{self.v1}/content/{int(page_id)}/child/attachment/{attachment_id}/download"
+        return download(self._http, path, max_bytes, self._redirect_allowed)
+
+    def _redirect_allowed(self, url: str) -> bool:
+        from app.config import get_settings
+        from app.connectors.egress import EgressDenied, validate_base_url
+
+        parts = urlsplit(url)
+        if parts.username or parts.password:
+            return False
+        origin = f"{parts.scheme}://{parts.netloc}"
+        if origin == self.base_url.split("/wiki")[0].rstrip("/") or url.startswith(self.base_url + "/"):
+            return True
+        try:
+            validate_base_url(origin, get_settings().confluence_attachment_hosts, "attachment host")
+        except EgressDenied:
+            return False
+        return True
+
     def _v2_labels(self, page_id: str) -> list[str]:
         return sorted(
             lbl["name"]
@@ -275,7 +302,9 @@ class ConfluenceProvider:
 
     def iter_pages(self, space: Space, cap: int = MAX_PAGES) -> PageListing:
         """Every current page of the space (drafts, archived and trashed pages are never requested)."""
-        return self._v2_pages(space, cap) if self.cloud else self._v1_pages(space, cap)
+        listing = self._v2_pages(space, cap) if self.cloud else self._v1_pages(space, cap)
+        listing.downloader = self.download_attachment
+        return listing
 
     def _v2_pages(self, space: Space, cap: int) -> PageListing:
         listing = PageListing()

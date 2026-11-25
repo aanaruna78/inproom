@@ -54,6 +54,7 @@ def record_revision(
     provider_version: str | None = None,
     acl: dict[str, Any] | None = None,
     job_id: uuid.UUID | None = None,
+    parent_external_id: str | None = None,
 ) -> Recorded:
     if source_kind not in SOURCE_KINDS:
         raise ValueError(f"unknown source kind {source_kind!r}")
@@ -74,7 +75,9 @@ def record_revision(
         "source_id": source_id,
         "external_id": external_id,
     }
-    upsert = pg_insert(source_objects).values(tenant_id=tenant, title=title, uri=uri, acl=acl, **ident)
+    upsert = pg_insert(source_objects).values(
+        tenant_id=tenant, title=title, uri=uri, acl=acl, parent_external_id=parent_external_id, **ident
+    )
     conn.execute(
         upsert.on_conflict_do_update(
             index_elements=list(ident),
