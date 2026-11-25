@@ -130,6 +130,10 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("GET", "/v1/projects/{project_id}/migration"): ("project", "project.read"),
     ("PUT", "/v1/projects/{project_id}/migration"): ("project", "project.source.manage"),
     ("POST", "/v1/projects/{project_id}/migration/scan"): ("project", "project.source.manage"),
+    # INPROOM-152
+    ("GET", "/v1/projects/{project_id}/migration/issues"): ("project", "project.read"),
+    ("POST", "/v1/projects/{project_id}/migration/confirm"): ("project", "project.source.manage"),
+    ("GET", "/v1/projects/{project_id}/migration/drift"): ("project", "project.read"),
     # INPROOM-146
     ("GET", "/v1/connections/attention"): ("tenant", "tenant.connection.manage"),
     ("GET", "/v1/connections/{connection_id}/sources"): ("connection", "tenant.connection.manage"),
@@ -159,6 +163,8 @@ BUSINESS_RULE = {
     # The shared world's project is a NEW project: authorized callers get 409 NOT_A_MIGRATION_PROJECT.
     ("PUT", "/v1/projects/{project_id}/migration"): "409",
     ("POST", "/v1/projects/{project_id}/migration/scan"): "409",
+    ("POST", "/v1/projects/{project_id}/migration/confirm"): "409",
+    ("GET", "/v1/projects/{project_id}/migration/drift"): "409",  # no baseline in the shared world
 }
 
 # actor -> (token roles, project membership role or None, same tenant?)
@@ -367,6 +373,8 @@ def _call(client, method, path, world: World, headers):
         kwargs["headers"]["If-Match"] = f'"{world.project["version"]}"'
     elif method == "POST" and path.endswith("/adopt"):
         kwargs["json"] = {"from_connection_id": world.connection["id"]}
+    elif method == "POST" and path.endswith("/migration/confirm"):
+        kwargs["headers"]["If-Match"] = '"1"'
     elif method == "PUT" and path.endswith("/migration"):
         kwargs["json"] = {"jira_source_id": world.jira_source["id"]}
     elif method == "PUT" and path.endswith("/mapping"):

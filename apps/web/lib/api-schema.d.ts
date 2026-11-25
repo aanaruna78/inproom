@@ -433,6 +433,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/migration/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm the reviewed inventory as the project's baseline (If-Match); activates the project */
+        post: operations["confirm_v1_projects__project_id__migration_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/migration/drift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What changed in Jira since the confirmed baseline (the baseline itself never moves) */
+        get: operations["drift_v1_projects__project_id__migration_drift_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/migration/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The inventory (Jira keys, hierarchy, flags); filter by type, flag or parent ('root' = top) */
+        get: operations["list_issues_v1_projects__project_id__migration_issues_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/migration/scan": {
         parameters: {
             query?: never;
@@ -1186,6 +1237,27 @@ export interface components {
             snapshot_version: number;
             source: components["schemas"]["JiraSource"];
         };
+        /** Drift */
+        Drift: {
+            /** Added */
+            added: {
+                [key: string]: unknown;
+            }[];
+            /** Baseline At */
+            baseline_at: string | null;
+            /** Changed */
+            changed: {
+                [key: string]: unknown;
+            }[];
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Removed */
+            removed: {
+                [key: string]: unknown;
+            }[];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1219,6 +1291,57 @@ export interface components {
             webhooks: {
                 [key: string]: number;
             };
+        };
+        /** InventoryIssue */
+        InventoryIssue: {
+            /**
+             * Children
+             * @default 0
+             */
+            children: number;
+            /** Created At */
+            created_at: string | null;
+            /** Creator */
+            creator: string | null;
+            /** Flags */
+            flags: string[];
+            /** Jira Issue Id */
+            jira_issue_id: string;
+            /** Key */
+            key: string;
+            /** Links */
+            links: {
+                [key: string]: unknown;
+            }[];
+            /** Original Key */
+            original_key: string;
+            /** Parent Issue Id */
+            parent_issue_id: string | null;
+            /** Parent Key */
+            parent_key: string | null;
+            /** Present */
+            present: boolean;
+            /** Reporter */
+            reporter: string | null;
+            /** Status */
+            status: string;
+            /** Status Raw */
+            status_raw: string;
+            /** Summary */
+            summary: string;
+            /** Type */
+            type: string;
+            /** Type Raw */
+            type_raw: string;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** InventoryPage */
+        InventoryPage: {
+            /** Items */
+            items: components["schemas"]["InventoryIssue"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** IssueLink */
         IssueLink: {
@@ -1545,6 +1668,10 @@ export interface components {
             project_mode: string;
             /** Project Status */
             project_status: string;
+            /** Write Readiness */
+            write_readiness?: {
+                [key: string]: unknown;
+            };
         };
         /** MyPermissions */
         MyPermissions: {
@@ -3940,6 +4067,164 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    confirm_v1_projects__project_id__migration_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationState"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description problem+json */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    drift_v1_projects__project_id__migration_drift_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Drift"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_issues_v1_projects__project_id__migration_issues_get: {
+        parameters: {
+            query?: {
+                type?: string | null;
+                flag?: string | null;
+                parent?: string | null;
+                present?: boolean;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryPage"];
+                };
+            };
+            /** @description problem+json */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

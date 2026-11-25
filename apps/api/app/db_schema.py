@@ -640,6 +640,7 @@ migration_issues = Table(
     Column("present", Boolean, nullable=False, server_default=text("true")),
     Column("first_seen_run", UUID(as_uuid=True), nullable=False),
     Column("last_seen_run", UUID(as_uuid=True), nullable=False),
+    Column("baseline_snapshot", JSONB),
     PrimaryKeyConstraint("project_id", "jira_issue_id", name="pk_migration_issues"),
     ForeignKeyConstraint(
         ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_migration_issues_project"
