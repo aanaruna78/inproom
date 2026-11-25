@@ -242,3 +242,28 @@ def test_anchors_are_unique_and_follow_the_heading_path():
     before = parse_document(b"# Alpha\n\n## Setup\n\nx", f.MARKDOWN)
     after = parse_document(b"# Beta\n\n## Setup\n\ny\n\n# Alpha\n\n## Setup\n\nx", f.MARKDOWN)
     assert anchors(before)[1] == "alpha--setup" and "alpha--setup" in anchors(after)
+
+
+@pytest.mark.parametrize(
+    ("data", "media_type"),
+    [
+        (b"<table><tr><td>" + b"x" * 11 + b"</td></tr></table>", f.HTML),
+        (b"| H |\n|---|\n| " + b"x" * 11 + b" |\n", f.MARKDOWN),
+        (b"# " + b"x" * 11, f.MARKDOWN),
+        (b"<h2>" + b"x" * 11 + b"</h2>", f.HTML),
+    ],
+    ids=["html-cell", "markdown-cell", "markdown-heading", "html-heading"],
+)
+def test_table_cells_and_headings_count_against_the_text_limit(monkeypatch, data, media_type):
+    """INPROOM-169: no emitted text bypasses the budget."""
+    monkeypatch.setattr(model, "MAX_TEXT_CHARS", 10)
+    assert code_of(data, media_type) == "PARSE_LIMIT_EXCEEDED"
+
+
+def test_docx_table_cells_count_against_the_text_limit(monkeypatch):
+    def build(d):
+        d.add_table(rows=1, cols=1).cell(0, 0).text = "y" * 11
+
+    data = fx.docx(build)
+    monkeypatch.setattr(model, "MAX_TEXT_CHARS", 10)
+    assert code_of(data, f.DOCX) == "PARSE_LIMIT_EXCEEDED"

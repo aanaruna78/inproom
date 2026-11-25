@@ -51,7 +51,6 @@ def test_heading_only_documents_are_not_empty(data, media):
     assert doc["sections"][0]["heading"] == "A useful title"
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-169: table text bypasses the text limit")
 @pytest.mark.parametrize("media", [f.HTML, f.MARKDOWN])
 def test_table_text_is_subject_to_the_real_text_limit(media):
     cell = "x" * (model.MAX_TEXT_CHARS + 1)

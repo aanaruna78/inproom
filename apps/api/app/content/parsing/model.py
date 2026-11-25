@@ -105,10 +105,18 @@ class Builder:
         self.sections.append(section)
         return section
 
+    def _spend(self, chars: int) -> None:
+        """Every character the document emits - body text, headings, table cells - counts against one budget
+        (INPROOM-169). Intermediate buffers are bounded by the input size (the content size limit)."""
+        self.chars += chars
+        if self.chars > MAX_TEXT_CHARS:
+            raise ParseError("PARSE_LIMIT_EXCEEDED", f"more than {MAX_TEXT_CHARS} characters of text")
+
     def heading(self, level: int, text: str, page: int | None = None) -> None:
         text = " ".join(text.split())
         if not text:
             return
+        self._spend(len(text))
         while self.stack and self.stack[-1][0] >= level:
             self.stack.pop()
         # The anchor follows the heading PATH: the parent's (already unique) anchor + "--" + this heading's
@@ -135,9 +143,7 @@ class Builder:
         text = text.strip()
         if not text:
             return
-        self.chars += len(text)
-        if self.chars > MAX_TEXT_CHARS:
-            raise ParseError("PARSE_LIMIT_EXCEEDED", f"more than {MAX_TEXT_CHARS} characters of text")
+        self._spend(len(text))
         self._current().parts.append(text)
 
     def table(self, rows: list[list[str]]) -> None:
@@ -147,6 +153,7 @@ class Builder:
         self.cells += sum(len(r) for r in rows)
         if self.cells > MAX_TABLE_CELLS:
             raise ParseError("PARSE_LIMIT_EXCEEDED", f"more than {MAX_TABLE_CELLS} table cells")
+        self._spend(sum(len(c) for r in rows for c in r))
         self._current().tables.append(rows)
 
     def attachment(self, filename: str) -> None:
