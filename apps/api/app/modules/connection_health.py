@@ -407,6 +407,7 @@ def adopt(
             )
         }
         token = credential_of(conn, principal, target)
+        archived = _archived(conn, {c["project_id"] for c in candidates})
     provider = (
         provider_for(target["provider"], target["base_url"], token, transports)
         if kind == "git"
@@ -417,8 +418,16 @@ def adopt(
     natural = {"git": "provider_repo_id", "jira": "jira_project_id", "confluence": "space_id"}[kind]
     verdicts: dict[uuid.UUID, str | None] = {}
     skipped = []
+    archived_reason = "project is archived (read-only); restore it, then adopt again"
+
+    def skip(source: dict[str, Any], reason: str) -> None:
+        skipped.append({"source_id": str(source["id"]), "name": source[name], "reason": reason})
+
     with provider_errors():
         for source in candidates:
+            if source["project_id"] in archived:  # INPROOM-150: archived projects are read-only
+                skip(source, archived_reason)
+                continue
             if (source["project_id"], source[natural]) in taken:
                 skipped.append(
                     {
@@ -434,8 +443,17 @@ def adopt(
     now = datetime.now(UTC)
     with tenant_session(principal.tenant_id) as conn:
         _connection(conn, principal, request, connection_id, lock=True)
+        # Re-check under the project locks (archiving takes the same lock), so a project archived while the
+        # provider was being asked is never modified (INPROOM-150).
+        archived_now = _archived(
+            conn, {c["project_id"] for c in candidates if c["id"] in verdicts}, lock=True
+        )
         for source in candidates:
             if source["id"] not in verdicts:
+                continue
+            if source["project_id"] in archived_now:
+                del verdicts[source["id"]]
+                skip(source, archived_reason)
                 continue
             reason = verdicts[source["id"]]
             values: dict[str, Any] = {
@@ -492,6 +510,15 @@ def adopt(
                 },
             )
     return result
+
+
+def _archived(conn: Connection, project_ids: set[uuid.UUID], lock: bool = False) -> set[uuid.UUID]:
+    if not project_ids:
+        return set()
+    stmt = select(projects.c.id, projects.c.status).where(projects.c.id.in_(project_ids))
+    if lock:
+        stmt = stmt.with_for_update()
+    return {r.id for r in conn.execute(stmt) if r.status == "ARCHIVED"}
 
 
 def skip_queued_jobs(conn: Connection, tenant_id: uuid.UUID, row: dict[str, Any]) -> int:

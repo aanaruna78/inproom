@@ -159,3 +159,58 @@ def test_attention_lists_invalid_connections_in_plain_language(two_spaces):
     assert item["status"] == "INVALID" and item["problems"][0]["title"] == "Reauthorization needed"
     assert item["affected_sources"] == 2
     assert e.client.get("/v1/connections/attention", headers=e.h("v", ())).status_code == 403
+
+
+def _second_project(e):
+    ws = e.client.get("/v1/workspaces", headers=e.h()).json()["items"][0]["id"]
+    pid = e.client.post(
+        f"/v1/workspaces/{ws}/projects", json={"key": "CNF2", "name": "Second"}, headers=e.h()
+    ).json()["id"]
+    r = e.client.put(f"/v1/projects/{pid}/sources/confluence/{e.cid}:ENG", json={}, headers=e.h())
+    assert r.status_code == 200, r.text
+    return pid, r.json()["source"]["id"]
+
+
+def test_adoption_skips_archived_projects_and_reports_them(selected):
+    """INPROOM-150: mixed active / archived projects get explicit outcomes; archived rows are untouched."""
+    e = selected
+    other_pid, other_sid = _second_project(e)
+    e.client.post(f"/v1/connections/{e.cid}/revoke", headers=e.h())
+    assert e.client.post(f"/v1/projects/{e.pid}/archive", headers=e.h()).status_code == 200
+    before = e.q("SELECT row_to_json(s)::text FROM project_confluence_sources s WHERE id=:i", i=e.sid)
+    new = e.connect(name="Replacement").json()["id"]
+    result = e.client.post(
+        f"/v1/connections/{new}/adopt", json={"from_connection_id": e.cid}, headers=e.h()
+    ).json()
+    assert [s["source_id"] for s in result["adopted"]] == [other_sid]
+    assert [(s["source_id"], s["reason"]) for s in result["skipped"]] == [
+        (e.sid, "project is archived (read-only); restore it, then adopt again")
+    ]
+    assert e.q("SELECT row_to_json(s)::text FROM project_confluence_sources s WHERE id=:i", i=e.sid) == before
+    assert e.q("SELECT count(*) FROM sync_jobs WHERE tenant_id=:t AND source_id=:i", i=e.sid) == 0
+    assert other_pid
+
+
+def test_project_archived_during_adoption_is_left_alone(selected, monkeypatch):
+    """INPROOM-150: a project archived while the new credential is being verified is re-checked under the
+    project lock and skipped."""
+    from app.connectors.confluence import ConfluenceProvider
+
+    e = selected
+    e.client.post(f"/v1/connections/{e.cid}/revoke", headers=e.h())
+    new = e.connect(name="Replacement").json()["id"]
+    original, fired = ConfluenceProvider.get_space, []
+
+    def archived_meanwhile(provider, key):
+        result = original(provider, key)
+        if not fired:
+            fired.append(1)
+            assert e.client.post(f"/v1/projects/{e.pid}/archive", headers=e.h()).status_code == 200
+        return result
+
+    monkeypatch.setattr(ConfluenceProvider, "get_space", archived_meanwhile)
+    result = e.client.post(
+        f"/v1/connections/{new}/adopt", json={"from_connection_id": e.cid}, headers=e.h()
+    ).json()
+    assert fired and result["adopted"] == [] and len(result["skipped"]) == 1
+    assert str(e.q("SELECT connection_id FROM project_confluence_sources WHERE id=:i", i=e.sid)) == e.cid

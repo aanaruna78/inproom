@@ -2,7 +2,7 @@
 
 Unfixed cases are strict xfails naming their defect, so each fix must flip them to passing:
 - INPROOM-149: a health check in flight must not undo an exclusion committed meanwhile (fixed);
-- INPROOM-150: adoption must leave archived projects' sources untouched.
+- INPROOM-150: adoption must leave archived projects' sources untouched (fixed).
 """
 
 import pytest
@@ -48,7 +48,6 @@ def test_health_in_flight_must_preserve_new_exclusion(selected, monkeypatch):
     assert cause == "excluded", f"health overwrote the person's exclusion: pause_cause={cause!r}"
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-150: adoption mutates archived projects")
 def test_adoption_must_preserve_archived_project_read_only(selected):
     e = selected
     assert e.client.post(f"/v1/connections/{e.cid}/revoke", headers=e.h()).status_code == 200
