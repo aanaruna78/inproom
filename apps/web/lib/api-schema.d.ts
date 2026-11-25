@@ -363,6 +363,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stored source items (pages, issues) with their current revision; filter by kind, source, status */
+        get: operations["list_objects_v1_projects__project_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One stored source item: status, ACL and its full revision lineage */
+        get: operations["get_object_v1_projects__project_id__content__kind___source_id___external_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/raw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The original bytes of one revision (ETag = sha256); withheld unless the item is in scope */
+        get: operations["get_raw_v1_projects__project_id__content__kind___source_id___external_id__revisions__seq__raw_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/lifecycle": {
         parameters: {
             query?: never;
@@ -2167,6 +2218,58 @@ export interface components {
             /** Next Page */
             next_page: number | null;
         };
+        /** Revision */
+        Revision: {
+            /** Acl */
+            acl: {
+                [key: string]: unknown;
+            };
+            /** Content Sha256 */
+            content_sha256: string;
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
+            /** Job Id */
+            job_id: string | null;
+            /** Media Type */
+            media_type: string;
+            /** Parent Seq */
+            parent_seq: number | null;
+            /** Provider Version */
+            provider_version: string | null;
+            /** Purged At */
+            purged_at: string | null;
+            /** Seq */
+            seq: number;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Stored */
+            stored: boolean;
+        };
+        /** RevisionSummary */
+        RevisionSummary: {
+            /** Content Sha256 */
+            content_sha256: string;
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
+            /** Media Type */
+            media_type: string;
+            /** Provider Version */
+            provider_version: string | null;
+            /** Purged At */
+            purged_at: string | null;
+            /** Seq */
+            seq: number;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Stored */
+            stored: boolean;
+        };
         /** SchemaSnapshot */
         SchemaSnapshot: {
             /** Diff */
@@ -2397,6 +2500,103 @@ export interface components {
             source_id: string;
             /** Status */
             status: string;
+        };
+        /** SourceObject */
+        SourceObject: {
+            /** Acl */
+            acl: {
+                [key: string]: unknown;
+            };
+            current: components["schemas"]["RevisionSummary"] | null;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** External Id */
+            external_id: string;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Revisions */
+            revisions: number;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Source Kind */
+            source_kind: string;
+            /** Status */
+            status: string;
+            /** Status Reason */
+            status_reason: string | null;
+            /** Title */
+            title: string;
+            /** Uri */
+            uri: string | null;
+        };
+        /** SourceObjectDetail */
+        SourceObjectDetail: {
+            /** Acl */
+            acl: {
+                [key: string]: unknown;
+            };
+            current: components["schemas"]["RevisionSummary"] | null;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** External Id */
+            external_id: string;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Lineage */
+            lineage: components["schemas"]["Revision"][];
+            /** Revisions */
+            revisions: number;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Source Kind */
+            source_kind: string;
+            /** Status */
+            status: string;
+            /** Status Reason */
+            status_reason: string | null;
+            /** Title */
+            title: string;
+            /** Uri */
+            uri: string | null;
+        };
+        /** SourceObjectPage */
+        SourceObjectPage: {
+            /** Items */
+            items: components["schemas"]["SourceObject"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** SourceSyncStatus */
         SourceSyncStatus: {
@@ -3755,6 +3955,148 @@ export interface operations {
             };
             /** @description problem+json */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_objects_v1_projects__project_id__content_get: {
+        parameters: {
+            query?: {
+                kind?: ("confluence" | "jira" | "git" | "upload") | null;
+                source_id?: string | null;
+                status?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceObjectPage"];
+                };
+            };
+            /** @description problem+json */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_object_v1_projects__project_id__content__kind___source_id___external_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                kind: "confluence" | "jira" | "git" | "upload";
+                source_id: string;
+                external_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceObjectDetail"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_raw_v1_projects__project_id__content__kind___source_id___external_id__revisions__seq__raw_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                kind: "confluence" | "jira" | "git" | "upload";
+                source_id: string;
+                external_id: string;
+                seq: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the original bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
