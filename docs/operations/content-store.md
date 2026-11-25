@@ -104,6 +104,10 @@ Every stored revision of a supported type gets a **`parse@2`** derivative (kind 
 - Inserting another branch of headings elsewhere does not change an existing heading's anchor.
 
 `parse@1` outputs (before INPROOM-168) are rebuilt by `POST /content/invalidate` with `producer: "parse"`.
+Invalidation also retires queued work for obsolete producer versions, so a pending `parse@1` job cannot
+become a false failure during that rebuild. Repeating the request while the current version is pending
+does not duplicate or restart its work. The parse-failures list reports the registered parser version;
+obsolete failure records remain in derivative history for inspection.
 
 | Format | How it gets in | Sections and anchors |
 |---|---|---|

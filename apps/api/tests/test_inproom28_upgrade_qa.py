@@ -1,6 +1,6 @@
 """QA re-test probe for INPROOM-28 at 695eb27 (INPROOM-28-retest-695eb27.zip: qa_inproom28_upgrade.py),
 committed as a regression: the parse@1 -> parse@2 rebuild described in the runbook leaves no stale failure.
-The PENDING case is a strict xfail naming INPROOM-172 until fixed.
+Both cases pass since INPROOM-172 was fixed.
 """
 
 from dataclasses import replace
@@ -20,9 +20,7 @@ env = conf.env
     "old_status",
     [
         "READY",
-        pytest.param(
-            "PENDING", marks=pytest.mark.xfail(strict=True, reason="INPROOM-172: stale parse@1 failure")
-        ),
+        "PENDING",
     ],
 )
 def test_old_parser_revision_rebuild_has_no_stale_failure(env, monkeypatch, old_status):

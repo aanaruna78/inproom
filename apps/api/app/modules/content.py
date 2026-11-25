@@ -586,7 +586,13 @@ def list_parse_failures(
         select(d.c.id, d.c.error, d.c.built_at, d.c.created_at, r.c.seq, o.c.source_kind, o.c.source_id)
         .add_columns(o.c.external_id, o.c.title, o.c.status)
         .select_from(d.join(r, r.c.id == d.c.revision_id).join(o, o.c.current_revision_id == r.c.id))
-        .where(d.c.project_id == project_id, d.c.producer == "parse", d.c.status == "FAILED")
+        .where(
+            d.c.tenant_id == principal.tenant_id,
+            d.c.project_id == project_id,
+            d.c.producer == "parse",
+            d.c.producer_version == PRODUCERS["parse"].version,
+            d.c.status == "FAILED",
+        )
     )
     order = (d.c.created_at, cast(d.c.id, Text))
     if cursor:
