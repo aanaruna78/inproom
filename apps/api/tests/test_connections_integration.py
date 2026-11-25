@@ -312,3 +312,28 @@ def test_validation_errors_never_echo_the_submitted_token(env):
     r = env.client.post("/v1/connections", json={"display_name": "x", "token": short}, headers=env.h())
     assert r.status_code == 422 and short not in r.text
     assert all(set(e) <= {"type", "loc", "msg"} for e in r.json()["errors"])
+
+
+def test_health_check_in_flight_keeps_a_concurrent_exclusion(connected, monkeypatch):
+    """INPROOM-149 (GitHub): an exclusion committed while the health check talks to GitHub must survive."""
+    from app.connectors.github import GitHubProvider
+
+    env = connected
+    env.select("1", ["main"])
+    repo = env.client.get(f"/v1/projects/{env.pid}/sources/repositories", headers=env.h()).json()[0]
+    env.gh.tokens[VALID_TOKEN].access.pop(1)  # lose access: the next check pauses it (cause: access)
+    env.client.post(f"/v1/connections/{env.cid}/check", headers=env.h())
+    env.gh.tokens[VALID_TOKEN].access[1] = dict(FULL)  # access restored: a check would resume it...
+    original, fired = GitHubProvider.get_repository, []
+
+    def excluded_meanwhile(provider, repo_id):
+        result = original(provider, repo_id)
+        if not fired:
+            fired.append(1)  # ...but a project admin excludes it while the check is talking to GitHub
+            path = f"/v1/projects/{env.pid}/sources/git/{repo['id']}/exclude"
+            assert env.client.post(path, headers=env.h()).status_code == 200
+        return result
+
+    monkeypatch.setattr(GitHubProvider, "get_repository", excluded_meanwhile)
+    env.client.post(f"/v1/connections/{env.cid}/check", headers=env.h())
+    assert fired and env.q("SELECT pause_cause FROM project_repositories WHERE tenant_id=:t") == "excluded"

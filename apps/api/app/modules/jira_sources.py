@@ -13,7 +13,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Header, Path, Query, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import Connection, delete, insert, select, update
+from sqlalchemy import Connection, delete, insert, or_, select, update
 
 from app import audit
 from app.api_errors import ApiError, conflict, precondition_failed
@@ -683,6 +683,13 @@ def evaluate_jira(
                     .where(
                         project_jira_sources.c.tenant_id == principal.tenant_id,
                         project_jira_sources.c.id == row["id"],
+                        # INPROOM-149: re-check at write time. A person may have excluded the source (or the
+                        # connection been revoked) while the provider calls ran outside this transaction:
+                        # their pause then wins and this conditional update simply matches no row.
+                        or_(
+                            project_jira_sources.c.pause_cause.is_(None),
+                            project_jira_sources.c.pause_cause.notin_(HELD),
+                        ),
                     )
                     .values(
                         **values, updated_at=datetime.now(UTC), version=project_jira_sources.c.version + 1

@@ -246,3 +246,26 @@ def test_revoke_pauses_jira_sources(selected):
         == 204
     )
     assert env.q("SELECT count(*) FROM jira_schema_snapshots WHERE tenant_id=:t") == 0
+
+
+def test_health_check_in_flight_keeps_a_concurrent_exclusion(selected, monkeypatch):
+    """INPROOM-149 (Jira): an exclusion committed while the health check talks to Jira must survive."""
+    from app.connectors.jira import JiraProvider
+
+    env = selected
+    env.jira.revoke(fj.VALID_TOKEN, "ABC")
+    env.client.post(f"/v1/connections/{env.cid}/check", headers=env.h())
+    env.jira.users[fj.VALID_TOKEN].access["ABC"] = set(fj.BROWSE_ONLY)
+    original, fired = JiraProvider.my_permissions, []
+
+    def excluded_meanwhile(provider, key):
+        result = original(provider, key)
+        if not fired:
+            fired.append(1)
+            path = f"/v1/projects/{env.pid}/sources/jira/{env.sid}/exclude"
+            assert env.client.post(path, headers=env.h()).status_code == 200
+        return result
+
+    monkeypatch.setattr(JiraProvider, "my_permissions", excluded_meanwhile)
+    env.client.post(f"/v1/connections/{env.cid}/check", headers=env.h())
+    assert fired and env.q("SELECT pause_cause FROM project_jira_sources WHERE tenant_id=:t") == "excluded"

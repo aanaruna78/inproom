@@ -10,7 +10,7 @@ Provider calls happen first, outside any transaction; the results are then appli
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 
 from app.auth import Principal
 from app.connectors.base import GitProvider, NotFoundOrNoAccess
@@ -89,6 +89,13 @@ def evaluate(
                     .where(
                         project_repositories.c.tenant_id == principal.tenant_id,
                         project_repositories.c.id == row["id"],
+                        # INPROOM-149: re-check at write time. A person may have excluded the source (or the
+                        # connection been revoked) while the provider calls ran outside this transaction:
+                        # their pause then wins and this conditional update simply matches no row.
+                        or_(
+                            project_repositories.c.pause_cause.is_(None),
+                            project_repositories.c.pause_cause.notin_(HELD),
+                        ),
                     )
                     .values(
                         **values, updated_at=datetime.now(UTC), version=project_repositories.c.version + 1

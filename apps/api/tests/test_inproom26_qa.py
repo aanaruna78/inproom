@@ -1,7 +1,7 @@
 """QA probes for INPROOM-26 (build/qa/INPROOM-26/test_probes.py at d6e1ce3), committed as regressions.
 
 Unfixed cases are strict xfails naming their defect, so each fix must flip them to passing:
-- INPROOM-149: a health check in flight must not undo an exclusion committed meanwhile;
+- INPROOM-149: a health check in flight must not undo an exclusion committed meanwhile (fixed);
 - INPROOM-150: adoption must leave archived projects' sources untouched.
 """
 
@@ -23,7 +23,6 @@ def pause_access(e):
     e.conf.users[fc.VALID_TOKEN].spaces["ENG"] = {"read"}
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-149: health overwrites a concurrent exclusion")
 def test_health_in_flight_must_preserve_new_exclusion(selected, monkeypatch):
     e = selected
     pause_access(e)

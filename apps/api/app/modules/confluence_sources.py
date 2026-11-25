@@ -13,7 +13,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, Path, Query, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import Connection, delete, insert, select, update
+from sqlalchemy import Connection, delete, insert, or_, select, update
 
 from app import audit
 from app.api_errors import ApiError, conflict
@@ -591,6 +591,13 @@ def evaluate_confluence(
                     .where(
                         project_confluence_sources.c.tenant_id == principal.tenant_id,
                         project_confluence_sources.c.id == row["id"],
+                        # INPROOM-149: re-check at write time. A person may have excluded the source (or the
+                        # connection been revoked) while the provider calls ran outside this transaction:
+                        # their pause then wins and this conditional update simply matches no row.
+                        or_(
+                            project_confluence_sources.c.pause_cause.is_(None),
+                            project_confluence_sources.c.pause_cause.notin_(HELD),
+                        ),
                     )
                     .values(
                         status=status,
