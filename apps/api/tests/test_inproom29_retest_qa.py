@@ -14,7 +14,6 @@ pytestmark = pytest.mark.integration
 env, connected, repo = base.env, base.connected, base.repo
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-177: a crash leaves new code citing the old commit")
 def test_changed_file_citation_is_correct_even_if_the_code_job_crashes(repo, monkeypatch):
     e = repo
     head = e.gh.repos[1].commit(

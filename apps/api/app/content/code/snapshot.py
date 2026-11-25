@@ -395,6 +395,13 @@ def _index_branch(
                 acl=acl,
                 job_id=ctx.job["id"],
             )
+            # The revision and the commit it is verified at become visible TOGETHER: a crash later in the run
+            # can never leave new content citing the previous commit (INPROOM-177).
+            conn.execute(
+                update(source_objects)
+                .where(source_objects.c.id == done.object_id)
+                .values(verified_ref=commit)
+            )
         run["confirmed"].append(external)
         if done.created:
             run["stored"] += 1

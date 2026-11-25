@@ -111,3 +111,28 @@ def test_a_paused_repository_is_not_indexed(repo):
     skipped = run(e)
     assert (skipped["source_kind"], skipped["status"]) == ("code", "SKIPPED")
     assert revisions(e) == 0
+
+
+def test_a_crash_never_leaves_new_code_citing_the_old_commit(repo, monkeypatch):
+    """INPROOM-177 (re-test): a file's new revision and its verified commit commit together, so even with the
+    code job crashed mid-run, its new symbols cite the commit that contains them."""
+    e = repo
+    base.index(e)
+    real = snapshot.record_revision
+    head = e.gh.repos[1].commit(
+        "main", {"src/app.py": b"def renamed_handler():\n    pass\n", "zz.py": b"Z = 1\n"}
+    )
+
+    def crash_on_the_second(*args, **kwargs):
+        if kwargs["external_id"] == "main:zz.py":
+            raise RuntimeError("worker killed")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(snapshot, "record_revision", crash_on_the_second)
+    due(e.tenant)
+    assert run(e, kind="git", schedule=True)["status"] == "SUCCEEDED"
+    assert run(e)["error"] == "INTERNAL_ERROR"  # crashed; the retry is pending
+    assert run(e, kind="derive")["status"] == "SUCCEEDED"
+    r = e.client.get(f"/v1/projects/{e.pid}/code/search", params={"q": "renamed_handler"}, headers=e.h())
+    [hit] = r.json()["items"]
+    assert hit["citation"]["commit"] == head
