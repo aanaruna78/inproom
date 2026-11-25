@@ -64,6 +64,7 @@ def test_each_revision_gets_its_derivative_and_a_new_revision_supersedes_it(sele
         "built": 6,  # parse@1 and text@1 for each of the three pages
         "failed": 0,
         "skipped": 0,
+        "failures": {},
         "more": False,
     }
     first = derived(e, "101", 1)

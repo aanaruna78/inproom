@@ -102,6 +102,10 @@ ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/v1/projects/{project_id}/migration/confirm"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/migration/drift"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/content"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/content/parse-failures"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/document"): (
+        "project_scoped"
+    ),
     ("POST", "/v1/projects/{project_id}/documents"): "project_scoped",
     ("PUT", "/v1/projects/{project_id}/documents/{document_id}"): "project_scoped",
     ("DELETE", "/v1/projects/{project_id}/documents/{document_id}"): "project_scoped",

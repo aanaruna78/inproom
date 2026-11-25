@@ -92,6 +92,61 @@ The job results show `content: {revisions, unchanged, withheld}`.
   - Bumping a producer's version and invalidating rebuilds everything.
 - **FAILED codes:** `PRODUCER_FAILED`, `NOT_STORED`, `BLOB_MISSING`, `BLOB_CORRUPT` and `UNKNOWN_PRODUCER`. They are explained in the error catalog. Invalidate after fixing the cause.
 
+## Documents and parsing (INPROOM-28)
+
+Every stored revision of a supported type gets a **`parse@1`** derivative (kind `document`): a structured document whose sections have stable anchors, so citations can point at a page or section.
+
+| Format | How it gets in | Sections and anchors |
+|---|---|---|
+| PDF | upload, Confluence attachment | one per page, `page-N` |
+| DOCX | upload, Confluence attachment | Title and Heading N styles; heading slugs (`-2`, `-3` for duplicates); tables |
+| Markdown | upload, attachment (`.md`) | headings; GFM tables; code blocks |
+| HTML, Confluence storage | upload, attachment, Confluence pages | h1–h6; tables; `ri:attachment` references |
+| Plain text | upload, attachment (`.txt`) | paragraph groups of about 4,000 characters, `para-N` |
+| Jira issue | Jira sync | `field-summary`, `field-description`, `field-environment`, text custom fields |
+
+### Reading parsed documents
+
+| Route | Permission | Notes |
+|---|---|---|
+| `GET …/content/{kind}/{source_id}/{external_id}/revisions/{seq}/document` | project.read | Sections, anchors, tables and attachment references resolved to stored items. The same withholding as raw bytes. 409 `NOT_PARSED` (`parse_status` PENDING, FAILED or NONE, plus the `failure` code) when not parsed. |
+| `GET /v1/projects/{id}/content/parse-failures` | project.read | Items whose **current** revision failed to parse, newest first, with code and detail |
+
+### Parse failures
+
+| Code | Meaning | What to do |
+|---|---|---|
+| `PARSE_MALFORMED` | Damaged, truncated, or not what its type says (for example, not UTF-8) | Re-save or re-export the file, then upload it again |
+| `PDF_ENCRYPTED` | Needs a password to open | Upload an unprotected copy |
+| `NO_TEXT_LAYER` | No page has text: a scan. OCR is not available yet | Upload a text-based PDF or the source document |
+| `EMPTY_DOCUMENT` | No text or tables | Check the file or page |
+| `UNSUPPORTED_FORMAT` | Not a type INPROOM parses | Convert it to PDF, DOCX, Markdown, HTML or text |
+| `PARSE_LIMIT_EXCEEDED` | Over 2,000 pages, 5,000 sections, 10 M characters or 100,000 table cells, or a DOCX that expands past 100 MB or 100:1 (zip bomb) | Split the document |
+
+- **Visibility:** each failure is a `FAILED` derivative, emits `content.parse.failed`, and is counted by code in the derive job's result (`failures`).
+- **Robustness:** an unexpected library error on untrusted input is reported as `PARSE_MALFORMED`; it never stops the job.
+- **Partial results:** a PDF with only some text-less pages is READY with a `PAGES_WITHOUT_TEXT` warning.
+
+### Uploads
+
+- **Who and how:** `POST /v1/projects/{id}/documents` (multipart `file`, optional `title`, supports `Idempotency-Key`), requiring `project.content.upload`. That permission is held by project_admin, product_owner, tech_lead and qa_lead.
+- **Type detection:** the type is decided from the bytes. PDF and DOCX by signature; Markdown, HTML and text by extension, and only if the bytes are UTF-8. Anything else gets 415.
+- **Limits and checks:** files over `INPROOM_CONTENT_MAX_BYTES` get 413. Uploads need `upload` in the project's `sources.allowed_kinds` (409 `UPLOADS_NOT_ALLOWED`). While uploads are disabled, existing uploads are withheld (`SOURCE_DISABLED`).
+- **Replace:** `PUT …/documents/{id}` with `If-Match: "<seq>"` adds a revision. Identical bytes add nothing.
+- **Delete:** `DELETE …/documents/{id}` marks the item DELETED; it is withheld at once and purged by retention.
+
+### Confluence attachments
+
+- **What is fetched:** attachments of in-scope pages whose name suggests a parseable type and whose size fits. They become items `att:<id>` with the page as parent, take the page's ACL, and are withheld whenever the page is.
+- **How they are downloaded:**
+  - only from the fixed REST download path;
+  - with the byte cap enforced while streaming;
+  - with at most one redirect, and only to the site or `INPROOM_CONFLUENCE_ATTACHMENT_HOSTS` (default `api.media.atlassian.com`), with no credential on that hop.
+- **Unchanged attachment versions** are not downloaded again.
+- **At most 50 downloads per sync**; the rest are `deferred` to the next sync.
+- **Skipped attachments** (unsupported type, too large, inaccessible, disguised content, download failure) are listed with the reason in the source's `last_sync.content.attachments.skipped_items`. Download failures are retried on the next sync.
+- **Removed attachments** become DELETED.
+
 ## Retention
 
 Each project's settings carry `sources.retention`:

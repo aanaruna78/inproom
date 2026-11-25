@@ -242,6 +242,44 @@ def _withhold(
     return ApiError(409, "CONTENT_WITHHELD", "Content withheld", detail, reason=reason)
 
 
+def _revision(conn: Connection, obj: dict[str, Any], seq: int) -> dict[str, Any]:
+    rev = (
+        conn.execute(
+            select(source_revisions).where(
+                source_revisions.c.object_id == obj["id"], source_revisions.c.seq == seq
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if rev is None:
+        raise ApiError(404, "REVISION_NOT_FOUND", "Not found", "No such revision of this item")
+    return dict(rev)
+
+
+def _readable(
+    conn: Connection, principal: Principal, request: Request, project_id, kind, source_id, external_id, seq
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The item and revision, if its content may be served: the item is CURRENT, its source ACTIVE and the
+    revision's bytes stored. Otherwise 409 CONTENT_WITHHELD with the reason (audited DENIED). Raw bytes and
+    parsed documents share these rules (INPROOM-158 / INPROOM-167)."""
+    obj = _object(conn, project_id, kind, source_id, external_id)
+    rev = _revision(conn, obj, seq)
+    source_status = _source_status(conn, obj)
+    reason = None
+    if obj["status"] != IN_SCOPE:
+        reason, detail = obj["status"], f"the item is {obj['status'].lower()}: {obj['status_reason'] or ''}"
+    elif source_status != "ACTIVE":
+        reason, detail = f"SOURCE_{source_status}", f"the item's source is {source_status.lower()}"
+    elif rev["purged_at"] is not None:
+        reason, detail = "PURGED", "this revision's content was removed by the retention policy"
+    elif rev["blob_key"] is None:
+        reason, detail = "NOT_STORED", "this revision's content was not stored (over the size limit)"
+    if reason:
+        raise _withhold(principal, request, obj, seq, reason, detail.rstrip(": "))
+    return obj, rev
+
+
 @router.get(
     "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/raw",
     summary="The original bytes of one revision (ETag = sha256); withheld unless the item is in scope",
@@ -262,31 +300,7 @@ def get_raw(
 ) -> Response:
     with tenant_session(principal.tenant_id) as conn:
         authorize(conn, principal, request, "project.read", project_id)
-        obj = _object(conn, project_id, kind, source_id, external_id)
-        rev = (
-            conn.execute(
-                select(source_revisions).where(
-                    source_revisions.c.object_id == obj["id"], source_revisions.c.seq == seq
-                )
-            )
-            .mappings()
-            .first()
-        )
-        if rev is None:
-            raise ApiError(404, "REVISION_NOT_FOUND", "Not found", "No such revision of this item")
-        rev = dict(rev)
-        source_status = _source_status(conn, obj)
-    reason = None
-    if obj["status"] != IN_SCOPE:
-        reason, detail = obj["status"], f"the item is {obj['status'].lower()}: {obj['status_reason'] or ''}"
-    elif source_status != "ACTIVE":
-        reason, detail = f"SOURCE_{source_status}", f"the item's source is {source_status.lower()}"
-    elif rev["purged_at"] is not None:
-        reason, detail = "PURGED", "this revision's content was removed by the retention policy"
-    elif rev["blob_key"] is None:
-        reason, detail = "NOT_STORED", "this revision's content was not stored (over the size limit)"
-    if reason:
-        raise _withhold(principal, request, obj, seq, reason, detail.rstrip(": "))
+        obj, rev = _readable(conn, principal, request, project_id, kind, source_id, external_id, seq)
     try:
         data = revision_bytes(blobs.get_store(), rev)
     except blobs.ObjectStoreUnavailable as exc:
@@ -430,3 +444,166 @@ def post_invalidate(
             project_id=project_id,
         )
     return InvalidateResult.model_validate(result)
+
+
+# ---------------------------------------------------------------- parsed documents (INPROOM-167)
+
+
+class ParsedDocument(BaseModel):
+    kind: str
+    source_id: uuid.UUID
+    external_id: str
+    title: str
+    seq: int
+    content_sha256: str
+    producer: str
+    producer_version: int
+    built_at: datetime | None
+    document: dict[str, Any]
+
+
+@router.get(
+    "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/document",
+    response_model=ParsedDocument,
+    summary="The parsed document of one revision: sections with anchors, tables and resolved attachment refs",
+    responses={404: PROBLEM, 409: PROBLEM},
+)
+def get_document(
+    request: Request,
+    principal: CurrentPrincipal,
+    project_id: uuid.UUID,
+    kind: Kind,
+    source_id: uuid.UUID,
+    external_id: str,
+    seq: int,
+) -> ParsedDocument:
+    from app.content.references import resolve_attachments
+
+    with tenant_session(principal.tenant_id) as conn:
+        authorize(conn, principal, request, "project.read", project_id)
+        obj, rev = _readable(conn, principal, request, project_id, kind, source_id, external_id, seq)
+        parsed = (
+            conn.execute(
+                select(derivatives)
+                .where(derivatives.c.revision_id == rev["id"], derivatives.c.producer == "parse")
+                .order_by(derivatives.c.created_at.desc(), derivatives.c.id.desc())
+                .limit(1)
+            )
+            .mappings()
+            .first()
+        )
+        if parsed is None or parsed["status"] != "READY" or parsed["purged_at"] is not None:
+            status = parsed["status"] if parsed else "NONE"
+            error = (parsed or {}).get("error") or {}
+            detail = {
+                "NONE": "this item's type is not parsed",
+                "PENDING": "the parse is queued; retry shortly",
+                "FAILED": f"the parse failed: {error.get('code')}: {error.get('message')}",
+            }.get(status, f"the parse is {status.lower()}")
+            raise ApiError(
+                409, "NOT_PARSED", "Not parsed", detail, parse_status=status, failure=error.get("code")
+            )
+        try:
+            document = json.loads(blobs.read(blobs.get_store(), parsed["blob_key"]))
+        except blobs.ObjectStoreUnavailable as exc:
+            raise ApiError(
+                503,
+                "OBJECTSTORE_UNAVAILABLE",
+                "Content store unavailable",
+                "Retry shortly",
+                headers={"Retry-After": "30"},
+            ) from exc
+        except (blobs.BlobMissing, blobs.BlobCorrupt) as exc:
+            raise ApiError(
+                409,
+                "NOT_PARSED",
+                "Not parsed",
+                f"the parsed output is unusable ({exc.code})",
+                parse_status="FAILED",
+                failure=exc.code,
+            ) from exc
+        document["attachments"] = resolve_attachments(conn, obj, document.get("attachments") or [])
+    return ParsedDocument(
+        kind=obj["source_kind"],
+        source_id=obj["source_id"],
+        external_id=obj["external_id"],
+        title=obj["title"],
+        seq=seq,
+        content_sha256=rev["content_sha256"],
+        producer=parsed["producer"],
+        producer_version=parsed["producer_version"],
+        built_at=parsed["built_at"],
+        document=document,
+    )
+
+
+class ParseFailure(BaseModel):
+    kind: str
+    source_id: uuid.UUID
+    external_id: str
+    title: str
+    item_status: str
+    seq: int
+    code: str | None
+    detail: str | None
+    failed_at: datetime | None
+
+
+class ParseFailurePage(BaseModel):
+    items: list[ParseFailure]
+    next_cursor: str | None
+
+
+@router.get(
+    "/v1/projects/{project_id}/content/parse-failures",
+    response_model=ParseFailurePage,
+    summary="Documents whose current revision could not be parsed, newest first, with the reason",
+    responses={400: PROBLEM, 404: PROBLEM},
+)
+def list_parse_failures(
+    request: Request,
+    principal: CurrentPrincipal,
+    project_id: uuid.UUID,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    cursor: Annotated[str | None, Query(max_length=400)] = None,
+) -> ParseFailurePage:
+    o, r, d = source_objects, source_revisions, derivatives
+    stmt = (
+        select(d.c.id, d.c.error, d.c.built_at, d.c.created_at, r.c.seq, o.c.source_kind, o.c.source_id)
+        .add_columns(o.c.external_id, o.c.title, o.c.status)
+        .select_from(d.join(r, r.c.id == d.c.revision_id).join(o, o.c.current_revision_id == r.c.id))
+        .where(d.c.project_id == project_id, d.c.producer == "parse", d.c.status == "FAILED")
+    )
+    order = (d.c.created_at, cast(d.c.id, Text))
+    if cursor:
+        when, last = _decode_failure_cursor(cursor)
+        stmt = stmt.where(tuple_(*order) < tuple_(when, last))
+    stmt = stmt.order_by(d.c.created_at.desc(), cast(d.c.id, Text).desc()).limit(limit + 1)
+    with tenant_session(principal.tenant_id) as conn:
+        authorize(conn, principal, request, "project.read", project_id)
+        rows = [dict(x) for x in conn.execute(stmt).mappings()]
+    more, rows = len(rows) > limit, rows[:limit]
+    items = [
+        ParseFailure(
+            kind=x["source_kind"],
+            source_id=x["source_id"],
+            external_id=x["external_id"],
+            title=x["title"],
+            item_status=x["status"],
+            seq=x["seq"],
+            code=(x["error"] or {}).get("code"),
+            detail=(x["error"] or {}).get("message"),
+            failed_at=x["built_at"],
+        )
+        for x in rows
+    ]
+    nxt = _encode([rows[-1]["created_at"].isoformat(), str(rows[-1]["id"]), ""]) if more else None
+    return ParseFailurePage(items=items, next_cursor=nxt)
+
+
+def _decode_failure_cursor(cursor: str) -> tuple[datetime, str]:
+    when, last, _ = _decode(cursor)
+    try:
+        return datetime.fromisoformat(when), last
+    except ValueError as exc:
+        raise ApiError(400, "INVALID_CURSOR", "Invalid cursor", "cursor is malformed") from exc

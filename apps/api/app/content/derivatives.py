@@ -176,6 +176,25 @@ def live(conn: Connection, project_id: uuid.UUID, kind: str | None = None) -> li
     return [dict(x) for x in conn.execute(stmt).mappings()]
 
 
+def _parse_failed(ctx: JobContext, row: dict[str, Any], error: dict[str, Any]) -> None:
+    with tenant_session(ctx.tenant) as conn:
+        conn.execute(
+            insert(outbox_events).values(
+                tenant_id=ctx.tenant,
+                type="content.parse.failed",
+                payload={
+                    "project_id": str(ctx.job["project_id"]),
+                    "source_kind": row["source_kind"],
+                    "source_id": str(ctx.job["source_id"]),
+                    "external_id": row["external_id"],
+                    "seq": row["seq"],
+                    "derivative_id": str(row["id"]),
+                    "code": error["code"],
+                },
+            )
+        )
+
+
 def _finish(tenant, derivative_id, **values) -> bool:
     with tenant_session(tenant) as conn:
         return bool(
@@ -204,6 +223,7 @@ def derive(ctx: JobContext) -> dict[str, Any]:
                 select(
                     d.c.id, d.c.producer, d.c.producer_version, r.c.blob_key, r.c.purged_at, r.c.media_type
                 )
+                .add_columns(r.c.seq, o.c.source_kind, o.c.external_id)
                 .select_from(d.join(r, r.c.id == d.c.revision_id).join(o, o.c.id == r.c.object_id))
                 .where(o.c.source_id == ctx.job["source_id"], d.c.status == "PENDING")
                 .order_by(d.c.created_at, d.c.id)
@@ -212,7 +232,7 @@ def derive(ctx: JobContext) -> dict[str, Any]:
         ]
     more, rows = len(rows) > BATCH, rows[:BATCH]
     store = blobs.get_store()
-    counts = {"built": 0, "failed": 0, "skipped": 0}
+    counts: dict[str, Any] = {"built": 0, "failed": 0, "skipped": 0, "failures": {}}
     for row in rows:
         producer = PRODUCERS.get(row["producer"])
         error = None
@@ -229,6 +249,10 @@ def derive(ctx: JobContext) -> dict[str, Any]:
         if error is not None:
             done = _finish(tenant, row["id"], status="FAILED", error=error, built_at=datetime.now(UTC))
             counts["failed" if done else "skipped"] += 1
+            if done:
+                counts["failures"][error["code"]] = counts["failures"].get(error["code"], 0) + 1
+                if row["producer"] == "parse":  # INPROOM-167: parse failures are visible downstream
+                    _parse_failed(ctx, row, error)
             continue
         with tenant_session(tenant) as conn:
             from app.content.retention import blob_lock

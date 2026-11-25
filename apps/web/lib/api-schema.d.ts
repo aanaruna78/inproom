@@ -397,6 +397,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/content/parse-failures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Documents whose current revision could not be parsed, newest first, with the reason */
+        get: operations["list_parse_failures_v1_projects__project_id__content_parse_failures_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}": {
         parameters: {
             query?: never;
@@ -423,6 +440,23 @@ export interface paths {
         };
         /** Everything derived from one revision, with producer@version and status (including history) */
         get: operations["get_derivatives_v1_projects__project_id__content__kind___source_id___external_id__revisions__seq__derivatives_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The parsed document of one revision: sections with anchors, tables and resolved attachment refs */
+        get: operations["get_document_v1_projects__project_id__content__kind___source_id___external_id__revisions__seq__document_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2065,6 +2099,65 @@ export interface components {
             items: components["schemas"]["Workspace"][];
             /** Next Cursor */
             next_cursor?: string | null;
+        };
+        /** ParseFailure */
+        ParseFailure: {
+            /** Code */
+            code: string | null;
+            /** Detail */
+            detail: string | null;
+            /** External Id */
+            external_id: string;
+            /** Failed At */
+            failed_at: string | null;
+            /** Item Status */
+            item_status: string;
+            /** Kind */
+            kind: string;
+            /** Seq */
+            seq: number;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Title */
+            title: string;
+        };
+        /** ParseFailurePage */
+        ParseFailurePage: {
+            /** Items */
+            items: components["schemas"]["ParseFailure"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** ParsedDocument */
+        ParsedDocument: {
+            /** Built At */
+            built_at: string | null;
+            /** Content Sha256 */
+            content_sha256: string;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /** External Id */
+            external_id: string;
+            /** Kind */
+            kind: string;
+            /** Producer */
+            producer: string;
+            /** Producer Version */
+            producer_version: number;
+            /** Seq */
+            seq: number;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Title */
+            title: string;
         };
         /** PlanRequest */
         PlanRequest: {
@@ -4283,6 +4376,54 @@ export interface operations {
             };
         };
     };
+    list_parse_failures_v1_projects__project_id__content_parse_failures_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParseFailurePage"];
+                };
+            };
+            /** @description problem+json */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_object_v1_projects__project_id__content__kind___source_id___external_id__get: {
         parameters: {
             query?: never;
@@ -4350,6 +4491,55 @@ export interface operations {
             };
             /** @description problem+json */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_v1_projects__project_id__content__kind___source_id___external_id__revisions__seq__document_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                kind: "confluence" | "jira" | "git" | "upload";
+                source_id: string;
+                external_id: string;
+                seq: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParsedDocument"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

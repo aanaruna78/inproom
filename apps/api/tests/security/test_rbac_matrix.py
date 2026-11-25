@@ -153,6 +153,12 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
         "project.read",
     ),
     ("POST", "/v1/projects/{project_id}/content/invalidate"): ("project", "project.source.manage"),
+    # INPROOM-167
+    ("GET", "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/document"): (
+        "project",
+        "project.read",
+    ),
+    ("GET", "/v1/projects/{project_id}/content/parse-failures"): ("project", "project.read"),
     # INPROOM-165
     ("POST", "/v1/projects/{project_id}/documents"): ("project", "project.content.upload"),
     ("PUT", "/v1/projects/{project_id}/documents/{document_id}"): ("project", "project.content.upload"),
@@ -193,6 +199,11 @@ BUSINESS_RULE = {
     ("POST", "/v1/projects/{project_id}/migration/scan"): "409",
     ("POST", "/v1/projects/{project_id}/migration/confirm"): "409",
     ("GET", "/v1/projects/{project_id}/migration/drift"): "409",  # no baseline in the shared world
+    # The shared world never runs the derive job: authorized readers get 409 NOT_PARSED (INPROOM-167).
+    (
+        "GET",
+        "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/document",
+    ): "409",
 }
 
 # actor -> (token roles, project membership role or None, same tenant?)
