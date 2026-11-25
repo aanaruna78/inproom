@@ -463,7 +463,12 @@ def serve(port: int) -> None:
     """
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-    state = {"fake": standard()}
+    def seeded() -> FakeJira:
+        fake = standard()
+        legacy_project(fake)  # LEG: an existing project to migrate (INPROOM-154 E2E)
+        return fake
+
+    state = {"fake": seeded()}
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, status: int, body: bytes, headers: dict[str, str]) -> None:
@@ -493,7 +498,17 @@ def serve(port: int) -> None:
             if self.path == "/_fake/health":
                 return self._send(200, b"ok", {})
             if self.path == "/_fake/reset":
-                state["fake"] = standard()
+                state["fake"] = seeded()
+                return self._send(204, b"", {})
+            if self.path == "/_fake/edit-issue":  # {"key", "status"?: "Done", "summary"?}
+                data = json.loads(body)
+                for project in state["fake"].projects.values():
+                    for issue in project.issues:
+                        if issue["key"] == data["key"]:
+                            if data.get("status"):
+                                issue["fields"]["status"] = {"Done": DONE, "To Do": TODO}[data["status"]]
+                            if data.get("summary"):
+                                issue["fields"]["summary"] = data["summary"]
                 return self._send(204, b"", {})
             if self.path == "/_fake/access":
                 data = json.loads(body)
@@ -511,14 +526,6 @@ def serve(port: int) -> None:
             pass
 
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Fake Jira API for local E2E tests")
-    parser.add_argument("--port", type=int, default=18091)
-    serve(parser.parse_args().port)
 
 
 def legacy_project(
@@ -567,3 +574,11 @@ def legacy_project(
     fake.projects[key] = project
     fake.users[VALID_TOKEN].access[key] = set(ALL_PERMS)
     return project
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Fake Jira API for local E2E tests")
+    parser.add_argument("--port", type=int, default=18091)
+    serve(parser.parse_args().port)
