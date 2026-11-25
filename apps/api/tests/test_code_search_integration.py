@@ -262,3 +262,24 @@ def test_permalinks_encode_the_git_path_but_keep_separators_and_the_line_fragmen
     [hit] = search(e, "unusual_path")["items"]
     assert hit["citation"]["path"] == path  # the path itself is reported as-is
     assert hit["citation"]["permalink"] == f"https://github.com/acme/api/blob/{head}/{encoded}#L1-L2"
+
+
+def test_retiring_a_branch_matches_its_name_exactly(repo):
+    """INPROOM-179 (re-test): "_" in a branch name is literal - retiring it never touches another selected
+    branch a LIKE pattern would have matched. ("%" is not a valid selected branch name: 422.)"""
+    e = repo
+    retired = "feature_one"
+    e.gh.repos[1].commit(retired, {"old.py": b"def old_branch():\n    pass\n"}, base=False)
+    e.gh.repos[1].commit("featureXone", {"keep.py": b"def keep_branch():\n    pass\n"}, base=False)
+    assert e.select("1", ["main", retired, "featureXone"]).status_code == 200
+    due(e.tenant)
+    drain(e)
+    assert e.select("1", ["main", "featureXone"]).status_code == 200
+    due(e.tenant)
+    drain(e)
+    assert search(e, "old_branch")["items"] == []
+    [hit] = search(e, "keep_branch")["items"]
+    assert hit["citation"]["branch"] == "featureXone"
+    snaps = e.client.get(f"/v1/projects/{e.pid}/code/snapshots", headers=e.h()).json()
+    keep = next(s for s in snaps if s["branch"] == "featureXone")
+    assert keep["counts"]["files"] == 1  # its file count is not polluted by the other branch either

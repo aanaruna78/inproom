@@ -116,7 +116,9 @@ def _retire_deselected(conn: Connection, repo: dict[str, Any]) -> list[str]:
                     source_objects.c.project_id == repo["project_id"],
                     source_objects.c.source_kind == "git",
                     source_objects.c.source_id == repo["id"],
-                    source_objects.c.external_id.like(f"{branch}:%"),
+                    source_objects.c.external_id.startswith(
+                        f"{branch}:", autoescape=True
+                    ),  # "_"/"%" are literal
                     source_objects.c.status == IN_SCOPE,
                 )
             )
@@ -446,7 +448,9 @@ def _index_branch(
                     source_objects.c.project_id == project,
                     source_objects.c.source_kind == "git",
                     source_objects.c.source_id == src,
-                    source_objects.c.external_id.like(f"{branch}:%"),
+                    source_objects.c.external_id.startswith(
+                        f"{branch}:", autoescape=True
+                    ),  # "_"/"%" are literal
                     source_objects.c.status == IN_SCOPE,
                 )
             ).all()

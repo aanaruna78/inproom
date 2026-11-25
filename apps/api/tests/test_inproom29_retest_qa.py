@@ -1,6 +1,6 @@
 """QA re-test probes for INPROOM-29 at ea20754 (apps/api/tests/qa_inproom29_retest.py), committed as
-regressions. Unfixed cases are strict xfails: INPROOM-177 (a crash between a file's new revision and its
-verified commit), INPROOM-179 (retiring "feature_one" must not touch "featureXone": LIKE wildcards).
+regressions. They covered, and now guard against: INPROOM-177 (a crash between a file's new revision and
+its verified commit), INPROOM-179 (retiring "feature_one" must not touch "featureXone": LIKE wildcards).
 """
 
 import pytest
@@ -49,12 +49,7 @@ def test_changed_file_citation_is_correct_even_if_the_code_job_crashes(repo, mon
 @pytest.mark.parametrize(
     "retired_branch",
     [
-        pytest.param(
-            "feature_one",
-            marks=pytest.mark.xfail(
-                strict=True, reason="INPROOM-179: '_' in a branch name is a LIKE wildcard"
-            ),
-        ),
+        "feature_one",
         "feature-one",
     ],
 )
