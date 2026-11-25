@@ -108,17 +108,28 @@ def test_drift_is_visible_until_the_new_commit_is_indexed(repo, monkeypatch):
     assert hit["behind"] is False and hit["citation"]["commit"] == new
 
 
-def test_a_partial_snapshot_cites_the_commit_where_each_file_was_seen(repo):
+def test_a_partial_snapshot_cites_the_commit_where_each_file_was_verified(repo):
+    """INPROOM-177: each hit cites the newest commit at which ITS content was confirmed - a file the
+    truncated tree still lists is verified at the new commit; one it omits keeps its earlier commit."""
     e = repo
     first = e.gh.repos[1].branches["main"]
-    e.gh.repos[1].commit("main", {"src/extra.py": b"def extra():\n    pass\n"})
-    e.gh.repos[1].truncate_trees = True  # the next snapshot is PARTIAL
+    second = e.gh.repos[1].commit("main", {"zz/extra.py": b"def extra():\n    pass\n"})
+    e.gh.repos[1].truncate_trees = True  # the fake keeps the first half of the sorted entries
     due(e.tenant)
     drain(e)
     snaps = e.client.get(f"/v1/projects/{e.pid}/code/snapshots", headers=e.h()).json()
     assert next(s for s in snaps if s["branch"] == "main")["status"] == "PARTIAL"
-    [hit] = search(e, "charge")["items"]
-    assert hit["citation"]["commit"] == first and hit["snapshot_status"] == "PARTIAL"
+    from app.connectors.github import GitHubProvider
+    from app.connectors.vault import Secret
+    from tests.fakes.github import VALID_TOKEN
+
+    gh = GitHubProvider("https://api.github.com", Secret(VALID_TOKEN), transport=e.gh.transport())
+    listed = {entry.path for entry in gh.tree("1", second).entries}  # what the truncated tree showed
+    [charge] = search(e, "charge")["items"]
+    assert charge["citation"]["commit"] == (second if "src/billing.py" in listed else first)
+    assert "web/handler.ts" not in listed  # sorts late: cut from the truncated tree
+    [ts] = search(e, "handlerTs")["items"]
+    assert ts["citation"]["commit"] == first and ts["behind"] is True
 
 
 def test_file_symbols_and_withholding(repo):
@@ -138,3 +149,21 @@ def test_file_symbols_and_withholding(repo):
     assert search(e, "charge")["items"] == []  # a paused/excluded repository is withheld from search
     withheld = e.client.get(f"/v1/projects/{e.pid}/code/files", params=params, headers=e.h())
     assert withheld.status_code == 409 and withheld.json()["code"] == "CONTENT_WITHHELD"
+
+
+def test_content_that_cannot_be_indexed_at_a_commit_withholds_the_old_code(repo):
+    """INPROOM-177: a file replaced by binary content is not cited at the new commit; it is withheld until
+    indexable content returns, and every returned hit is verified at the commit it names."""
+    e = repo
+    e.gh.repos[1].commit("main", {"src/billing.py": b"\x00\x01binary build artefact"})
+    due(e.tenant)
+    drain(e)
+    assert search(e, "charge")["items"] == []
+    rid = e.q("SELECT id FROM project_repositories WHERE tenant_id=:t AND provider_repo_id='1'")
+    item = e.client.get(f"/v1/projects/{e.pid}/content/git/{rid}/main:src/billing.py", headers=e.h()).json()
+    assert item["status"] == "EXCLUDED" and item["status_reason"].startswith("binary content at ")
+    back = e.gh.repos[1].commit("main", {"src/billing.py": APP, "NOTES.txt": b"restored"})  # a new commit
+    due(e.tenant)
+    drain(e)
+    [hit] = search(e, "charge")["items"]
+    assert hit["citation"]["commit"] == back and hit["behind"] is False

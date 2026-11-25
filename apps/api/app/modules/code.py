@@ -170,12 +170,15 @@ class _Context:
             self._owners[key] = parse(text)[0] if text else []
         return owners_of(self._owners[key], path)
 
-    def citation(self, source_id, branch, path, seen_commit, blob_sha, start, end) -> Citation:
+    def behind_at(self, source_id, branch, commit: str) -> bool:
+        """The branch head has moved past the commit this content is verified at."""
+        head = self.head(source_id, branch)
+        return head is not None and commit != head
+
+    def citation(self, source_id, branch, path, commit, blob_sha, start, end) -> Citation:
+        """`commit`: the item's verified_ref - a commit that contains exactly this content (INPROOM-177)."""
         repo = self.repos[source_id]
-        snap = self.snapshot(source_id, branch)
-        commit = snap["commit_sha"] if snap and snap["status"] == "COMPLETE" else (seen_commit or "")
-        if not commit and snap:
-            commit = snap["commit_sha"]
+        commit = commit or ""
         permalink = f"{_web_base(repo.base_url)}/{repo.full_name}/blob/{commit}/{path}#L{start}-L{end}"
         return Citation(
             repository=repo.full_name,
@@ -233,7 +236,7 @@ def search(
     rank = case((lname == ql, 0), (lname.like(_like(ql) + "%", escape="\\"), 1), else_=2)
     order = (rank, lname, s.c.path, s.c.line_start, s.c.id)
     stmt = (
-        select(s, rank.label("rank"), lname.label("lname"))
+        select(s, rank.label("rank"), lname.label("lname"), o.c.verified_ref)
         .join(d, d.c.id == s.c.derivative_id)
         .join(o, o.c.id == s.c.object_id)
         .join(r, r.c.id == s.c.source_id)
@@ -276,13 +279,13 @@ def search(
                     x["source_id"],
                     x["branch"],
                     x["path"],
-                    x["commit_sha"],
+                    x["verified_ref"] or x["commit_sha"],
                     x["blob_sha"],
                     x["line_start"],
                     x["line_end"],
                 ),
                 owners=ctx.owners(x["source_id"], x["branch"], x["path"]),
-                behind=ctx.behind(x["source_id"], x["branch"]),
+                behind=ctx.behind_at(x["source_id"], x["branch"], x["verified_ref"] or x["commit_sha"]),
                 snapshot_status=snap["status"] if snap else None,
                 item={
                     "kind": "git",
@@ -409,19 +412,12 @@ def file_symbols(
         doc = json.loads(blobs.read(blobs.get_store(), parsed["blob_key"]))
         ctx = _Context(conn, project_id)
     last = max((d["line_end"] for d in doc["definitions"]), default=1)
+    commit = item.get("verified_ref") or (rev.get("acl") or {}).get("commit")
     return CodeFile(
-        citation=ctx.citation(
-            repo["id"],
-            branch,
-            path,
-            (rev.get("acl") or {}).get("commit"),
-            rev["provider_version"] or "",
-            1,
-            last,
-        ),
+        citation=ctx.citation(repo["id"], branch, path, commit, rev["provider_version"] or "", 1, last),
         language=doc["language"],
         owners=ctx.owners(repo["id"], branch, path),
-        behind=ctx.behind(repo["id"], branch),
+        behind=ctx.behind_at(repo["id"], branch, commit or ""),
         definitions=doc["definitions"],
         imports=doc["imports"],
         warnings=doc["warnings"],

@@ -666,6 +666,7 @@ source_objects = Table(
     Column("source_id", UUID(as_uuid=True), nullable=False),
     Column("external_id", Text, nullable=False),
     Column("parent_external_id", Text),
+    Column("verified_ref", Text),
     Column("title", Text, nullable=False, server_default=""),
     Column("uri", Text),
     Column("status", Text, nullable=False, server_default="CURRENT"),
@@ -772,7 +773,7 @@ code_snapshots = Table(
     ForeignKeyConstraint(
         ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_code_snapshots_project"
     ),
-    CheckConstraint("status IN ('RUNNING','COMPLETE','PARTIAL')", name="ck_code_snapshots_status"),
+    CheckConstraint("status IN ('RUNNING','COMPLETE','PARTIAL','RETIRED')", name="ck_code_snapshots_status"),
 )
 
 code_symbols = Table(

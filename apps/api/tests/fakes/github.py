@@ -182,7 +182,8 @@ class FakeGitHub:
                     )
             dirs = sorted({p.rsplit("/", 1)[0] for p in repo.commits.get(sha, {}) if "/" in p})
             entries += [{"path": d, "mode": "040000", "type": "tree", "sha": "0" * 40} for d in dirs]
-            if repo.truncate_trees:
+            entries.sort(key=lambda entry: entry["path"])
+            if repo.truncate_trees:  # GitHub cuts a huge listing short: here, the second half of the paths
                 entries = entries[: max(1, len(entries) // 2)]
             return self._json(200, {"sha": sha, "tree": entries, "truncated": repo.truncate_trees})
         blm = re.fullmatch(r"/git/blobs/([0-9a-f]{40})", rest)

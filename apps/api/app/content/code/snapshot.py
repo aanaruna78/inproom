@@ -125,6 +125,29 @@ def _merge(snap: dict[str, Any], run: dict[str, Any]) -> tuple[dict[str, Any], l
     return counts, listed
 
 
+def _verify(conn: Connection, project, src, commit: str, run: dict[str, Any]) -> None:
+    """Record what this run established at `commit` (INPROOM-177): confirmed items are verified there; items
+    whose content at this commit cannot be indexed are withheld (EXCLUDED), never left as stale code that
+    would be cited at a commit which does not contain it. Unreadable ("not accessible") files keep their
+    previous content and its older verified commit."""
+    if run["confirmed"]:
+        conn.execute(
+            update(source_objects)
+            .where(
+                source_objects.c.project_id == project,
+                source_objects.c.source_kind == "git",
+                source_objects.c.source_id == src,
+                source_objects.c.external_id.in_(run["confirmed"]),
+            )
+            .values(verified_ref=commit)
+        )
+    by_reason: dict[str, list[str]] = {}
+    for external, reason in run["withdrawn"].items():
+        by_reason.setdefault(reason, []).append(external)
+    for reason, ids in by_reason.items():
+        ingest.mark(conn, project, "git", src, ids, "EXCLUDED", f"{reason} at {commit[:12]}")
+
+
 def _codeowners(provider, repo: dict[str, Any], tree: Tree) -> dict[str, Any] | None:
     paths = {e.path: e for e in tree.entries if e.type == "blob"}
     for path in filters.CODEOWNERS_PATHS:
@@ -180,6 +203,8 @@ def _index_branch(
         "skipped": {},
         "skipped_items": [],
         "rejected": {},
+        "confirmed": [],  # items whose current content is verified at this commit (INPROOM-177)
+        "withdrawn": {},  # item -> reason: its content at this commit is not indexable (binary, LFS, size)
     }
     indexable = []
     for entry in sorted(tree.entries, key=lambda e: e.path):
@@ -204,15 +229,20 @@ def _index_branch(
     acl = {"repository": repo["full_name"], "private": repo["private"], "branch": branch, "commit": commit}
     more = False
     for entry, decision in indexable:
-        current = have.get(item_id(branch, entry.path))
+        external = item_id(branch, entry.path)
+        current = have.get(external)
         if current and current["sha"] and current["version"] == entry.sha and current["status"] == IN_SCOPE:
             run["unchanged"] += 1
+            run["confirmed"].append(external)
             continue
-        if entry.sha in rejected:
-            continue  # turned down earlier in this snapshot (already listed): not fetched again
+        if entry.sha in rejected:  # turned down earlier in this snapshot (already listed): not fetched again
+            if not rejected[entry.sha].get("access"):
+                run["withdrawn"][external] = rejected[entry.sha]["reason"]
+            continue
         if entry.sha in inherited:
             _skip(run, entry.path, inherited[entry.sha]["reason"])  # same blob as before: same verdict
             run["rejected"][entry.sha] = inherited[entry.sha]
+            run["withdrawn"][external] = inherited[entry.sha]["reason"]
             continue
         data = None
         if entry.sha in stored:
@@ -231,6 +261,7 @@ def _index_branch(
                 reason = f"larger than {filters.MAX_FILE_BYTES} bytes"
                 _skip(run, entry.path, reason)
                 run["rejected"][entry.sha] = {"reason": reason, "access": False}
+                run["withdrawn"][external] = reason
                 continue
             except NotFoundOrNoAccess:
                 run["inaccessible"] += 1
@@ -243,6 +274,7 @@ def _index_branch(
         if problem:
             _skip(run, entry.path, problem)
             run["rejected"][entry.sha] = {"reason": problem, "access": False}
+            run["withdrawn"][external] = problem
             continue
         with tenant_session(tenant) as conn:
             done = record_revision(
@@ -256,11 +288,12 @@ def _index_branch(
                 data=data,
                 media_type=decision.media_type,
                 title=entry.path,
-                uri=None,  # citations take the commit from the snapshot: unchanged files are not rewritten
+                uri=None,  # citations use the item's verified_ref (set below), not a per-revision URI
                 provider_version=entry.sha,
                 acl=acl,
                 job_id=ctx.job["id"],
             )
+        run["confirmed"].append(external)
         if done.created:
             run["stored"] += 1
             stored.setdefault(entry.sha, blobs.blob_key(tenant, done.content_sha256))
@@ -273,6 +306,7 @@ def _index_branch(
             .one()
         )
         counts, listed = _merge(snap, run)
+        _verify(conn, project, src, commit, run)
         values: dict[str, Any] = {
             "counts": counts,
             "skipped": listed,

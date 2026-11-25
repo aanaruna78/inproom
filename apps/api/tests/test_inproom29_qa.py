@@ -23,7 +23,6 @@ def snapshots(e):
     return response.json()
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-177: old code cited at the new commit")
 @pytest.mark.parametrize(
     "replacement",
     [b"\x00binary", b"version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 10\n"],
@@ -40,7 +39,6 @@ def test_skipped_replacement_never_cites_old_code_at_the_new_commit(repo, replac
         assert hit["citation"]["commit"] == old, hit
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-177: new symbols cite the previous snapshot")
 def test_new_symbols_during_a_batch_never_cite_the_previous_snapshot(repo, monkeypatch):
     e = repo
     monkeypatch.setattr(filters, "BLOBS_PER_RUN", 1)
