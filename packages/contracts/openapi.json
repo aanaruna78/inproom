@@ -1360,6 +1360,227 @@
         "title": "MemberRoles",
         "type": "object"
       },
+      "MigrationPlan": {
+        "properties": {
+          "baseline": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "history_since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Since"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "import_mode": {
+            "title": "Import Mode",
+            "type": "string"
+          },
+          "jira_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Key"
+          },
+          "jira_source_id": {
+            "format": "uuid",
+            "title": "Jira Source Id",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "jira_source_id",
+          "import_mode",
+          "history_since",
+          "status",
+          "baseline",
+          "created_by",
+          "version"
+        ],
+        "title": "MigrationPlan",
+        "type": "object"
+      },
+      "MigrationRun": {
+        "properties": {
+          "counts": {
+            "additionalProperties": true,
+            "title": "Counts",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "diagnostics": {
+            "additionalProperties": true,
+            "title": "Diagnostics",
+            "type": "object"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "issues_seen": {
+            "title": "Issues Seen",
+            "type": "integer"
+          },
+          "pages_done": {
+            "title": "Pages Done",
+            "type": "integer"
+          },
+          "scanned_as": {
+            "additionalProperties": true,
+            "title": "Scanned As",
+            "type": "object"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "pages_done",
+          "issues_seen",
+          "counts",
+          "diagnostics",
+          "scanned_as",
+          "error",
+          "created_at",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "MigrationRun",
+        "type": "object"
+      },
+      "MigrationState": {
+        "properties": {
+          "latest_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MigrationRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MigrationPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_mode": {
+            "title": "Project Mode",
+            "type": "string"
+          },
+          "project_status": {
+            "title": "Project Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "project_mode",
+          "project_status",
+          "plan",
+          "latest_run"
+        ],
+        "title": "MigrationState",
+        "type": "object"
+      },
       "MyPermissions": {
         "properties": {
           "approval_scopes": {
@@ -1907,6 +2128,40 @@
           "items"
         ],
         "title": "Page[Workspace]",
+        "type": "object"
+      },
+      "PlanRequest": {
+        "properties": {
+          "history_since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only issues updated since this date (omit for the full history)",
+            "title": "History Since"
+          },
+          "import_mode": {
+            "const": "jira_authoritative",
+            "default": "jira_authoritative",
+            "title": "Import Mode",
+            "type": "string"
+          },
+          "jira_source_id": {
+            "description": "One of this project's selected Jira projects (stays authoritative)",
+            "format": "uuid",
+            "title": "Jira Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jira_source_id"
+        ],
+        "title": "PlanRequest",
         "type": "object"
       },
       "Production": {
@@ -5397,6 +5652,188 @@
         "summary": "Set a member's project roles (replaces the set; idempotent)",
         "tags": [
           "members"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/migration": {
+      "get": {
+        "operationId": "get_migration_v1_projects__project_id__migration_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The project's migration plan and latest inventory scan",
+        "tags": [
+          "migration"
+        ]
+      },
+      "put": {
+        "operationId": "put_plan_v1_projects__project_id__migration_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "412": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          },
+          "428": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create or update the migration plan (If-Match once it exists); MIGRATION projects only",
+        "tags": [
+          "migration"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/migration/scan": {
+      "post": {
+        "operationId": "scan_v1_projects__project_id__migration_scan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Inventory the authoritative Jira project now (worker job; resumable; coalesced)",
+        "tags": [
+          "migration"
         ]
       }
     },

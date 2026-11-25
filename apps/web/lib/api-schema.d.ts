@@ -415,6 +415,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/migration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The project's migration plan and latest inventory scan */
+        get: operations["get_migration_v1_projects__project_id__migration_get"];
+        /** Create or update the migration plan (If-Match once it exists); MIGRATION projects only */
+        put: operations["put_plan_v1_projects__project_id__migration_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/migration/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inventory the authoritative Jira project now (worker job; resumable; coalesced) */
+        post: operations["scan_v1_projects__project_id__migration_scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/permissions/me": {
         parameters: {
             query?: never;
@@ -1424,6 +1459,93 @@ export interface components {
             /** Roles */
             roles: ("project_admin" | "product_owner" | "tech_lead" | "developer" | "reviewer" | "qa_lead" | "tester" | "release_manager" | "viewer")[];
         };
+        /** MigrationPlan */
+        MigrationPlan: {
+            /** Baseline */
+            baseline: {
+                [key: string]: unknown;
+            } | null;
+            /** Created By */
+            created_by: string;
+            /** History Since */
+            history_since: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Import Mode */
+            import_mode: string;
+            /** Jira Key */
+            jira_key?: string | null;
+            /**
+             * Jira Source Id
+             * Format: uuid
+             */
+            jira_source_id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Status */
+            status: string;
+            /** Version */
+            version: number;
+        };
+        /** MigrationRun */
+        MigrationRun: {
+            /** Counts */
+            counts: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Diagnostics */
+            diagnostics: {
+                [key: string]: unknown;
+            };
+            /** Error */
+            error: {
+                [key: string]: unknown;
+            } | null;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Issues Seen */
+            issues_seen: number;
+            /** Pages Done */
+            pages_done: number;
+            /** Scanned As */
+            scanned_as: {
+                [key: string]: unknown;
+            };
+            /** Started At */
+            started_at: string | null;
+            /** Status */
+            status: string;
+        };
+        /** MigrationState */
+        MigrationState: {
+            latest_run: components["schemas"]["MigrationRun"] | null;
+            plan: components["schemas"]["MigrationPlan"] | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Mode */
+            project_mode: string;
+            /** Project Status */
+            project_status: string;
+        };
         /** MyPermissions */
         MyPermissions: {
             /** Approval Scopes */
@@ -1592,6 +1714,26 @@ export interface components {
             items: components["schemas"]["Workspace"][];
             /** Next Cursor */
             next_cursor?: string | null;
+        };
+        /** PlanRequest */
+        PlanRequest: {
+            /**
+             * History Since
+             * @description Only issues updated since this date (omit for the full history)
+             */
+            history_since?: string | null;
+            /**
+             * Import Mode
+             * @default jira_authoritative
+             * @constant
+             */
+            import_mode: "jira_authoritative";
+            /**
+             * Jira Source Id
+             * Format: uuid
+             * @description One of this project's selected Jira projects (stays authoritative)
+             */
+            jira_source_id: string;
         };
         /** Production */
         Production: {
@@ -3674,6 +3816,152 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_migration_v1_projects__project_id__migration_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationState"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_plan_v1_projects__project_id__migration_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationState"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    scan_v1_projects__project_id__migration_scan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationRun"];
+                };
             };
             /** @description problem+json */
             404: {

@@ -167,6 +167,12 @@ SEED_SQL = [
     "VALUES (:t, :p, 'confluence', :s, 'manual')",
     "INSERT INTO source_sync_state (tenant_id, project_id, source_kind, source_id) "
     "VALUES (:t, :p, 'confluence', :s)",
+    "INSERT INTO migration_plans (id, tenant_id, project_id, jira_source_id, created_by) "
+    "VALUES (:m, :t, :p, :j, 'seed')",
+    "INSERT INTO migration_runs (id, tenant_id, project_id, plan_id) VALUES (:r, :t, :p, :m)",
+    "INSERT INTO migration_issues (tenant_id, project_id, jira_issue_id, key, original_key, type_raw, type, "
+    "status_raw, status, summary, first_seen_run, last_seen_run) "
+    "VALUES (:t, :p, '1', 'LEG-1', 'LEG-1', 'Epic', 'epic', 'To Do', 'todo', 'x', :r, :r)",
 ]
 
 
@@ -179,6 +185,8 @@ def _seed(owner_engine, tenant_id: uuid.UUID) -> dict[str, str]:
         "c": uuid.uuid4(),
         "j": uuid.uuid4(),
         "s": uuid.uuid4(),
+        "m": uuid.uuid4(),
+        "r": uuid.uuid4(),
         "k": "P" + uuid.uuid4().hex[:6].upper(),
     }
     with owner_engine.begin() as c:

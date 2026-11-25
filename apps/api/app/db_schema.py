@@ -7,6 +7,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -49,6 +50,9 @@ TENANT_SCOPED_TABLES = (
     "confluence_page_versions",
     "sync_jobs",
     "source_sync_state",
+    "migration_plans",
+    "migration_runs",
+    "migration_issues",
 )
 
 # Project roles allowed in project_members (mirrors app.authz.policy.PROJECT_ROLES; checked by a unit test).
@@ -524,7 +528,9 @@ sync_jobs = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("started_at", DateTime(timezone=True)),
     Column("finished_at", DateTime(timezone=True)),
-    CheckConstraint("source_kind IN ('git','jira','confluence','connection')", name="ck_sync_jobs_kind"),
+    CheckConstraint(
+        "source_kind IN ('git','jira','confluence','connection','migration')", name="ck_sync_jobs_kind"
+    ),
     CheckConstraint("reason IN ('webhook','schedule','manual','recovery')", name="ck_sync_jobs_reason"),
     CheckConstraint("mode IN ('incremental','full')", name="ck_sync_jobs_mode"),
     CheckConstraint(
@@ -549,7 +555,94 @@ source_sync_state = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     PrimaryKeyConstraint("source_kind", "source_id", name="pk_source_sync_state"),
     CheckConstraint(
-        "source_kind IN ('git','jira','confluence','connection')", name="ck_source_sync_state_kind"
+        "source_kind IN ('git','jira','confluence','connection','migration')",
+        name="ck_source_sync_state_kind",
+    ),
+)
+
+migration_plans = Table(
+    "migration_plans",
+    metadata,
+    _id(),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("jira_source_id", UUID(as_uuid=True), nullable=False),
+    Column("import_mode", Text, nullable=False, server_default="jira_authoritative"),
+    Column("history_since", Date),
+    Column("status", Text, nullable=False, server_default="DRAFT"),
+    Column("baseline", JSONB),
+    Column("created_by", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("version", Integer, nullable=False, server_default="1"),
+    UniqueConstraint("project_id", name="uq_migration_plans_project"),
+    UniqueConstraint("tenant_id", "id", name="uq_migration_plans_tenant_id"),
+    ForeignKeyConstraint(
+        ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_migration_plans_project"
+    ),
+    ForeignKeyConstraint(
+        ["tenant_id", "jira_source_id"],
+        ["project_jira_sources.tenant_id", "project_jira_sources.id"],
+        name="fk_migration_plans_jira_source",
+    ),
+    CheckConstraint("import_mode IN ('jira_authoritative')", name="ck_migration_plans_mode"),
+    CheckConstraint("status IN ('DRAFT','SCANNED','BASELINED')", name="ck_migration_plans_status"),
+)
+
+migration_runs = Table(
+    "migration_runs",
+    metadata,
+    _id(),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("plan_id", UUID(as_uuid=True), nullable=False),
+    Column("status", Text, nullable=False, server_default="QUEUED"),
+    Column("cursor", Text),
+    Column("pages_done", Integer, nullable=False, server_default="0"),
+    Column("issues_seen", Integer, nullable=False, server_default="0"),
+    Column("counts", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("diagnostics", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("scanned_as", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("error", JSONB),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("started_at", DateTime(timezone=True)),
+    Column("finished_at", DateTime(timezone=True)),
+    UniqueConstraint("tenant_id", "id", name="uq_migration_runs_tenant_id"),
+    ForeignKeyConstraint(
+        ["tenant_id", "plan_id"],
+        ["migration_plans.tenant_id", "migration_plans.id"],
+        name="fk_migration_runs_plan",
+    ),
+    CheckConstraint("status IN ('QUEUED','RUNNING','SUCCEEDED','FAILED')", name="ck_migration_runs_status"),
+)
+
+migration_issues = Table(
+    "migration_issues",
+    metadata,
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("jira_issue_id", Text, nullable=False),
+    Column("key", Text, nullable=False),
+    Column("original_key", Text, nullable=False),
+    Column("type_raw", Text, nullable=False),
+    Column("type", Text, nullable=False),
+    Column("status_raw", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("parent_issue_id", Text),
+    Column("parent_key", Text),
+    Column("summary", Text, nullable=False),
+    Column("creator", Text),
+    Column("reporter", Text),
+    Column("created_at", Text),
+    Column("updated_at", Text),
+    Column("links", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("flags", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("present", Boolean, nullable=False, server_default=text("true")),
+    Column("first_seen_run", UUID(as_uuid=True), nullable=False),
+    Column("last_seen_run", UUID(as_uuid=True), nullable=False),
+    PrimaryKeyConstraint("project_id", "jira_issue_id", name="pk_migration_issues"),
+    ForeignKeyConstraint(
+        ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_migration_issues_project"
     ),
 )
 
@@ -566,3 +659,10 @@ Index(
 )
 Index("ix_sync_jobs_due", sync_jobs.c.status, sync_jobs.c.run_after)
 Index("ix_sync_jobs_project", sync_jobs.c.tenant_id, sync_jobs.c.project_id, sync_jobs.c.created_at)
+Index(
+    "ix_migration_runs_project",
+    migration_runs.c.tenant_id,
+    migration_runs.c.project_id,
+    migration_runs.c.created_at,
+)
+Index("ix_migration_issues_parent", migration_issues.c.project_id, migration_issues.c.parent_issue_id)

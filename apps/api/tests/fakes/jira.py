@@ -77,6 +77,8 @@ class FakeJira:
         self.sprints: dict[int, list[dict[str, Any]]] = {}  # board id -> sprints
         self.users: dict[str, FakeUser] = {}  # token -> user
         self.failures: list[str] = []  # next responses: "timeout" | "500" | "ratelimit" | "redirect"
+        self.search_calls = 0
+        self.fail_searches_from: int | None = None  # search call number from which searches answer 503
         self.calls: list[tuple[str, str]] = []
 
     # ---- setup helpers
@@ -232,6 +234,9 @@ class FakeJira:
         return self._json(404, {"errorMessages": ["not found"]})
 
     def _search(self, rest: str, body: dict[str, Any], browsable: dict[str, FakeProject]) -> httpx.Response:
+        self.search_calls += 1
+        if self.fail_searches_from is not None and self.search_calls >= self.fail_searches_from:
+            return self._json(503, {"errorMessages": ["search unavailable"]})  # an outage mid-scan
         jql = body.get("jql", "")
         m = re.search(r'project\s*=\s*"?([A-Za-z0-9_]+)"?', jql)
         project = m and next((p for p in browsable.values() if m.group(1) in (p.key, p.id)), None)
@@ -287,6 +292,9 @@ def _issue(
 ) -> dict[str, Any]:
     fields: dict[str, Any] = {
         "summary": summary,
+        "created": "2026-01-05T09:00:00.000+0000",
+        "creator": {"accountId": "acc-ada", "displayName": "Ada"},
+        "reporter": {"accountId": "acc-grace", "displayName": "Grace"},
         "issuetype": {"id": itype["id"], "name": itype["name"]},
         "status": status,
         "labels": [],
@@ -511,3 +519,51 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fake Jira API for local E2E tests")
     parser.add_argument("--port", type=int, default=18091)
     serve(parser.parse_args().port)
+
+
+def legacy_project(
+    fake: FakeJira, key: str = "LEG", pid: str = "10200", epics: int = 3, stories: int = 4, subtasks: int = 2
+) -> FakeProject:
+    """A long-lived project to migrate (INPROOM-151): epics -> stories -> sub-tasks, plus the awkward cases a
+    real migration meets: an orphan (parent not visible), an unsupported type, a link to another project.
+    Size = epics * (1 + stories * (1 + subtasks)) + 3. VALID_TOKEN can browse it."""
+    epic, story, sub, spike = (
+        _type("10000", "Epic", 1),
+        _type("10001", "Story", 0),
+        _type("10003", "Sub-task", -1),
+        _type("10009", "Spike", 0),
+    )
+    flow = [TODO, DOING, REVIEW, DONE]
+    project = FakeProject(
+        pid,
+        key,
+        f"{key} legacy",
+        [epic, story, sub, spike],
+        {t["id"]: flow for t in (epic, story, sub, spike)},
+    )
+    seq = iter(range(1, 10**7))
+    ident = iter(range(int(pid) * 1000, int(pid) * 1000 + 10**6))
+
+    def add(
+        itype: dict[str, Any], summary: str, parent: dict[str, Any] | None = None, **kw: Any
+    ) -> dict[str, Any]:
+        n, iid = next(seq), str(next(ident))
+        issue = _issue(iid, f"{key}-{n}", itype, flow[n % 4], summary, **kw)
+        if parent:
+            issue["fields"]["parent"] = {"id": parent["id"], "key": parent["key"]}
+        project.issues.append(issue)
+        return issue
+
+    for e in range(epics):
+        ep = add(epic, f"Epic {e}")
+        for s_ in range(stories):
+            st = add(story, f"Story {e}.{s_}", ep)
+            for t in range(subtasks):
+                add(sub, f"Sub-task {e}.{s_}.{t}", st)
+    orphan = add(story, "Orphan story")
+    orphan["fields"]["parent"] = {"id": "99999999", "key": "OLD-1"}  # parent deleted / not visible
+    add(spike, "Investigate caching")  # a type outside epic / story / task / sub-task / bug
+    add(story, "Linked elsewhere", links=[_link("Blocks", "is blocked by", "blocks", outward_key="OTHER-7")])
+    fake.projects[key] = project
+    fake.users[VALID_TOKEN].access[key] = set(ALL_PERMS)
+    return project

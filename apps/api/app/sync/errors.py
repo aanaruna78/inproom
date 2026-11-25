@@ -78,6 +78,11 @@ CATALOG: dict[str, tuple[str, str, str]] = {
         "The token can write, but INPROOM only reads here.",
         "Replace it with a read-only token (least privilege).",
     ),
+    "TOO_MANY_ISSUES": (
+        "Jira project too large to inventory at once",
+        "The migration scan stopped at 50,000 issues so it does not run unbounded.",
+        "Set 'issues updated since' on the migration plan to narrow the history, then scan again.",
+    ),
     "STALE": (
         "Data is stale",
         "No successful sync for more than 3 sync intervals.",

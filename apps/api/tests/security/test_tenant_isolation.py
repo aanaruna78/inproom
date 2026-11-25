@@ -93,6 +93,10 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/v1/projects/{project_id}/sources/sync-status"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/sources/jobs"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile"): "project_scoped",
+    # INPROOM-151
+    ("GET", "/v1/projects/{project_id}/migration"): "project_scoped",
+    ("PUT", "/v1/projects/{project_id}/migration"): "project_scoped",
+    ("POST", "/v1/projects/{project_id}/migration/scan"): "project_scoped",
     # INPROOM-146
     ("GET", "/v1/connections/attention"): "tenant_collection",
     ("GET", "/v1/connections/{connection_id}/sources"): "connection_scoped",
@@ -267,6 +271,8 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         kwargs["json"] = {"roles": ["viewer"]}
     elif method == "POST" and path_template.endswith("/adopt"):
         kwargs["json"] = {"from_connection_id": tenant_ids.connection["id"]}
+    elif method == "PUT" and path_template.endswith("/migration"):
+        kwargs["json"] = {"jira_source_id": tenant_ids.jira_source["id"]}
     elif method == "PUT" and path_template.endswith("/mapping"):
         kwargs["json"] = {"fields": {}}
         kwargs["headers"]["If-Match"] = '"1"'

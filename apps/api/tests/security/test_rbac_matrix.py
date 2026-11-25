@@ -126,6 +126,10 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
         "project",
         "project.source.manage",
     ),
+    # INPROOM-151
+    ("GET", "/v1/projects/{project_id}/migration"): ("project", "project.read"),
+    ("PUT", "/v1/projects/{project_id}/migration"): ("project", "project.source.manage"),
+    ("POST", "/v1/projects/{project_id}/migration/scan"): ("project", "project.source.manage"),
     # INPROOM-146
     ("GET", "/v1/connections/attention"): ("tenant", "tenant.connection.manage"),
     ("GET", "/v1/connections/{connection_id}/sources"): ("connection", "tenant.connection.manage"),
@@ -150,7 +154,12 @@ SUCCESS = {"GET": "200", "PATCH": "200", "PUT": "200", "DELETE": "204", "POST": 
 ACCEPTED = {("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile")}
 # Authorized callers reach a business rule instead of success: adopt needs a REVOKED same-site connection,
 # which the shared world does not have, so 409 ADOPT_NOT_ALLOWED is the authorized outcome (INPROOM-146).
-BUSINESS_RULE = {("POST", "/v1/connections/{connection_id}/adopt"): "409"}
+BUSINESS_RULE = {
+    ("POST", "/v1/connections/{connection_id}/adopt"): "409",
+    # The shared world's project is a NEW project: authorized callers get 409 NOT_A_MIGRATION_PROJECT.
+    ("PUT", "/v1/projects/{project_id}/migration"): "409",
+    ("POST", "/v1/projects/{project_id}/migration/scan"): "409",
+}
 
 # actor -> (token roles, project membership role or None, same tenant?)
 ACTORS: dict[str, tuple[tuple[str, ...], str | None, bool]] = {
@@ -358,6 +367,8 @@ def _call(client, method, path, world: World, headers):
         kwargs["headers"]["If-Match"] = f'"{world.project["version"]}"'
     elif method == "POST" and path.endswith("/adopt"):
         kwargs["json"] = {"from_connection_id": world.connection["id"]}
+    elif method == "PUT" and path.endswith("/migration"):
+        kwargs["json"] = {"jira_source_id": world.jira_source["id"]}
     elif method == "PUT" and path.endswith("/mapping"):
         kwargs["json"] = {"fields": {"acceptance_criteria": fj.TEAM}}
         kwargs["headers"]["If-Match"] = '"1"'
