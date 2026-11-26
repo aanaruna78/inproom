@@ -516,6 +516,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/provenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Provenance of one revision, or of one passage of it (?anchor=) */
+        get: operations["revision_provenance_v1_projects__project_id__content__kind___source_id___external_id__revisions__seq__provenance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/raw": {
         parameters: {
             query?: never;
@@ -717,6 +734,23 @@ export interface paths {
         get: operations["my_permissions_v1_projects__project_id__permissions_me_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/provenance/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Provenance of up to 100 citations: source, revision, modified, trust, access, freshness */
+        post: operations["resolve_v1_projects__project_id__provenance_resolve_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1303,29 +1337,38 @@ export interface components {
             truncated: boolean;
         };
         /** Citation */
-        Citation: {
-            /** Blob Sha */
-            blob_sha: string;
-            /** Branch */
-            branch: string;
-            /** Commit */
-            commit: string;
-            /** Line End */
-            line_end: number;
-            /** Line Start */
-            line_start: number;
-            /** Path */
-            path: string;
-            /** Permalink */
-            permalink: string;
-            /** Repository */
-            repository: string;
+        "Citation-Input": {
+            /** Anchor */
+            anchor?: string | null;
+            /** External Id */
+            external_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "confluence" | "jira" | "git" | "upload";
+            /** Seq */
+            seq: number;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+        };
+        /** CitationError */
+        CitationError: {
+            /** Code */
+            code: string;
+            /** Detail */
+            detail: string;
+            /** Reason */
+            reason?: string | null;
         };
         /** CodeFile */
         CodeFile: {
             /** Behind */
             behind: boolean;
-            citation: components["schemas"]["Citation"];
+            citation: components["schemas"]["app__modules__code__Citation"];
             /** Definitions */
             definitions: {
                 [key: string]: unknown;
@@ -1347,7 +1390,7 @@ export interface components {
         CodeHit: {
             /** Behind */
             behind: boolean;
-            citation: components["schemas"]["Citation"];
+            citation: components["schemas"]["app__modules__code__Citation"];
             /** Item */
             item: {
                 [key: string]: string;
@@ -2639,6 +2682,29 @@ export interface components {
             /** Next Page */
             next_page: number | null;
         };
+        /** ResolveRequest */
+        ResolveRequest: {
+            /** Citations */
+            citations: components["schemas"]["Citation-Input"][];
+        };
+        /** ResolveResponse */
+        ResolveResponse: {
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Results */
+            results: components["schemas"]["Resolved"][];
+        };
+        /** Resolved */
+        Resolved: {
+            citation: components["schemas"]["app__modules__provenance__Citation"];
+            error?: components["schemas"]["CitationError"] | null;
+            /** Record */
+            record?: {
+                [key: string]: unknown;
+            } | null;
+        };
         /**
          * Retention
          * @description How long stored source content lives (INPROOM-160). Lineage metadata is always kept.
@@ -3316,6 +3382,44 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
+        };
+        /** Citation */
+        app__modules__code__Citation: {
+            /** Blob Sha */
+            blob_sha: string;
+            /** Branch */
+            branch: string;
+            /** Commit */
+            commit: string;
+            /** Line End */
+            line_end: number;
+            /** Line Start */
+            line_start: number;
+            /** Path */
+            path: string;
+            /** Permalink */
+            permalink: string;
+            /** Repository */
+            repository: string;
+        };
+        /** Citation */
+        app__modules__provenance__Citation: {
+            /** Anchor */
+            anchor?: string | null;
+            /** External Id */
+            external_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "confluence" | "jira" | "git" | "upload";
+            /** Seq */
+            seq: number;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
         };
     };
     responses: never;
@@ -4862,6 +4966,59 @@ export interface operations {
             };
         };
     };
+    revision_provenance_v1_projects__project_id__content__kind___source_id___external_id__revisions__seq__provenance_get: {
+        parameters: {
+            query?: {
+                anchor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                kind: "confluence" | "jira" | "git" | "upload";
+                source_id: string;
+                external_id: string;
+                seq: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_raw_v1_projects__project_id__content__kind___source_id___external_id__revisions__seq__raw_get: {
         parameters: {
             query?: never;
@@ -5636,6 +5793,46 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    resolve_v1_projects__project_id__provenance_resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolveResponse"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

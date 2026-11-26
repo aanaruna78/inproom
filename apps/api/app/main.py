@@ -20,6 +20,7 @@ from app.modules.jira_sources import router as jira_sources_router
 from app.modules.members import router as members_router
 from app.modules.migration import router as migration_router
 from app.modules.projects import router as projects_router
+from app.modules.provenance import router as provenance_router
 from app.modules.settings import router as settings_router
 from app.modules.sources import router as sources_router
 from app.modules.sync_status import router as sync_status_router
@@ -63,6 +64,7 @@ def create_app() -> FastAPI:
     app.include_router(confluence_pages_router)
     app.include_router(sync_status_router)
     app.include_router(migration_router)
+    app.include_router(provenance_router)  # before content: its item route catches every longer path
     app.include_router(content_router)
     app.include_router(documents_router)
     app.include_router(code_router)

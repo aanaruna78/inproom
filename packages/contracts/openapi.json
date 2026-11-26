@@ -320,52 +320,84 @@
         "title": "BranchSnapshot",
         "type": "object"
       },
-      "Citation": {
+      "Citation-Input": {
         "properties": {
-          "blob_sha": {
-            "title": "Blob Sha",
+          "anchor": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor"
+          },
+          "external_id": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "External Id",
             "type": "string"
           },
-          "branch": {
-            "title": "Branch",
+          "kind": {
+            "enum": [
+              "confluence",
+              "jira",
+              "git",
+              "upload"
+            ],
+            "title": "Kind",
             "type": "string"
           },
-          "commit": {
-            "title": "Commit",
-            "type": "string"
-          },
-          "line_end": {
-            "title": "Line End",
+          "seq": {
+            "minimum": 1.0,
+            "title": "Seq",
             "type": "integer"
           },
-          "line_start": {
-            "title": "Line Start",
-            "type": "integer"
-          },
-          "path": {
-            "title": "Path",
-            "type": "string"
-          },
-          "permalink": {
-            "title": "Permalink",
-            "type": "string"
-          },
-          "repository": {
-            "title": "Repository",
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
             "type": "string"
           }
         },
         "required": [
-          "repository",
-          "branch",
-          "commit",
-          "path",
-          "line_start",
-          "line_end",
-          "blob_sha",
-          "permalink"
+          "kind",
+          "source_id",
+          "external_id",
+          "seq"
         ],
         "title": "Citation",
+        "type": "object"
+      },
+      "CitationError": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "code",
+          "detail"
+        ],
+        "title": "CitationError",
         "type": "object"
       },
       "CodeFile": {
@@ -375,7 +407,7 @@
             "type": "boolean"
           },
           "citation": {
-            "$ref": "#/components/schemas/Citation"
+            "$ref": "#/components/schemas/app__modules__code__Citation"
           },
           "definitions": {
             "items": {
@@ -432,7 +464,7 @@
             "type": "boolean"
           },
           "citation": {
-            "$ref": "#/components/schemas/Citation"
+            "$ref": "#/components/schemas/app__modules__code__Citation"
           },
           "item": {
             "additionalProperties": {
@@ -3877,6 +3909,82 @@
         "title": "RepositoryOptions",
         "type": "object"
       },
+      "ResolveRequest": {
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/Citation-Input"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Citations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "citations"
+        ],
+        "title": "ResolveRequest",
+        "type": "object"
+      },
+      "ResolveResponse": {
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/Resolved"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results",
+          "counts"
+        ],
+        "title": "ResolveResponse",
+        "type": "object"
+      },
+      "Resolved": {
+        "properties": {
+          "citation": {
+            "$ref": "#/components/schemas/app__modules__provenance__Citation"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CitationError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "record": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record"
+          }
+        },
+        "required": [
+          "citation"
+        ],
+        "title": "Resolved",
+        "type": "object"
+      },
       "Retention": {
         "additionalProperties": false,
         "description": "How long stored source content lives (INPROOM-160). Lineage metadata is always kept.",
@@ -5601,6 +5709,105 @@
           "name"
         ],
         "title": "WorkspaceCreate",
+        "type": "object"
+      },
+      "app__modules__code__Citation": {
+        "properties": {
+          "blob_sha": {
+            "title": "Blob Sha",
+            "type": "string"
+          },
+          "branch": {
+            "title": "Branch",
+            "type": "string"
+          },
+          "commit": {
+            "title": "Commit",
+            "type": "string"
+          },
+          "line_end": {
+            "title": "Line End",
+            "type": "integer"
+          },
+          "line_start": {
+            "title": "Line Start",
+            "type": "integer"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "permalink": {
+            "title": "Permalink",
+            "type": "string"
+          },
+          "repository": {
+            "title": "Repository",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository",
+          "branch",
+          "commit",
+          "path",
+          "line_start",
+          "line_end",
+          "blob_sha",
+          "permalink"
+        ],
+        "title": "Citation",
+        "type": "object"
+      },
+      "app__modules__provenance__Citation": {
+        "properties": {
+          "anchor": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor"
+          },
+          "external_id": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "External Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "confluence",
+              "jira",
+              "git",
+              "upload"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 1.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "source_id",
+          "external_id",
+          "seq"
+        ],
+        "title": "Citation",
         "type": "object"
       }
     },
@@ -7838,6 +8045,123 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/provenance": {
+      "get": {
+        "operationId": "revision_provenance_v1_projects__project_id__content__kind___source_id___external_id__revisions__seq__provenance_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "confluence",
+                "jira",
+                "git",
+                "upload"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "external_id",
+            "required": true,
+            "schema": {
+              "title": "External Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seq",
+            "required": true,
+            "schema": {
+              "title": "Seq",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "anchor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Anchor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Revision Provenance V1 Projects  Project Id  Content  Kind   Source Id   External Id  Revisions  Seq  Provenance Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Provenance of one revision, or of one passage of it (?anchor=)",
+        "tags": [
+          "provenance"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/raw": {
       "get": {
         "operationId": "get_raw_v1_projects__project_id__content__kind___source_id___external_id__revisions__seq__raw_get",
@@ -8917,6 +9241,60 @@
         "summary": "The caller's effective roles, permissions and approval scopes on a project",
         "tags": [
           "members"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/provenance/resolve": {
+      "post": {
+        "operationId": "resolve_v1_projects__project_id__provenance_resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Provenance of up to 100 citations: source, revision, modified, trust, access, freshness",
+        "tags": [
+          "provenance"
         ]
       }
     },

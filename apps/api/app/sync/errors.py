@@ -129,6 +129,11 @@ CATALOG: dict[str, tuple[str, str, str]] = {
         "Very long lines (usually minified or generated code) were skipped when looking for symbols.",
         "Nothing to do for generated code; otherwise split the long lines.",
     ),
+    "NEWER_REVISION": (
+        "A newer version exists",
+        "The cited revision is no longer the item's current one; the item changed after it was cited.",
+        "Re-read the current revision before relying on the citation.",
+    ),
     "PROVIDER_ERROR": (
         "Unexpected provider response",
         "The provider returned an unexpected error.",

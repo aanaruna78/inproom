@@ -271,6 +271,19 @@ def _revision(conn: Connection, obj: dict[str, Any], seq: int) -> dict[str, Any]
     return dict(rev)
 
 
+def access_reason(conn: Connection, obj: dict[str, Any]) -> tuple[str, str] | None:
+    """Why the caller's project may not see this item now (reason, detail), or None. Shared by raw content,
+    documents, code files and provenance (INPROOM-182): the item is CURRENT and its source ACTIVE (and, from
+    INPROOM-183, within the project's classification cap)."""
+    if obj["status"] != IN_SCOPE:
+        detail = f"the item is {obj['status'].lower()}: {obj['status_reason'] or ''}"
+        return obj["status"], detail.rstrip(": ")
+    source_status = _source_status(conn, obj)
+    if source_status != "ACTIVE":
+        return f"SOURCE_{source_status}", f"the item's source is {source_status.lower()}"
+    return None
+
+
 def _readable(
     conn: Connection, principal: Principal, request: Request, project_id, kind, source_id, external_id, seq
 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -279,15 +292,10 @@ def _readable(
     parsed documents share these rules (INPROOM-158 / INPROOM-167)."""
     obj = _object(conn, project_id, kind, source_id, external_id)
     rev = _revision(conn, obj, seq)
-    source_status = _source_status(conn, obj)
-    reason = None
-    if obj["status"] != IN_SCOPE:
-        reason, detail = obj["status"], f"the item is {obj['status'].lower()}: {obj['status_reason'] or ''}"
-    elif source_status != "ACTIVE":
-        reason, detail = f"SOURCE_{source_status}", f"the item's source is {source_status.lower()}"
-    elif rev["purged_at"] is not None:
+    reason, detail = access_reason(conn, obj) or (None, "")
+    if reason is None and rev["purged_at"] is not None:
         reason, detail = "PURGED", "this revision's content was removed by the retention policy"
-    elif rev["blob_key"] is None:
+    elif reason is None and rev["blob_key"] is None:
         reason, detail = "NOT_STORED", "this revision's content was not stored (over the size limit)"
     if reason:
         raise _withhold(principal, request, obj, seq, reason, detail.rstrip(": "))

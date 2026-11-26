@@ -159,6 +159,15 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
         "project.read",
     ),
     ("GET", "/v1/projects/{project_id}/content/parse-failures"): ("project", "project.read"),
+    # INPROOM-182
+    ("POST", "/v1/projects/{project_id}/provenance/resolve"): ("project", "project.read"),
+    (
+        "GET",
+        "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/provenance",
+    ): (
+        "project",
+        "project.read",
+    ),
     # INPROOM-175
     ("GET", "/v1/projects/{project_id}/code/search"): ("project", "project.read"),
     ("GET", "/v1/projects/{project_id}/code/snapshots"): ("project", "project.read"),
@@ -434,6 +443,17 @@ def _call(client, method, path, world: World, headers):
         kwargs["headers"]["If-Match"] = f'"{world.project["version"]}"'
     elif method == "POST" and path.endswith("/adopt"):
         kwargs["json"] = {"from_connection_id": world.connection["id"]}
+    elif method == "POST" and path.endswith("/provenance/resolve"):
+        kwargs["json"] = {
+            "citations": [
+                {
+                    "kind": "confluence",
+                    "source_id": world.confluence_source["id"],
+                    "external_id": "101",
+                    "seq": 1,
+                }
+            ]
+        }
     elif method == "POST" and path.endswith("/documents"):
         kwargs["files"] = {"file": ("new.md", b"# New document")}
     elif method == "PUT" and "/documents/" in path:

@@ -103,6 +103,11 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/v1/projects/{project_id}/migration/drift"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/content"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/code/search"): "project_scoped",
+    ("POST", "/v1/projects/{project_id}/provenance/resolve"): "project_scoped",
+    (
+        "GET",
+        "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/provenance",
+    ): ("project_scoped"),
     ("GET", "/v1/projects/{project_id}/code/snapshots"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/code/files"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/content/parse-failures"): "project_scoped",
@@ -312,6 +317,17 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         kwargs["json"] = {"roles": ["viewer"]}
     elif method == "POST" and path_template.endswith("/adopt"):
         kwargs["json"] = {"from_connection_id": tenant_ids.connection["id"]}
+    elif method == "POST" and path_template.endswith("/provenance/resolve"):
+        kwargs["json"] = {
+            "citations": [
+                {
+                    "kind": "confluence",
+                    "source_id": tenant_ids.confluence_source["id"],
+                    "external_id": "101",
+                    "seq": 1,
+                }
+            ]
+        }
     elif method == "POST" and path_template.endswith("/documents"):
         kwargs["files"] = {"file": ("x.md", b"# cross-tenant")}
     elif method == "PUT" and "/documents/" in path_template:
