@@ -373,6 +373,13 @@ project_jira_sources = Table(
     Column("mapping_version", Integer, nullable=False, server_default="1"),
     Column("snapshot_version", Integer, nullable=False, server_default="0"),
     Column("warnings", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    # INPROOM-188: issues under a Jira security level are withheld unless allowed here
+    Column(
+        "security",
+        JSONB,
+        nullable=False,
+        server_default=text("""'{"include_secured": false, "allowed_levels": []}'::jsonb"""),
+    ),
     Column("selected_by", Text, nullable=False),
     Column("selected_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),

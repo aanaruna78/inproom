@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Header, Path, Query, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import Connection, delete, insert, or_, select, update
 
 from app import audit
@@ -90,6 +90,7 @@ class JiraSource(BaseModel):
     mapping_version: int
     snapshot_version: int
     warnings: list[dict[str, Any]]
+    security: dict[str, Any]  # INPROOM-188: {include_secured, allowed_levels}
     selected_by: str
     selected_at: datetime
     updated_at: datetime
@@ -119,6 +120,16 @@ CanonicalField = Literal["story_points", "sprint", "epic_link", "acceptance_crit
 IssueTypeKind = Literal["epic", "story", "task", "subtask", "bug", "other"]
 StatusKind = Literal["todo", "in_progress", "done"]
 SOURCE_ID = Annotated[str, Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9_\-]+$")]
+
+
+class SecurityPolicy(BaseModel):
+    """INPROOM-188: which Jira security levels may be served. Secured issues are withheld by default."""
+
+    include_secured: bool = False
+    allowed_levels: list[Annotated[str, StringConstraints(min_length=1, max_length=255)]] = Field(
+        default_factory=list, max_length=50, description="Empty with include_secured: every level"
+    )
+    reason: str = Field(min_length=3, max_length=300)
 
 
 class MappingOverrides(BaseModel):
@@ -611,6 +622,92 @@ def update_mapping(
         updated = _source(conn, principal, project_id, source_id)
     response.headers["ETag"] = settings_module.etag(updated["mapping_version"])
     return JiraSource.model_validate(updated)
+
+
+@router.put(
+    "/v1/projects/{project_id}/sources/jira/{source_id}/security",
+    response_model=JiraSource,
+    summary="Which Jira security levels may be served (If-Match = the source version); applied at once",
+    responses={403: PROBLEM, 404: PROBLEM, 409: PROBLEM, 412: PROBLEM, 422: PROBLEM, 428: PROBLEM},
+)
+def update_security(
+    request: Request,
+    response: Response,
+    principal: CurrentPrincipal,
+    project_id: uuid.UUID,
+    source_id: uuid.UUID,
+    payload: Annotated[SecurityPolicy, Body()],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> JiraSource:
+    from app.content import ingest  # late: ingest -> ... -> handlers -> this module
+    from app.sync import queue
+
+    expected = settings_module.parse_if_match(if_match, "source")
+    with tenant_session(principal.tenant_id) as conn:
+        access = authorize(conn, principal, request, "project.source.manage", project_id, lock=True)
+        if access.project["status"] == "ARCHIVED":
+            raise conflict("PROJECT_ARCHIVED", "Archived projects are read-only; restore the project first")
+        source = _source(conn, principal, project_id, source_id)
+        if source["version"] != expected:
+            raise precondition_failed(
+                "The source was changed by someone else; current ETag is "
+                f"{settings_module.etag(source['version'])}"
+            )
+        levels = sorted({x.strip() for x in payload.allowed_levels if x.strip()}, key=str.casefold)
+        policy = {"include_secured": payload.include_secured, "allowed_levels": levels}
+        if _canonical(policy) != _canonical(source["security"]):  # level names match case-insensitively
+            conn.execute(
+                update(project_jira_sources)
+                .where(
+                    project_jira_sources.c.tenant_id == principal.tenant_id,
+                    project_jira_sources.c.id == source_id,
+                )
+                .values(
+                    security=policy, updated_at=datetime.now(UTC), version=project_jira_sources.c.version + 1
+                )
+            )
+            effect = ingest.reevaluate_security(conn, source | {"security": policy})
+            queued = None
+            if source["status"] == "ACTIVE" and _loosened(source["security"], policy):
+                # issues never stored (withheld when first seen) are fetched by a full sync
+                queued = queue.enqueue(
+                    conn, principal.tenant_id, project_id, "jira", source_id, "manual", mode="full"
+                )["id"]
+            _emit(
+                conn,
+                principal,
+                request.state.trace_id,
+                "source.jira.security.update",
+                source,
+                {
+                    "from": source["security"],
+                    "to": policy,
+                    "reason": payload.reason,
+                    **effect,
+                    "full_sync_job": str(queued) if queued else None,
+                },
+                "source.jira.security.changed",
+            )
+        updated = _source(conn, principal, project_id, source_id)
+    response.headers["ETag"] = settings_module.etag(updated["version"])
+    return JiraSource.model_validate(updated)
+
+
+def _canonical(policy: dict[str, Any]) -> tuple[bool, frozenset[str]]:
+    return bool(policy.get("include_secured")), frozenset(
+        x.casefold() for x in policy.get("allowed_levels") or []
+    )
+
+
+def _loosened(old: dict[str, Any], new: dict[str, Any]) -> bool:
+    """Does the new policy allow some level the old one did not?"""
+    if not new.get("include_secured"):
+        return False
+    if not old.get("include_secured"):
+        return True
+    old_levels = {x.casefold() for x in old.get("allowed_levels") or []}
+    new_levels = {x.casefold() for x in new.get("allowed_levels") or []}
+    return bool(old_levels) and (not new_levels or bool(new_levels - old_levels))
 
 
 # ---------------------------------------------------------------- connection health (called by /check)

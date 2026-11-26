@@ -168,6 +168,10 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
     # INPROOM-182
     ("POST", "/v1/projects/{project_id}/provenance/resolve"): ("project", "project.read"),
     ("GET", "/v1/projects/{project_id}/knowledge/changes"): ("project", "project.read"),
+    ("PUT", "/v1/projects/{project_id}/sources/jira/{source_id}/security"): (
+        "project",
+        "project.source.manage",
+    ),
     (
         "GET",
         "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/provenance",
@@ -479,6 +483,9 @@ def _call(client, method, path, world: World, headers):
         kwargs["headers"]["If-Match"] = '"1"'
     elif method == "PUT" and path.endswith("/migration"):
         kwargs["json"] = {"jira_source_id": world.jira_source["id"]}
+    elif method == "PUT" and path.endswith("/security"):  # the default policy: idempotent for every actor
+        kwargs["json"] = {"include_secured": False, "allowed_levels": [], "reason": "matrix"}
+        kwargs["headers"]["If-Match"] = f'"{world.jira_source["version"]}"'
     elif method == "PUT" and path.endswith("/mapping"):
         kwargs["json"] = {"fields": {"acceptance_criteria": fj.TEAM}}
         kwargs["headers"]["If-Match"] = '"1"'

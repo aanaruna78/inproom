@@ -57,6 +57,65 @@ _DROP = {"self", "avatarUrls", "iconUrl", "emailAddress", "timeZone", "expand", 
 _MAPPED = ("story_points", "epic_link", "sprint", "acceptance_criteria", "team")
 
 
+def security_allows(policy: dict[str, Any] | None, level: str | None) -> bool:
+    """INPROOM-188: may an issue under this Jira security level be served? No level: always. Otherwise only
+    when the source includes secured issues, and the level is in allowed_levels (an empty list allows all)."""
+    if not level:
+        return True
+    policy = policy or {}
+    if not policy.get("include_secured"):
+        return False
+    allowed = {str(x).casefold() for x in policy.get("allowed_levels") or []}
+    return not allowed or level.casefold() in allowed
+
+
+def security_reason(level: str) -> str:
+    return f"security level {level}"
+
+
+def reevaluate_security(conn: Connection, source: dict[str, Any]) -> dict[str, int]:
+    """Apply a changed security policy to the source's stored issues at once, from their current ACL, with no
+    refetch: newly disallowed issues become RESTRICTED, newly allowed ones CURRENT again (only those withheld
+    for their security level). Issues never stored are fetched by the full sync the caller queues."""
+    o = source_objects
+    rows = conn.execute(
+        select(o.c.external_id, o.c.status, o.c.status_reason, o.c.acl).where(
+            o.c.project_id == source["project_id"],
+            o.c.source_kind == "jira",
+            o.c.source_id == source["id"],
+            o.c.status.in_([IN_SCOPE, "RESTRICTED"]),
+            o.c.current_revision_id.is_not(None),
+            o.c.acl["security_level"].astext.is_not(None),
+        )
+    ).mappings()
+    withhold, restore = {}, []
+    for r in rows:
+        level = r["acl"]["security_level"]
+        allowed = security_allows(source.get("security"), level)
+        if not allowed and r["status"] == IN_SCOPE:
+            withhold.setdefault(level, []).append(r["external_id"])
+        elif (
+            allowed
+            and r["status"] == "RESTRICTED"
+            and (r["status_reason"] or "").startswith("security level")
+        ):
+            restore.append(r["external_id"])
+    for level, ids in withhold.items():
+        mark(conn, source["project_id"], "jira", source["id"], ids, "RESTRICTED", security_reason(level))
+    if restore:
+        conn.execute(
+            update(o)
+            .where(
+                o.c.project_id == source["project_id"],
+                o.c.source_kind == "jira",
+                o.c.source_id == source["id"],
+                o.c.external_id.in_(restore),
+            )
+            .values(status=IN_SCOPE, status_reason=None, deleted_at=None, updated_at=datetime.now(UTC))
+        )
+    return {"withheld": sum(len(v) for v in withhold.values()), "restored": len(restore)}
+
+
 def jira_fields(mapping: dict[str, Any] | None) -> list[str]:
     """The record field set plus the custom fields the source's mapping names."""
     custom = []
@@ -438,6 +497,23 @@ def jira(
         }
         title = f"{issue.get('key')}: {(issue.get('fields') or {}).get('summary') or ''}"[:500]
         uri = f"/browse/{issue.get('key')}"
+        if not security_allows(source.get("security"), acl["security_level"]):
+            # INPROOM-188: a disallowed security level withholds the issue. A stored issue becomes RESTRICTED
+            # (its current ACL names the level); a new one is never stored.
+            if external in have:
+                if have[external]["acl"] != acl:
+                    refresh_acl(conn, tenant, source["project_id"], "jira", source["id"], external, acl)
+                mark(
+                    conn,
+                    source["project_id"],
+                    "jira",
+                    source["id"],
+                    [external],
+                    "RESTRICTED",
+                    security_reason(acl["security_level"]),
+                )
+            counts["withheld"] += 1
+            continue
         if _unchanged(have.get(external), data, title, uri, acl):
             counts["unchanged"] += 1
             continue

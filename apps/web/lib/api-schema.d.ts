@@ -1032,6 +1032,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/sources/jira/{source_id}/security": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Which Jira security levels may be served (If-Match = the source version); applied at once */
+        put: operations["update_security_v1_projects__project_id__sources_jira__source_id__security_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/sources/jobs": {
         parameters: {
             query?: never;
@@ -2026,6 +2043,10 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Security */
+            security: {
+                [key: string]: unknown;
+            };
             /**
              * Selected At
              * Format: date-time
@@ -2985,6 +3006,24 @@ export interface components {
             provider: string;
             /** Provider Repo Id */
             provider_repo_id: string;
+        };
+        /**
+         * SecurityPolicy
+         * @description INPROOM-188: which Jira security levels may be served. Secured issues are withheld by default.
+         */
+        SecurityPolicy: {
+            /**
+             * Allowed Levels
+             * @description Empty with include_secured: every level
+             */
+            allowed_levels?: string[];
+            /**
+             * Include Secured
+             * @default false
+             */
+            include_secured: boolean;
+            /** Reason */
+            reason: string;
         };
         /** SelectRepository */
         SelectRepository: {
@@ -6915,6 +6954,77 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    update_security_v1_projects__project_id__sources_jira__source_id__security_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
+            path: {
+                project_id: string;
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecurityPolicy"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JiraSource"];
+                };
+            };
+            /** @description problem+json */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

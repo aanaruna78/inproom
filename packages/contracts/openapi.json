@@ -2046,6 +2046,11 @@
             "title": "Project Id",
             "type": "string"
           },
+          "security": {
+            "additionalProperties": true,
+            "title": "Security",
+            "type": "object"
+          },
           "selected_at": {
             "format": "date-time",
             "title": "Selected At",
@@ -2109,6 +2114,7 @@
           "mapping_version",
           "snapshot_version",
           "warnings",
+          "security",
           "selected_by",
           "selected_at",
           "updated_at",
@@ -4583,6 +4589,38 @@
           "branches"
         ],
         "title": "ScopeItem",
+        "type": "object"
+      },
+      "SecurityPolicy": {
+        "description": "INPROOM-188: which Jira security levels may be served. Secured issues are withheld by default.",
+        "properties": {
+          "allowed_levels": {
+            "description": "Empty with include_secured: every level",
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Allowed Levels",
+            "type": "array"
+          },
+          "include_secured": {
+            "default": false,
+            "title": "Include Secured",
+            "type": "boolean"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "SecurityPolicy",
         "type": "object"
       },
       "SelectRepository": {
@@ -10838,6 +10876,98 @@
           }
         ],
         "summary": "A discovered schema snapshot (latest by default) with its diff against the previous one",
+        "tags": [
+          "jira sources"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sources/jira/{source_id}/security": {
+      "put": {
+        "operationId": "update_security_v1_projects__project_id__sources_jira__source_id__security_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecurityPolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JiraSource"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "problem+json"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "412": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          },
+          "428": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Which Jira security levels may be served (If-Match = the source version); applied at once",
         "tags": [
           "jira sources"
         ]

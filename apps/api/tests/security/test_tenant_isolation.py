@@ -105,6 +105,7 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/v1/projects/{project_id}/code/search"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/provenance/resolve"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/knowledge/changes"): "project_scoped",
+    ("PUT", "/v1/projects/{project_id}/sources/jira/{source_id}/security"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/sources/{kind}/{source_id}/policy"): "project_scoped",
     ("PUT", "/v1/projects/{project_id}/sources/{kind}/{source_id}/policy"): "project_scoped",
     (
@@ -349,6 +350,9 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         kwargs["headers"]["If-Match"] = '"1"'
     elif method == "PUT" and path_template.endswith("/migration"):
         kwargs["json"] = {"jira_source_id": tenant_ids.jira_source["id"]}
+    elif method == "PUT" and path_template.endswith("/security"):
+        kwargs["json"] = {"include_secured": True, "allowed_levels": [], "reason": "cross-tenant"}
+        kwargs["headers"]["If-Match"] = '"1"'
     elif method == "PUT" and path_template.endswith("/mapping"):
         kwargs["json"] = {"fields": {}}
         kwargs["headers"]["If-Match"] = '"1"'
