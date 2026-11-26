@@ -1267,6 +1267,25 @@
         "title": "Drift",
         "type": "object"
       },
+      "Explanation": {
+        "properties": {
+          "keyword": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KeywordScore"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "keyword"
+        ],
+        "title": "Explanation",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2181,6 +2200,32 @@
           "version"
         ],
         "title": "JiraSource",
+        "type": "object"
+      },
+      "KeywordScore": {
+        "properties": {
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "terms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Terms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rank",
+          "score",
+          "terms"
+        ],
+        "title": "KeywordScore",
         "type": "object"
       },
       "KnowledgeStatus": {
@@ -4509,6 +4554,202 @@
           }
         },
         "title": "Retention",
+        "type": "object"
+      },
+      "RetrieveHit": {
+        "properties": {
+          "citation": {
+            "$ref": "#/components/schemas/app__modules__knowledge__Citation"
+          },
+          "context": {
+            "title": "Context",
+            "type": "string"
+          },
+          "explanation": {
+            "$ref": "#/components/schemas/Explanation"
+          },
+          "line_end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line End"
+          },
+          "line_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Start"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
+          "path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Path",
+            "type": "array"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "retrieved_at": {
+            "format": "date-time",
+            "title": "Retrieved At",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "citation",
+          "title",
+          "path",
+          "context",
+          "text",
+          "page",
+          "line_start",
+          "line_end",
+          "retrieved_at",
+          "provenance",
+          "explanation"
+        ],
+        "title": "RetrieveHit",
+        "type": "object"
+      },
+      "RetrieveRequest": {
+        "properties": {
+          "kinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "confluence",
+                    "jira",
+                    "git",
+                    "upload"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kinds"
+          },
+          "mode": {
+            "const": "keyword",
+            "default": "keyword",
+            "title": "Mode",
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "source_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Ids"
+          },
+          "top_k": {
+            "default": 10,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "RetrieveRequest",
+        "type": "object"
+      },
+      "RetrieveResult": {
+        "properties": {
+          "excluded_terms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Excluded Terms",
+            "type": "array"
+          },
+          "ignored_terms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ignored Terms",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RetrieveHit"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "query_terms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Query Terms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "query_terms",
+          "excluded_terms",
+          "ignored_terms",
+          "items"
+        ],
+        "title": "RetrieveResult",
         "type": "object"
       },
       "Revision": {
@@ -9562,6 +9803,60 @@
           }
         ],
         "summary": "Re-embed (after a model switch or a fixed failure) or rebuild the chunks; coalesced, audited",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/knowledge/retrieve": {
+      "post": {
+        "operationId": "retrieve_v1_projects__project_id__knowledge_retrieve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetrieveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetrieveResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retrieve cited chunks by keyword: visible current content only, explained",
         "tags": [
           "knowledge"
         ]

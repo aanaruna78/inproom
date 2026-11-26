@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Computed,
     Date,
     DateTime,
     ForeignKey,
@@ -25,7 +26,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR, UUID
 from sqlalchemy.types import UserDefinedType
 
 metadata = MetaData()
@@ -923,6 +924,20 @@ knowledge_chunks = Table(
     Column("text", Text, nullable=False),
     Column("tokens", Integer, nullable=False),
     Column("sha256", Text, nullable=False),
+    Column("title", Text, nullable=False, server_default=""),  # the item's title when projected (INPROOM-211)
+    # INPROOM-211: the lexical index (stemmed + verbatim; external id and context weighted A, text B)
+    Column(
+        "search_tsv",
+        TSVECTOR,
+        Computed(
+            "setweight(to_tsvector('simple'::regconfig, title || ' ' || external_id || ' ' || context), 'A')"
+            " || "
+            "setweight(to_tsvector('english'::regconfig, title || ' ' || context), 'A') || "
+            "setweight(to_tsvector('english'::regconfig, text), 'B') || "
+            "setweight(to_tsvector('simple'::regconfig, text), 'B')",
+            persisted=True,
+        ),
+    ),
     UniqueConstraint("derivative_id", "ordinal", name="uq_knowledge_chunks_ordinal"),
     ForeignKeyConstraint(
         ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_knowledge_chunks_project"
@@ -930,6 +945,7 @@ knowledge_chunks = Table(
 )
 Index("ix_knowledge_chunks_revision", knowledge_chunks.c.project_id, knowledge_chunks.c.revision_id)
 Index("ix_knowledge_chunks_sha", knowledge_chunks.c.tenant_id, knowledge_chunks.c.sha256)
+Index("ix_knowledge_chunks_tsv", knowledge_chunks.c.search_tsv, postgresql_using="gin")
 
 # INPROOM-204: one vector per (tenant, model, chunk sha256), and chunks a model permanently rejected.
 chunk_embeddings = Table(

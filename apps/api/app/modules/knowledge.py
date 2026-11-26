@@ -325,6 +325,39 @@ class SearchResult(BaseModel):
     items: list[SearchHit]
 
 
+def _hit_fields(conn: Connection, row: dict) -> dict:
+    """What every retrieval hit carries: citation, location, text and the cited revision's provenance."""
+    from app.content import provenance
+    from app.db_schema import source_revisions
+
+    obj = dict(
+        conn.execute(select(source_objects).where(source_objects.c.id == row["object_id"])).mappings().one()
+    )
+    rev = dict(
+        conn.execute(select(source_revisions).where(source_revisions.c.id == row["revision_id"]))
+        .mappings()
+        .one()
+    )
+    return {
+        "citation": Citation(
+            kind=row["source_kind"],
+            source_id=row["source_id"],
+            external_id=row["external_id"],
+            seq=row["seq"],
+            anchor=row["anchor"],
+        ),
+        "title": row["title"] or "",
+        "path": list(row["path"] or []),
+        "context": row["context"],
+        "text": row["text"],
+        "page": row["page"],
+        "line_start": row["line_start"],
+        "line_end": row["line_end"],
+        "retrieved_at": row["retrieved_at"],
+        "provenance": provenance.summary(provenance.build(conn, obj, rev, None)),
+    }
+
+
 @router.post(
     "/v1/projects/{project_id}/knowledge/search",
     response_model=SearchResult,
@@ -338,10 +371,9 @@ def search(
     payload: Annotated[SearchRequest, Body()],
 ) -> SearchResult:
     from app.connectors.base import RateLimited
-    from app.content import provenance
     from app.content.embeddings import EmbeddingUnavailable, get_embedder, to_pgvector
-    from app.content.visibility import visible
-    from app.db_schema import Vector, chunk_embeddings, knowledge_chunks, source_revisions
+    from app.content.retrieval import scope
+    from app.db_schema import Vector, chunk_embeddings, knowledge_chunks
 
     with tenant_session(principal.tenant_id) as conn:
         authorize(conn, principal, request, "project.read", project_id)
@@ -364,53 +396,115 @@ def search(
             str(exc)[:300],
             headers={"Retry-After": "30"},
         ) from exc
-    k, o, e, r = knowledge_chunks, source_objects, chunk_embeddings, source_revisions
+    k, e = knowledge_chunks, chunk_embeddings
     dims = int(embedder.dimensions)
     typed = Vector(dims)  # the same expression as the model's HNSW index: embedding::vector(n)
     distance = cast(e.c.embedding, typed).op("<=>")(cast(bindparam("query"), typed))
-    stmt = (
-        select(k, o.c.title, r.c.fetched_at, distance.label("distance"))
-        .join(o, and_(o.c.id == k.c.object_id, o.c.current_revision_id == k.c.revision_id))
-        .join(r, r.c.id == k.c.revision_id)
-        .join(e, and_(e.c.tenant_id == k.c.tenant_id, e.c.model == embedder.model, e.c.sha256 == k.c.sha256))
-        .where(k.c.project_id == project_id)
-        .order_by(distance, k.c.id)
-        .limit(payload.top_k)
-    )
-    if payload.kinds:
-        stmt = stmt.where(k.c.source_kind.in_(payload.kinds))
-    if payload.source_ids:
-        stmt = stmt.where(k.c.source_id.in_(payload.source_ids))
     with tenant_session(principal.tenant_id) as conn:
-        stmt = stmt.where(visible(conn, project_id))
-        rows = [dict(x) for x in conn.execute(stmt, {"query": to_pgvector(vector)}).mappings()]
-        items = []
-        for row in rows:
-            obj = dict(conn.execute(select(o).where(o.c.id == row["object_id"])).mappings().one())
-            rev = dict(conn.execute(select(r).where(r.c.id == row["revision_id"])).mappings().one())
-            summary = provenance.summary(provenance.build(conn, obj, rev, None))
-            items.append(
-                SearchHit(
-                    citation=Citation(
-                        kind=row["source_kind"],
-                        source_id=row["source_id"],
-                        external_id=row["external_id"],
-                        seq=row["seq"],
-                        anchor=row["anchor"],
-                    ),
-                    title=row["title"] or "",
-                    path=list(row["path"] or []),
-                    context=row["context"],
-                    text=row["text"],
-                    page=row["page"],
-                    line_start=row["line_start"],
-                    line_end=row["line_end"],
-                    score=round(1.0 - float(row["distance"]), 6),
-                    retrieved_at=row["fetched_at"],
-                    provenance=summary,
-                )
+        stmt = (
+            scope(conn, project_id, kinds=payload.kinds, source_ids=payload.source_ids)
+            .add_columns(distance.label("distance"))
+            .join(
+                e, and_(e.c.tenant_id == k.c.tenant_id, e.c.model == embedder.model, e.c.sha256 == k.c.sha256)
             )
+            .order_by(distance, k.c.id)
+            .limit(payload.top_k)
+        )
+        rows = [dict(x) for x in conn.execute(stmt, {"query": to_pgvector(vector)}).mappings()]
+        items = [
+            SearchHit(**_hit_fields(conn, row), score=round(1.0 - float(row["distance"]), 6)) for row in rows
+        ]
     return SearchResult(model=embedder.model, model_version=embedder.version, dimensions=dims, items=items)
+
+
+# ---------------------------------------------------------------- hybrid retrieval (INPROOM-33)
+
+
+class RetrieveRequest(BaseModel):
+    query: str = Field(
+        min_length=1, max_length=2000
+    )  # words, "phrases", -exclusions (see app.content.retrieval)
+    mode: Literal["keyword"] = "keyword"
+    top_k: int = Field(default=10, ge=1, le=50)
+    kinds: list[Literal["confluence", "jira", "git", "upload"]] | None = None
+    source_ids: list[uuid.UUID] | None = Field(default=None, max_length=50)
+
+
+class KeywordScore(BaseModel):
+    rank: int  # 1-based rank among the keyword candidates
+    score: float  # ts_rank_cd (cover density); comparable within one query only
+    terms: list[str]  # the query words and phrases this chunk matched
+
+
+class Explanation(BaseModel):
+    keyword: KeywordScore | None  # None: not a keyword candidate
+
+
+class RetrieveHit(BaseModel):
+    citation: Citation  # resolves through POST /provenance/resolve
+    title: str
+    path: list[str]
+    context: str
+    text: str
+    page: int | None
+    line_start: int | None
+    line_end: int | None
+    retrieved_at: datetime
+    provenance: dict
+    explanation: Explanation
+
+
+class RetrieveResult(BaseModel):
+    mode: str
+    query_terms: list[str]  # how the query was understood: the words and phrases searched for
+    excluded_terms: list[str]
+    ignored_terms: list[str]  # stop words only: they would match almost everything
+    items: list[RetrieveHit]
+
+
+@router.post(
+    "/v1/projects/{project_id}/knowledge/retrieve",
+    response_model=RetrieveResult,
+    summary="Retrieve cited chunks by keyword: visible current content only, explained",
+    responses={404: PROBLEM, 422: PROBLEM},
+)
+def retrieve(
+    request: Request,
+    principal: CurrentPrincipal,
+    project_id: uuid.UUID,
+    payload: Annotated[RetrieveRequest, Body()],
+) -> RetrieveResult:
+    from app.content.retrieval import keyword_candidates, parse_query, scope, without_stop_words
+
+    parsed = parse_query(payload.query)
+    if not parsed.units:
+        raise ApiError(
+            422,
+            "QUERY_HAS_NO_TERMS",
+            "The query has no searchable terms",
+            "Add at least one word or phrase that is not excluded",
+        )
+    with tenant_session(principal.tenant_id) as conn:
+        authorize(conn, principal, request, "project.read", project_id)
+        parsed = without_stop_words(conn, parsed)
+        base = scope(conn, project_id, kinds=payload.kinds, source_ids=payload.source_ids)
+        rows = keyword_candidates(conn, base, parsed, payload.top_k)
+        items = [
+            RetrieveHit(
+                **_hit_fields(conn, row),
+                explanation=Explanation(
+                    keyword=KeywordScore(rank=i, score=round(row["keyword_score"], 6), terms=row["terms"])
+                ),
+            )
+            for i, row in enumerate(rows, start=1)
+        ]
+    return RetrieveResult(
+        mode=payload.mode,
+        query_terms=parsed.units,
+        excluded_terms=parsed.excluded,
+        ignored_terms=parsed.ignored,
+        items=items,
+    )
 
 
 # ---------------------------------------------------------------- index status and reindex (INPROOM-206)

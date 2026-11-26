@@ -94,6 +94,7 @@ def project_chunks(
             "line_start": c.get("line_start"),
             "line_end": c.get("line_end"),
             "context": c.get("context") or "",
+            "title": obj.get("title") or "",
             "text": c["text"],
             "tokens": c["tokens"],
             "sha256": c["sha256"],

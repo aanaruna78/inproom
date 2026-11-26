@@ -670,6 +670,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/knowledge/retrieve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retrieve cited chunks by keyword: visible current content only, explained */
+        post: operations["retrieve_v1_projects__project_id__knowledge_retrieve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/knowledge/search": {
         parameters: {
             query?: never;
@@ -1853,6 +1870,10 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        /** Explanation */
+        Explanation: {
+            keyword: components["schemas"]["KeywordScore"] | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -2201,6 +2222,15 @@ export interface components {
             warnings: {
                 [key: string]: unknown;
             }[];
+        };
+        /** KeywordScore */
+        KeywordScore: {
+            /** Rank */
+            rank: number;
+            /** Score */
+            score: number;
+            /** Terms */
+            terms: string[];
         };
         /** KnowledgeStatus */
         KnowledgeStatus: {
@@ -3075,6 +3105,67 @@ export interface components {
              * @default 90
              */
             superseded_days: number;
+        };
+        /** RetrieveHit */
+        RetrieveHit: {
+            citation: components["schemas"]["app__modules__knowledge__Citation"];
+            /** Context */
+            context: string;
+            explanation: components["schemas"]["Explanation"];
+            /** Line End */
+            line_end: number | null;
+            /** Line Start */
+            line_start: number | null;
+            /** Page */
+            page: number | null;
+            /** Path */
+            path: string[];
+            /** Provenance */
+            provenance: {
+                [key: string]: unknown;
+            };
+            /**
+             * Retrieved At
+             * Format: date-time
+             */
+            retrieved_at: string;
+            /** Text */
+            text: string;
+            /** Title */
+            title: string;
+        };
+        /** RetrieveRequest */
+        RetrieveRequest: {
+            /** Kinds */
+            kinds?: ("confluence" | "jira" | "git" | "upload")[] | null;
+            /**
+             * Mode
+             * @default keyword
+             * @constant
+             */
+            mode: "keyword";
+            /** Query */
+            query: string;
+            /** Source Ids */
+            source_ids?: string[] | null;
+            /**
+             * Top K
+             * @default 10
+             */
+            top_k: number;
+        };
+        /** RetrieveResult */
+        RetrieveResult: {
+            /** Excluded Terms */
+            excluded_terms: string[];
+            /** Ignored Terms */
+            ignored_terms: string[];
+            /** Items */
+            items: components["schemas"]["RetrieveHit"][];
+            /** Mode */
+            mode: string;
+            /** Query Terms */
+            query_terms: string[];
         };
         /** Revision */
         Revision: {
@@ -5886,6 +5977,46 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    retrieve_v1_projects__project_id__knowledge_retrieve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetrieveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetrieveResult"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
