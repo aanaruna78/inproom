@@ -63,6 +63,7 @@ TENANT_SCOPED_TABLES = (
     "source_policies",
     "knowledge_heads",
     "knowledge_changes",
+    "knowledge_chunks",
 )
 
 # Project roles allowed in project_members (mirrors app.authz.policy.PROJECT_ROLES; checked by a unit test).
@@ -879,6 +880,38 @@ knowledge_changes = Table(
         "(scope = 'item') = (external_id IS NOT NULL)", name="ck_knowledge_changes_item_has_external_id"
     ),
 )
+
+# INPROOM-203: the queryable projection of READY chunks@1 derivatives (see migration 0022).
+knowledge_chunks = Table(
+    "knowledge_chunks",
+    metadata,
+    Column("id", BigInteger, Identity(), primary_key=True),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("derivative_id", UUID(as_uuid=True), nullable=False),
+    Column("revision_id", UUID(as_uuid=True), nullable=False),
+    Column("object_id", UUID(as_uuid=True), nullable=False),
+    Column("source_kind", Text, nullable=False),
+    Column("source_id", UUID(as_uuid=True), nullable=False),
+    Column("external_id", Text, nullable=False),
+    Column("seq", Integer, nullable=False),
+    Column("ordinal", Integer, nullable=False),
+    Column("anchor", Text),
+    Column("path", ARRAY(Text), nullable=False, server_default="{}"),
+    Column("page", Integer),
+    Column("line_start", Integer),
+    Column("line_end", Integer),
+    Column("context", Text, nullable=False, server_default=""),
+    Column("text", Text, nullable=False),
+    Column("tokens", Integer, nullable=False),
+    Column("sha256", Text, nullable=False),
+    UniqueConstraint("derivative_id", "ordinal", name="uq_knowledge_chunks_ordinal"),
+    ForeignKeyConstraint(
+        ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_knowledge_chunks_project"
+    ),
+)
+Index("ix_knowledge_chunks_revision", knowledge_chunks.c.project_id, knowledge_chunks.c.revision_id)
+Index("ix_knowledge_chunks_sha", knowledge_chunks.c.tenant_id, knowledge_chunks.c.sha256)
 
 Index("ix_audit_events_tenant_time", audit_events.c.tenant_id, audit_events.c.occurred_at)
 Index("ix_outbox_unpublished", outbox_events.c.created_at, postgresql_where=text("published_at IS NULL"))

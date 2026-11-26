@@ -60,7 +60,8 @@ def test_upgrading_a_parser_retires_old_work_without_false_failures(env, monkeyp
     history = e.client.get(
         f"/v1/projects/{e.pid}/content/upload/{e.pid}/{doc_id}/revisions/1/derivatives", headers=e.h()
     )
-    assert [(d["producer_version"], d["status"]) for d in history.json()["items"]] == [
+    parse_history = [d for d in history.json()["items"] if d["producer"] == "parse"]  # chunks: INPROOM-203
+    assert [(d["producer_version"], d["status"]) for d in parse_history] == [
         (1, "INVALIDATED"),
         (current.version, "READY"),
     ]

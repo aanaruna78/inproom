@@ -75,7 +75,7 @@ def test_supported_attachments_are_stored_linked_parsed_and_not_downloaded_twice
     while worker.run_once("w", transports={}, schedule=False, tenant=e.tenant) is not None:
         pass
     derived = att(e, "att5001", "/revisions/2/derivatives").json()["items"]
-    assert [(d["producer"], d["status"]) for d in derived] == [("parse", "READY")]
+    assert [(d["producer"], d["status"]) for d in derived] == [("chunks", "READY"), ("parse", "READY")]
 
 
 def test_unsuitable_attachments_are_skipped_with_a_reason(selected, monkeypatch):

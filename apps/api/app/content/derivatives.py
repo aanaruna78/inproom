@@ -21,6 +21,7 @@ from typing import Any
 from sqlalchemy import Connection, and_, insert, or_, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from app.content import chunking
 from app.content import store as blobs
 from app.content.code import projection
 from app.content.producers import PRODUCERS, ProducerError, for_media_type
@@ -215,6 +216,46 @@ def _project_symbols(conn: Connection, tenant, project_id, row: dict[str, Any], 
     )
 
 
+def _parsed(tenant, revision_id) -> dict[str, Any] | None:
+    """The current-version parse derivative of a revision (PENDING, READY or FAILED), if any."""
+    with tenant_session(tenant) as conn:
+        row = (
+            conn.execute(
+                select(derivatives.c.status, derivatives.c.blob_key, derivatives.c.error)
+                .where(
+                    derivatives.c.revision_id == revision_id,
+                    derivatives.c.producer == "parse",
+                    derivatives.c.producer_version == PRODUCERS["parse"].version,
+                    derivatives.c.status.in_(("PENDING", "READY", "FAILED")),
+                )
+                .order_by(derivatives.c.created_at.desc())
+            )
+            .mappings()
+            .first()
+        )
+    return dict(row) if row else None
+
+
+def _project_chunks(conn: Connection, tenant, project_id, row: dict[str, Any], output: bytes) -> int:
+    rev = dict(
+        conn.execute(select(source_revisions).where(source_revisions.c.id == row["revision_id"]))
+        .mappings()
+        .one()
+    )
+    obj = dict(
+        conn.execute(select(source_objects).where(source_objects.c.id == rev["object_id"])).mappings().one()
+    )
+    return projection.project_chunks(
+        conn,
+        tenant,
+        project_id=project_id,
+        derivative_id=row["id"],
+        revision=rev,
+        obj=obj,
+        doc=json.loads(output),
+    )
+
+
 def _parse_failed(ctx: JobContext, row: dict[str, Any], error: dict[str, Any]) -> None:
     with tenant_session(ctx.tenant) as conn:
         conn.execute(
@@ -271,22 +312,48 @@ def derive(ctx: JobContext) -> dict[str, Any]:
         ]
     more, rows = len(rows) > BATCH, rows[:BATCH]
     store = blobs.get_store()
-    counts: dict[str, Any] = {"built": 0, "failed": 0, "skipped": 0, "failures": {}, "symbols": 0}
+    counts: dict[str, Any] = {
+        "built": 0,
+        "failed": 0,
+        "skipped": 0,
+        "failures": {},
+        "symbols": 0,
+        "chunks": 0,
+        "waiting": 0,
+        "upstream_failed": 0,
+    }
+    rows.sort(key=lambda x: x["producer"] == "chunks")  # INPROOM-203: chunks after the parse they read
     for row in rows:
         producer = PRODUCERS.get(row["producer"])
         error = None
+        upstream = None
         if producer is None or producer.version != row["producer_version"]:
             error = {"code": "UNKNOWN_PRODUCER", "message": f"{row['producer']}@{row['producer_version']}"}
         elif row["blob_key"] is None or row["purged_at"] is not None:
             error = {"code": "NOT_STORED", "message": "the revision's bytes are not stored"}
+        elif row["producer"] == "chunks" and not chunking.is_code(row["media_type"]):
+            upstream = _parsed(tenant, row["revision_id"])
+            if upstream is not None and upstream["status"] == "PENDING":
+                counts["waiting"] += 1  # built once its parse is READY (this job requeues itself)
+                more = True
+                continue
+            if upstream is not None and upstream["status"] == "FAILED":
+                code = (upstream["error"] or {}).get("code", "PARSE_FAILED")
+                error = {"code": "UPSTREAM_FAILED", "message": f"the document could not be parsed ({code})"}
         if error is None:
             try:
-                data = blobs.read(store, row["blob_key"])
-                output = producer.build(data, row["media_type"])
+                if upstream is not None:  # documents: chunk the parse output (parsed once, failures once)
+                    output = chunking.from_parsed(blobs.read(store, upstream["blob_key"]))
+                else:
+                    data = blobs.read(store, row["blob_key"])
+                    output = producer.build(data, row["media_type"])
             except (blobs.BlobMissing, blobs.BlobCorrupt, ProducerError) as exc:
                 error = {"code": exc.code, "message": str(exc)[:300]}
         if error is not None:
             done = _finish(tenant, row["id"], status="FAILED", error=error, built_at=datetime.now(UTC))
+            if error["code"] == "UPSTREAM_FAILED":  # already reported by the parse that failed
+                counts["upstream_failed"] += done
+                continue
             counts["failed" if done else "skipped"] += 1
             if done:
                 counts["failures"][error["code"]] = counts["failures"].get(error["code"], 0) + 1
@@ -314,6 +381,8 @@ def derive(ctx: JobContext) -> dict[str, Any]:
             )
             if done and row["producer"] == "symbols":  # INPROOM-175: searchable in the same transaction
                 counts["symbols"] += _project_symbols(conn, tenant, ctx.job["project_id"], row, output)
+            if done and row["producer"] == "chunks":  # INPROOM-203: retrievable in the same transaction
+                counts["chunks"] += _project_chunks(conn, tenant, ctx.job["project_id"], row, output)
         counts["built" if done else "skipped"] += 1  # skipped: superseded or invalidated meanwhile
     with tenant_session(tenant) as conn:
         if more:

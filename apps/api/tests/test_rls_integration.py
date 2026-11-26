@@ -189,6 +189,9 @@ SEED_SQL = [
     "INSERT INTO knowledge_heads (project_id, tenant_id, seq) VALUES (:p, :t, 1)",
     "INSERT INTO knowledge_changes (tenant_id, project_id, seq, change, scope, source_kind, source_id, "
     "external_id, reason) VALUES (:t, :p, 1, 'invalidated', 'item', 'confluence', :s, '100', 'DELETED')",
+    "INSERT INTO knowledge_chunks (tenant_id, project_id, derivative_id, revision_id, object_id, "
+    "source_kind, source_id, external_id, seq, ordinal, text, tokens, sha256) "
+    "VALUES (:t, :p, :v, :v, :o, 'confluence', :s, '100', 1, 0, 'x', 1, 'x')",
 ]
 
 

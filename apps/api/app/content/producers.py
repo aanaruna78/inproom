@@ -141,7 +141,29 @@ SYMBOLS = Producer(
     "application/vnd.inproom.symbols+json",
     _symbols,
 )
-PRODUCERS: dict[str, Producer] = {PARSE.name: PARSE, SYMBOLS.name: SYMBOLS, TEXT.name: TEXT}
+
+
+def _chunks(data: bytes, media_type: str) -> bytes:
+    from app.content.chunking import build  # late: chunking -> parsing / code.symbols -> producers
+
+    return build(data, media_type)
+
+
+# INPROOM-203: citable retrieval chunks (sections of parsed documents, symbol spans of source files).
+CHUNKS = Producer(
+    "chunks",
+    1,
+    "chunks",
+    tuple(dict.fromkeys(PARSE.media_types + SYMBOLS.media_types)),
+    "application/vnd.inproom.chunks+json",
+    _chunks,
+)
+PRODUCERS: dict[str, Producer] = {
+    PARSE.name: PARSE,
+    SYMBOLS.name: SYMBOLS,
+    TEXT.name: TEXT,
+    CHUNKS.name: CHUNKS,
+}
 
 
 def for_media_type(media_type: str) -> list[Producer]:

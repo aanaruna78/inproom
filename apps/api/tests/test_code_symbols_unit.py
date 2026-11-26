@@ -148,7 +148,7 @@ def test_output_is_deterministic_and_registered_as_symbols_v1():
     assert sym.build(data, "text/x-go") == sym.build(data, "text/x-go")
     assert json.loads(sym.build(data, "text/x-go"))["language"] == "go"
     assert producers.PRODUCERS["symbols"].kind == "code"
-    assert producers.for_media_type("text/x-python") == [producers.SYMBOLS]
+    assert producers.for_media_type("text/x-python") == [producers.SYMBOLS, producers.CHUNKS]  # +INPROOM-203
 
 
 CODEOWNERS = """# GitHub's documented example

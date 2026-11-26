@@ -61,13 +61,17 @@ def test_each_revision_gets_its_derivative_and_a_new_revision_supersedes_it(sele
     assert derived(e, "101", 1)["items"][0]["status"] == "PENDING"  # queued by the sync that stored it
     [run] = drain(e)
     assert run["status"] == "SUCCEEDED" and run["result"] == {
-        "built": 6,  # parse@1 and text@1 for each of the three pages
+        "built": 9,  # parse, text and chunks (INPROOM-203) for each of the three pages
         "failed": 0,
         "skipped": 0,
         "failures": {},
         "symbols": 0,  # symbols projected for search (code only, INPROOM-176)
+        "chunks": run["result"]["chunks"],  # chunk rows projected for retrieval (INPROOM-203)
+        "waiting": 0,  # chunks run after their parse in the same batch
+        "upstream_failed": 0,
         "more": False,
     }
+    assert run["result"]["chunks"] >= 3
     first = derived(e, "101", 1)
     [d1] = first["items"]
     assert (d1["kind"], d1["producer"], d1["producer_version"], d1["status"]) == ("text", "text", 1, "READY")
@@ -101,7 +105,7 @@ def test_invalidation_rebuilds_identically_and_never_duplicates_pending_work(sel
     assert [x["status"] for x in items] == ["INVALIDATED", "READY"]
     assert items[1]["output_sha256"] == before["output_sha256"]  # same revision, same producer => same bytes
     whole = invalidate(e).json()
-    assert (whole["objects"], whole["invalidated"]) == (3, 6)  # both producers of all three pages
+    assert (whole["objects"], whole["invalidated"]) == (3, 9)  # parse, text and chunks of three pages
     assert e.q("SELECT count(*) FROM audit_events WHERE tenant_id=:t AND action='content.invalidate'") == 3
     assert (
         e.q(

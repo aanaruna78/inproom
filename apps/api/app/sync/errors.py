@@ -135,6 +135,12 @@ CATALOG: dict[str, tuple[str, str, str]] = {
         "only that citation fails.",
         "Fix the field named in the detail and resolve the citation again.",
     ),
+    "UPSTREAM_FAILED": (
+        "Built from a failed input",
+        "This derived output (for example retrieval chunks) is built from the document's parse, "
+        "which failed; the parse failure is the one to fix.",
+        "Fix the parse failure (see the parse failures list); the dependent output is rebuilt with it.",
+    ),
     "NEWER_REVISION": (
         "A newer version exists",
         "The cited revision is no longer the item's current one; the item changed after it was cited.",
