@@ -8,7 +8,7 @@ Every API route must be classified in ROUTES. Adding an endpoint without classif
 import base64
 import json
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import pytest
 from fastapi.routing import APIRoute
@@ -199,8 +199,27 @@ class Tenant:
         ]
 
 
+# Building the two tenants costs ~1 s. The per-route probe (every call is a denied cross-tenant attempt,
+# which changes nothing) shares one pair per session; the other tests build their own. Tokens are re-minted
+# per test.
+_SHARED: dict[str, tuple["Tenant", "Tenant"]] = {}
+
+
 @pytest.fixture
-def world(db_client, tokens, fake_github, fake_jira, fake_confluence):
+def world(request, db_client, tokens, fake_github, fake_jira, fake_confluence):
+    if request.node.originalname != "test_cross_tenant_access_is_masked_audited_and_leak_free":
+        return _build_world(db_client, tokens)
+    if "probe" not in _SHARED:
+        _SHARED["probe"] = _build_world(db_client, tokens)
+    return tuple(
+        replace(
+            t, headers=bearer(tokens.mint(tenant_id=t.id, user_id=f"admin-{label}", roles=["tenant_admin"]))
+        )
+        for t, label in zip(_SHARED["probe"], ("a", "b"), strict=True)
+    )
+
+
+def _build_world(db_client, tokens) -> tuple["Tenant", "Tenant"]:
     def make(label: str) -> Tenant:
         tid = uuid.uuid4()
         h = bearer(tokens.mint(tenant_id=tid, user_id=f"admin-{label}", roles=["tenant_admin"]))
@@ -527,8 +546,11 @@ def test_cross_tenant_access_is_masked_audited_and_leak_free(db_client, world, o
     with owner_engine.connect() as conn:
         rows = (
             conn.execute(
-                text("SELECT * FROM audit_events WHERE tenant_id=:b AND target_id=:t AND outcome='DENIED'"),
-                {"b": b.id, "t": target},
+                text(
+                    "SELECT * FROM audit_events WHERE tenant_id=:b AND target_id=:t AND outcome='DENIED' "
+                    "AND trace_id=:trace"  # this request only: the shared world holds earlier probes too
+                ),
+                {"b": b.id, "t": target, "trace": foreign.headers["X-Trace-Id"]},
             )
             .mappings()
             .all()

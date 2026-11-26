@@ -127,3 +127,5 @@ scripts/            doctor.sh and other developer tooling
 | `/readyz` returns 503 `pgvector: extension not installed` | Run `make migrate` |
 | `/readyz` returns 503 `database: unreachable` | `make up`; check `docker compose -f infra/local/docker-compose.yml ps` |
 | Integration test is skipped | `INPROOM_TEST_DATABASE_URL` unset — run through `make test` so `.env` is loaded |
+| `reset_test_db: refusing to reset 'inproom'` | Tests use their own database, recreated by `make test-db` on every `make test`. Set `INPROOM_TEST_DATABASE_URL` to `.../inproom_test` (as in `.env.example`); it must never be the dev database |
+| Running one test file by hand | `make test-db` once, then `cd apps/api && uv run pytest tests/<file>` with `.env` loaded |

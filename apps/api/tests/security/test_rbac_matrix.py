@@ -10,7 +10,7 @@ cannot ship without RBAC cases.
 
 import os
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import pytest
 from sqlalchemy import text
@@ -299,8 +299,35 @@ class World:
 WORLD_DOCUMENT = ("world.md", b"# World document")  # PUT re-sends these bytes: same seq, repeatable
 
 
+# Building a world costs ~1 s. Every case that cannot change it (a read, or a call the actor is denied)
+# shares one per session. A write expected to succeed gets a fresh world, as do the other tests and every
+# case in the full matrix. Tokens are re-minted per test: each test's app trusts the same session key.
+_SHARED: dict[str, World] = {}
+
+
+def _mutates(request) -> bool:
+    if request.node.originalname != "test_route_x_role" or FULL_MATRIX:
+        return True
+    method, path, actor = (request.node.callspec.params[k] for k in ("method", "path", "actor"))
+    if method == "GET":
+        return False
+    roles, member, same = ACTORS[actor]
+    level, permission = ROUTE_RULES[(method, path)]
+    return _expected(method, level, permission, roles, member, same) not in ("403", "404")
+
+
 @pytest.fixture
-def world(db_client, tokens, fake_github, fake_jira, fake_confluence):
+def world(request, db_client, tokens, fake_github, fake_jira, fake_confluence):
+    if _mutates(request):
+        return _build_world(db_client, tokens)
+    if "read" not in _SHARED:
+        _SHARED["read"] = _build_world(db_client, tokens)
+    shared = _SHARED["read"]
+    owner = bearer(tokens.mint(tenant_id=shared.tenant, user_id="owner", roles=["tenant_admin"]))
+    return replace(shared, owner=owner)
+
+
+def _build_world(db_client, tokens) -> World:
     tenant = uuid.uuid4()
     owner = bearer(tokens.mint(tenant_id=tenant, user_id="owner", roles=["tenant_admin"]))
     ws = db_client.post("/v1/workspaces", json={"slug": "main", "name": "Main"}, headers=owner).json()

@@ -9,7 +9,7 @@ include .env
 export
 endif
 
-.PHONY: help doctor setup up down reset migrate api web test test-api test-security e2e lint format contracts contracts-check rbac-matrix rbac-matrix-check test-full
+.PHONY: help doctor setup up down reset migrate api web test test-db test-api test-security e2e lint format contracts contracts-check rbac-matrix rbac-matrix-check test-full
 
 help: ## List available commands
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  \033[36m%-16s\033[0m %s\n",$$1,$$2}'
@@ -46,14 +46,17 @@ web: ## Run the web app on :3000
 test: test-api contracts-check rbac-matrix-check ## Run all tests and checks (stack must be up and migrated)
 	$(WEB) npm run typecheck
 
-test-full: ## Everything in `test`, plus the exhaustive role x route matrix (slow; also runs nightly in CI)
+test-db: ## Recreate and migrate the dedicated test database (INPROOM_TEST_DATABASE_URL, e.g. inproom_test)
+	$(API) uv run python scripts/reset_test_db.py
+
+test-full: test-db ## Everything in `test`, plus the exhaustive role x route matrix (slow; also runs nightly in CI)
 	$(API) INPROOM_FULL_MATRIX=1 uv run pytest -q
 	$(MAKE) contracts-check rbac-matrix-check
 
-test-api: ## API unit + integration tests
+test-api: test-db ## API unit + integration tests (on a freshly reset test database)
 	$(API) uv run pytest -v
 
-test-security: ## Tenant isolation + RBAC suites; writes apps/api/build/{isolation-matrix,rbac-matrix-results}.md
+test-security: test-db ## Tenant isolation + RBAC suites; writes apps/api/build/{isolation-matrix,rbac-matrix-results}.md
 	$(API) INPROOM_ISOLATION_REPORT=build/isolation-matrix.md INPROOM_RBAC_REPORT=build/rbac-matrix-results.md \
 		uv run pytest tests/security -v
 

@@ -11,13 +11,27 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from app.auth import JwksCache
 from app.config import get_settings
 
+_FIRST_KEY: tuple[str, rsa.RSAPrivateKey] | None = None
+
+
+def _first_key() -> tuple[str, rsa.RSAPrivateKey]:
+    """One initial key pair for every factory in the session: generating a 2048-bit RSA key takes ~35 ms, paid
+    by every test otherwise; and shared security worlds stay usable across tests (their tokens verify)."""
+    global _FIRST_KEY
+    if _FIRST_KEY is None:
+        _FIRST_KEY = (uuid.uuid4().hex[:12], rsa.generate_private_key(public_exponent=65537, key_size=2048))
+    return _FIRST_KEY
+
 
 class TokenFactory:
     def __init__(self) -> None:
         self.keys: dict[str, rsa.RSAPrivateKey] = {}
         self.published: set[str] = set()
         self.fetches = 0
-        self.rotate()
+        kid, key = _first_key()
+        self.keys[kid] = key
+        self.published.add(kid)
+        self.active_kid = kid
 
     def rotate(self) -> str:
         """Create a new signing key, publish it, and make it the active key."""
