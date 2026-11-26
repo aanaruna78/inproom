@@ -87,3 +87,5 @@ Rate limits (429) wait for the provider's Retry-After and don't count as attempt
 2. On the old connection's page, use **Move sources**.
 3. Each source is re-verified with the new token. Verified sources resume and sync. The others stay paused, with the reason shown. Excluded sources keep their exclusion.
 4. Webhooks are not carried over: re-register GitHub hooks, or generate a new Jira or Confluence webhook secret.
+
+How quickly provider deletions and permission changes are detected, and how to force a full reconcile: see [knowledge-propagation.md](knowledge-propagation.md).

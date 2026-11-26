@@ -194,3 +194,5 @@ Each project's settings carry `sources.retention`:
 | Lost or corrupted blob | Reads are withheld (`BLOB_MISSING` / `BLOB_CORRUPT`) and audited. Derivatives built from it are `FAILED`. |
 
 Every cited passage carries a provenance record (source, revision, trust, freshness): see [provenance.md](provenance.md).
+
+Deletions, restrictions and other invalidations reach every read path and the knowledge change feed atomically: see [knowledge-propagation.md](knowledge-propagation.md).

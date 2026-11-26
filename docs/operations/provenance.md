@@ -91,3 +91,5 @@ A call with any refusals writes **one** `provenance.resolve` audit event with ou
 | Many records are `stale` with `SOURCE_SYNC_FAILING` | The source sync is failing. See [sync-worker.md](sync-worker.md). |
 | `CODE_BRANCH_BEHIND` persists | The code job for that branch isn't completing. See [code-index.md](code-index.md#troubleshooting). |
 | A client gets `INVALID_CITATION` | It is sending malformed citations. `detail` names the field. |
+
+Withheld content and the change feed consumers follow: see [knowledge-propagation.md](knowledge-propagation.md).

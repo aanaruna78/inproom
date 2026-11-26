@@ -2123,6 +2123,33 @@
         "title": "JiraSource",
         "type": "object"
       },
+      "KnowledgeStatus": {
+        "properties": {
+          "head": {
+            "title": "Head",
+            "type": "integer"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceStatus"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project_id",
+          "head",
+          "sources"
+        ],
+        "title": "KnowledgeStatus",
+        "type": "object"
+      },
       "LifecycleRequest": {
         "properties": {
           "action": {
@@ -4087,6 +4114,85 @@
         "title": "ReconcileRequest",
         "type": "object"
       },
+      "RefreshRequest": {
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "confluence",
+                  "jira",
+                  "git"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          },
+          "scope": {
+            "default": "project",
+            "enum": [
+              "project",
+              "source"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RefreshRequest",
+        "type": "object"
+      },
+      "RefreshResult": {
+        "properties": {
+          "queued": {
+            "items": {
+              "$ref": "#/components/schemas/SyncJob"
+            },
+            "title": "Queued",
+            "type": "array"
+          },
+          "skipped": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Skipped",
+            "type": "array"
+          }
+        },
+        "required": [
+          "queued",
+          "skipped"
+        ],
+        "title": "RefreshResult",
+        "type": "object"
+      },
       "RepositoryOption": {
         "properties": {
           "default_branch": {
@@ -5276,6 +5382,85 @@
           "next_cursor"
         ],
         "title": "SourceObjectPage",
+        "type": "object"
+      },
+      "SourceStatus": {
+        "properties": {
+          "deletions_verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deletions Verified At"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_change_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Change At"
+          },
+          "last_change_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Change Seq"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "pending_derivatives": {
+            "title": "Pending Derivatives",
+            "type": "integer"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "source_id",
+          "name",
+          "status",
+          "last_change_seq",
+          "last_change_at",
+          "deletions_verified_at",
+          "pending_derivatives"
+        ],
+        "title": "SourceStatus",
         "type": "object"
       },
       "SourceSyncStatus": {
@@ -8753,6 +8938,118 @@
           }
         ],
         "summary": "The project's ordered, gap-free feed of invalidated, restored and refreshed knowledge",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/knowledge/refresh": {
+      "post": {
+        "operationId": "refresh_v1_projects__project_id__knowledge_refresh_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reconcile the project's sources (or one) in full now: deletions and permission changes included",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/knowledge/status": {
+      "get": {
+        "operationId": "status_v1_projects__project_id__knowledge_status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "How current the project's knowledge is: feed head, per-source last change and deletion checks",
         "tags": [
           "knowledge"
         ]

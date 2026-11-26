@@ -38,7 +38,22 @@ def install_error_handlers(app: FastAPI) -> None:
         return response
 
     from app.authz import Forbidden, NotFound
+    from app.content.store import ObjectStoreUnavailable
     from app.idempotency import IdempotencyError
+
+    @app.exception_handler(ObjectStoreUnavailable)
+    async def object_store_unavailable(request: Request, exc: ObjectStoreUnavailable) -> JSONResponse:
+        # INPROOM-189: any write that needs the content store (sync now, uploads) fails retryably; its
+        # transaction has rolled back, so state, revisions and the knowledge feed are all unchanged.
+        response = problem(
+            request,
+            503,
+            "Content store unavailable",
+            "OBJECTSTORE_UNAVAILABLE",
+            detail="The content store cannot be reached; nothing was changed. Retry shortly",
+        )
+        response.headers["Retry-After"] = "30"
+        return response
 
     @app.exception_handler(AuthError)
     async def auth_error(request: Request, exc: AuthError) -> JSONResponse:
