@@ -170,6 +170,15 @@ The immediate MVP proof is **one real project** whose source documents and repos
 
 See the [delivery roadmap and acceptance gates](docs/development/roadmap.md). There is no committed release schedule until the implementation plan is reviewed.
 
+## Hybrid human + AI delivery (E15)
+
+The new [Hybrid Delivery Architecture](docs/architecture/hybrid-delivery.md) covers **human Developer/QA onboarding, provider-specific AI agent adapters, isolated Dev/QA containers, Auto Allocate with human-in-the-loop sprint approval, and a separate project-local AI Scrum Master**. Default sprint: two weeks (configurable); suggested Scrum review: 10:00 AM in the project's IANA time zone on configured working days (also configurable). These features are **planned, not active services**.
+
+- [Jira Epic INPROOM-190](https://aanaruna78.atlassian.net/browse/INPROOM-190) and 12 implementation Stories
+- [Architecture and flow diagram](docs/architecture/visuals/07-hybrid-delivery-orchestration.svg)
+- [Hybrid Team UX-18 concept](docs/ux/v2.1/screens/ux-18-hybrid-delivery-team.svg)
+- [Confluence architecture and testing](https://aanaruna78.atlassian.net/wiki/spaces/INPROOM/pages/2949121) · [Confluence UX page](https://aanaruna78.atlassian.net/wiki/spaces/INPROOM/pages/2981889)
+
 ## Development backlog and Jira planning
 
 The [INPROOM Jira planning package](docs/planning/README.md) defines **14 epics and 65 developer-ready stories**, with implementation steps, expected outcomes, acceptance criteria, functional verification and negative/security/recovery tests.
