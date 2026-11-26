@@ -619,6 +619,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/knowledge/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Semantic search over the project's chunks: visible current content only, active model only */
+        post: operations["search_v1_projects__project_id__knowledge_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/knowledge/status": {
         parameters: {
             query?: never;
@@ -1460,25 +1477,6 @@ export interface components {
             /** Next */
             next: number | null;
         };
-        /** Citation */
-        Citation: {
-            /** Blob Sha */
-            blob_sha: string;
-            /** Branch */
-            branch: string;
-            /** Commit */
-            commit: string;
-            /** Line End */
-            line_end: number;
-            /** Line Start */
-            line_start: number;
-            /** Path */
-            path: string;
-            /** Permalink */
-            permalink: string;
-            /** Repository */
-            repository: string;
-        };
         /** CitationError */
         CitationError: {
             /** Code */
@@ -1492,7 +1490,7 @@ export interface components {
         CodeFile: {
             /** Behind */
             behind: boolean;
-            citation: components["schemas"]["Citation"];
+            citation: components["schemas"]["app__modules__code__Citation"];
             /** Definitions */
             definitions: {
                 [key: string]: unknown;
@@ -1514,7 +1512,7 @@ export interface components {
         CodeHit: {
             /** Behind */
             behind: boolean;
-            citation: components["schemas"]["Citation"];
+            citation: components["schemas"]["app__modules__code__Citation"];
             /** Item */
             item: {
                 [key: string]: string;
@@ -3077,6 +3075,60 @@ export interface components {
             /** Provider Repo Id */
             provider_repo_id: string;
         };
+        /** SearchHit */
+        SearchHit: {
+            citation: components["schemas"]["app__modules__knowledge__Citation"];
+            /** Context */
+            context: string;
+            /** Line End */
+            line_end: number | null;
+            /** Line Start */
+            line_start: number | null;
+            /** Page */
+            page: number | null;
+            /** Path */
+            path: string[];
+            /** Provenance */
+            provenance: {
+                [key: string]: unknown;
+            };
+            /**
+             * Retrieved At
+             * Format: date-time
+             */
+            retrieved_at: string;
+            /** Score */
+            score: number;
+            /** Text */
+            text: string;
+            /** Title */
+            title: string;
+        };
+        /** SearchRequest */
+        SearchRequest: {
+            /** Kinds */
+            kinds?: ("confluence" | "jira" | "git" | "upload")[] | null;
+            /** Query */
+            query: string;
+            /** Source Ids */
+            source_ids?: string[] | null;
+            /**
+             * Top K
+             * @default 10
+             */
+            top_k: number;
+        };
+        /** SearchResult */
+        SearchResult: {
+            /** Dimensions */
+            dimensions: number;
+            /** Items */
+            items: components["schemas"]["SearchHit"][];
+            /** Model */
+            model: string;
+            /** Model Version */
+            model_version: string;
+        };
         /**
          * SecurityPolicy
          * @description INPROOM-188: which Jira security levels may be served. Secured issues are withheld by default.
@@ -3645,6 +3697,41 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
+        };
+        /** Citation */
+        app__modules__code__Citation: {
+            /** Blob Sha */
+            blob_sha: string;
+            /** Branch */
+            branch: string;
+            /** Commit */
+            commit: string;
+            /** Line End */
+            line_end: number;
+            /** Line Start */
+            line_start: number;
+            /** Path */
+            path: string;
+            /** Permalink */
+            permalink: string;
+            /** Repository */
+            repository: string;
+        };
+        /** Citation */
+        app__modules__knowledge__Citation: {
+            /** Anchor */
+            anchor: string | null;
+            /** External Id */
+            external_id: string;
+            /** Kind */
+            kind: string;
+            /** Seq */
+            seq: number;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
         };
     };
     responses: never;
@@ -5562,6 +5649,55 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    search_v1_projects__project_id__knowledge_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResult"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description problem+json */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

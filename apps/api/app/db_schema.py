@@ -84,12 +84,16 @@ PROJECT_ROLE_VALUES = (
 
 
 class Vector(UserDefinedType):
-    """pgvector's untyped `vector` (INPROOM-204): dimensions vary by model; values are bound as text."""
+    """pgvector's `vector` (INPROOM-204). Untyped in the table (dimensions vary by model); `Vector(n)` is used
+    in casts so the query matches the per-model HNSW index expression. Values are bound as text."""
 
     cache_ok = True
 
+    def __init__(self, dimensions: int | None = None):
+        self.dimensions = dimensions
+
     def get_col_spec(self, **kw) -> str:
-        return "vector"
+        return f"vector({int(self.dimensions)})" if self.dimensions else "vector"
 
 
 def _id() -> Column:

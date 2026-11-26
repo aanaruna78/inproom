@@ -13,7 +13,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import Connection, func, select
+from sqlalchemy import Connection, and_, bindparam, cast, func, select
 
 from app import audit
 from app.api_errors import ApiError, conflict
@@ -284,3 +284,130 @@ def status(request: Request, principal: CurrentPrincipal, project_id: uuid.UUID)
             for t in _project_sources(conn, project_id)
         ]
     return KnowledgeStatus(project_id=project_id, head=head, sources=sources)
+
+
+# ---------------------------------------------------------------- vector search (INPROOM-205)
+
+
+class SearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=2000)
+    top_k: int = Field(default=10, ge=1, le=50)
+    kinds: list[Literal["confluence", "jira", "git", "upload"]] | None = None
+    source_ids: list[uuid.UUID] | None = Field(default=None, max_length=50)
+
+
+class Citation(BaseModel):
+    kind: str
+    source_id: uuid.UUID
+    external_id: str
+    seq: int
+    anchor: str | None
+
+
+class SearchHit(BaseModel):
+    citation: Citation  # resolves through POST /provenance/resolve
+    title: str
+    path: list[str]  # heading path (documents)
+    context: str
+    text: str
+    page: int | None
+    line_start: int | None  # source files
+    line_end: int | None
+    score: float  # cosine similarity in [-1, 1]; higher is closer
+    retrieved_at: datetime  # when INPROOM fetched this revision
+    provenance: dict  # freshness, trust, classification, derivation (INPROOM-184)
+
+
+class SearchResult(BaseModel):
+    model: str
+    model_version: str
+    dimensions: int
+    items: list[SearchHit]
+
+
+@router.post(
+    "/v1/projects/{project_id}/knowledge/search",
+    response_model=SearchResult,
+    summary="Semantic search over the project's chunks: visible current content only, active model only",
+    responses={404: PROBLEM, 503: PROBLEM},
+)
+def search(
+    request: Request,
+    principal: CurrentPrincipal,
+    project_id: uuid.UUID,
+    payload: Annotated[SearchRequest, Body()],
+) -> SearchResult:
+    from app.connectors.base import RateLimited
+    from app.content import provenance
+    from app.content.embeddings import EmbeddingUnavailable, get_embedder, to_pgvector
+    from app.content.visibility import visible
+    from app.db_schema import Vector, chunk_embeddings, knowledge_chunks, source_revisions
+
+    with tenant_session(principal.tenant_id) as conn:
+        authorize(conn, principal, request, "project.read", project_id)
+    try:  # outside any transaction: the provider call can take seconds
+        embedder = get_embedder()
+        vector = embedder.embed([payload.query], "query")[0]
+    except RateLimited as exc:
+        raise ApiError(
+            503,
+            "EMBEDDING_UNAVAILABLE",
+            "Embedding provider busy",
+            "Retry shortly",
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
+    except EmbeddingUnavailable as exc:
+        raise ApiError(
+            503,
+            "EMBEDDING_UNAVAILABLE",
+            "Embedding provider unavailable",
+            str(exc)[:300],
+            headers={"Retry-After": "30"},
+        ) from exc
+    k, o, e, r = knowledge_chunks, source_objects, chunk_embeddings, source_revisions
+    dims = int(embedder.dimensions)
+    typed = Vector(dims)  # the same expression as the model's HNSW index: embedding::vector(n)
+    distance = cast(e.c.embedding, typed).op("<=>")(cast(bindparam("query"), typed))
+    stmt = (
+        select(k, o.c.title, r.c.fetched_at, distance.label("distance"))
+        .join(o, and_(o.c.id == k.c.object_id, o.c.current_revision_id == k.c.revision_id))
+        .join(r, r.c.id == k.c.revision_id)
+        .join(e, and_(e.c.tenant_id == k.c.tenant_id, e.c.model == embedder.model, e.c.sha256 == k.c.sha256))
+        .where(k.c.project_id == project_id)
+        .order_by(distance, k.c.id)
+        .limit(payload.top_k)
+    )
+    if payload.kinds:
+        stmt = stmt.where(k.c.source_kind.in_(payload.kinds))
+    if payload.source_ids:
+        stmt = stmt.where(k.c.source_id.in_(payload.source_ids))
+    with tenant_session(principal.tenant_id) as conn:
+        stmt = stmt.where(visible(conn, project_id))
+        rows = [dict(x) for x in conn.execute(stmt, {"query": to_pgvector(vector)}).mappings()]
+        items = []
+        for row in rows:
+            obj = dict(conn.execute(select(o).where(o.c.id == row["object_id"])).mappings().one())
+            rev = dict(conn.execute(select(r).where(r.c.id == row["revision_id"])).mappings().one())
+            summary = provenance.summary(provenance.build(conn, obj, rev, None))
+            items.append(
+                SearchHit(
+                    citation=Citation(
+                        kind=row["source_kind"],
+                        source_id=row["source_id"],
+                        external_id=row["external_id"],
+                        seq=row["seq"],
+                        anchor=row["anchor"],
+                    ),
+                    title=row["title"] or "",
+                    path=list(row["path"] or []),
+                    context=row["context"],
+                    text=row["text"],
+                    page=row["page"],
+                    line_start=row["line_start"],
+                    line_end=row["line_end"],
+                    score=round(1.0 - float(row["distance"]), 6),
+                    retrieved_at=row["fetched_at"],
+                    provenance=summary,
+                )
+            )
+    return SearchResult(model=embedder.model, model_version=embedder.version, dimensions=dims, items=items)

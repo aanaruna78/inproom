@@ -106,6 +106,7 @@ ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/v1/projects/{project_id}/provenance/resolve"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/knowledge/changes"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/knowledge/status"): "project_scoped",
+    ("POST", "/v1/projects/{project_id}/knowledge/search"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/knowledge/refresh"): "project_scoped",
     ("PUT", "/v1/projects/{project_id}/sources/jira/{source_id}/security"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/sources/{kind}/{source_id}/policy"): "project_scoped",
@@ -371,6 +372,8 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         kwargs["headers"]["If-Match"] = '"1"'
     elif method == "PUT" and path_template.endswith("/migration"):
         kwargs["json"] = {"jira_source_id": tenant_ids.jira_source["id"]}
+    elif method == "POST" and path_template.endswith("/knowledge/search"):
+        kwargs["json"] = {"query": "secret"}
     elif method == "POST" and path_template.endswith("/knowledge/refresh"):
         kwargs["json"] = {"reason": "cross-tenant"}
     elif method == "PUT" and path_template.endswith("/security"):

@@ -434,54 +434,6 @@
         "title": "ChangePage",
         "type": "object"
       },
-      "Citation": {
-        "properties": {
-          "blob_sha": {
-            "title": "Blob Sha",
-            "type": "string"
-          },
-          "branch": {
-            "title": "Branch",
-            "type": "string"
-          },
-          "commit": {
-            "title": "Commit",
-            "type": "string"
-          },
-          "line_end": {
-            "title": "Line End",
-            "type": "integer"
-          },
-          "line_start": {
-            "title": "Line Start",
-            "type": "integer"
-          },
-          "path": {
-            "title": "Path",
-            "type": "string"
-          },
-          "permalink": {
-            "title": "Permalink",
-            "type": "string"
-          },
-          "repository": {
-            "title": "Repository",
-            "type": "string"
-          }
-        },
-        "required": [
-          "repository",
-          "branch",
-          "commit",
-          "path",
-          "line_start",
-          "line_end",
-          "blob_sha",
-          "permalink"
-        ],
-        "title": "Citation",
-        "type": "object"
-      },
       "CitationError": {
         "properties": {
           "code": {
@@ -518,7 +470,7 @@
             "type": "boolean"
           },
           "citation": {
-            "$ref": "#/components/schemas/Citation"
+            "$ref": "#/components/schemas/app__modules__code__Citation"
           },
           "definitions": {
             "items": {
@@ -575,7 +527,7 @@
             "type": "boolean"
           },
           "citation": {
-            "$ref": "#/components/schemas/Citation"
+            "$ref": "#/components/schemas/app__modules__code__Citation"
           },
           "item": {
             "additionalProperties": {
@@ -4697,6 +4649,183 @@
         "title": "ScopeItem",
         "type": "object"
       },
+      "SearchHit": {
+        "properties": {
+          "citation": {
+            "$ref": "#/components/schemas/app__modules__knowledge__Citation"
+          },
+          "context": {
+            "title": "Context",
+            "type": "string"
+          },
+          "line_end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line End"
+          },
+          "line_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Start"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
+          "path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Path",
+            "type": "array"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "retrieved_at": {
+            "format": "date-time",
+            "title": "Retrieved At",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "citation",
+          "title",
+          "path",
+          "context",
+          "text",
+          "page",
+          "line_start",
+          "line_end",
+          "score",
+          "retrieved_at",
+          "provenance"
+        ],
+        "title": "SearchHit",
+        "type": "object"
+      },
+      "SearchRequest": {
+        "properties": {
+          "kinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "confluence",
+                    "jira",
+                    "git",
+                    "upload"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kinds"
+          },
+          "query": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "source_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Ids"
+          },
+          "top_k": {
+            "default": 10,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "SearchRequest",
+        "type": "object"
+      },
+      "SearchResult": {
+        "properties": {
+          "dimensions": {
+            "title": "Dimensions",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "model_version",
+          "dimensions",
+          "items"
+        ],
+        "title": "SearchResult",
+        "type": "object"
+      },
       "SecurityPolicy": {
         "description": "INPROOM-188: which Jira security levels may be served. Secured issues are withheld by default.",
         "properties": {
@@ -6184,6 +6313,95 @@
           "name"
         ],
         "title": "WorkspaceCreate",
+        "type": "object"
+      },
+      "app__modules__code__Citation": {
+        "properties": {
+          "blob_sha": {
+            "title": "Blob Sha",
+            "type": "string"
+          },
+          "branch": {
+            "title": "Branch",
+            "type": "string"
+          },
+          "commit": {
+            "title": "Commit",
+            "type": "string"
+          },
+          "line_end": {
+            "title": "Line End",
+            "type": "integer"
+          },
+          "line_start": {
+            "title": "Line Start",
+            "type": "integer"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "permalink": {
+            "title": "Permalink",
+            "type": "string"
+          },
+          "repository": {
+            "title": "Repository",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository",
+          "branch",
+          "commit",
+          "path",
+          "line_start",
+          "line_end",
+          "blob_sha",
+          "permalink"
+        ],
+        "title": "Citation",
+        "type": "object"
+      },
+      "app__modules__knowledge__Citation": {
+        "properties": {
+          "anchor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor"
+          },
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "source_id",
+          "external_id",
+          "seq",
+          "anchor"
+        ],
+        "title": "Citation",
         "type": "object"
       }
     },
@@ -9002,6 +9220,70 @@
           }
         ],
         "summary": "Reconcile the project's sources (or one) in full now: deletions and permission changes included",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/knowledge/search": {
+      "post": {
+        "operationId": "search_v1_projects__project_id__knowledge_search_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Semantic search over the project's chunks: visible current content only, active model only",
         "tags": [
           "knowledge"
         ]

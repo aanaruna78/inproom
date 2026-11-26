@@ -169,6 +169,7 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("POST", "/v1/projects/{project_id}/provenance/resolve"): ("project", "project.read"),
     ("GET", "/v1/projects/{project_id}/knowledge/changes"): ("project", "project.read"),
     ("GET", "/v1/projects/{project_id}/knowledge/status"): ("project", "project.read"),
+    ("POST", "/v1/projects/{project_id}/knowledge/search"): ("project", "project.read"),
     ("POST", "/v1/projects/{project_id}/knowledge/refresh"): ("project", "project.source.manage"),
     ("PUT", "/v1/projects/{project_id}/sources/jira/{source_id}/security"): (
         "project",
@@ -513,6 +514,8 @@ def _call(client, method, path, world: World, headers):
         kwargs["headers"]["If-Match"] = '"1"'
     elif method == "PUT" and path.endswith("/migration"):
         kwargs["json"] = {"jira_source_id": world.jira_source["id"]}
+    elif method == "POST" and path.endswith("/knowledge/search"):
+        kwargs["json"] = {"query": "architecture"}
     elif method == "POST" and path.endswith("/knowledge/refresh"):
         kwargs["json"] = {"reason": "matrix"}
     elif method == "PUT" and path.endswith("/security"):  # the default policy: idempotent for every actor
