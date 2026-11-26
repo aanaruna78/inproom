@@ -1874,12 +1874,28 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        /** Evidence */
+        Evidence: {
+            /** Detail */
+            detail: string;
+            /** Reason */
+            reason: ("NO_CONTENT" | "ALL_FILTERED" | "NO_MATCH" | "LOW_RELEVANCE") | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "sufficient" | "insufficient";
+            /** Supported */
+            supported: number;
+        };
         /** Explanation */
         Explanation: {
             keyword: components["schemas"]["KeywordScore"] | null;
             /** Rrf */
             rrf: number;
             semantic: components["schemas"]["SemanticScore"] | null;
+            /** Supported */
+            supported: boolean;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -3154,8 +3170,22 @@ export interface components {
         };
         /** RetrieveRequest */
         RetrieveRequest: {
+            /** Changed After */
+            changed_after?: string | null;
+            /**
+             * Exclude Stale
+             * @default false
+             */
+            exclude_stale: boolean;
+            /**
+             * Include Unsupported
+             * @default false
+             */
+            include_unsupported: boolean;
             /** Kinds */
             kinds?: ("confluence" | "jira" | "git" | "upload")[] | null;
+            /** Max Age Days */
+            max_age_days?: number | null;
             /**
              * Max Per Document
              * @default 3
@@ -3181,6 +3211,7 @@ export interface components {
         RetrieveResult: {
             /** Degraded */
             degraded: string[];
+            evidence: components["schemas"]["Evidence"];
             /** Excluded Terms */
             excluded_terms: string[];
             /** Ignored Terms */

@@ -1267,6 +1267,51 @@
         "title": "Drift",
         "type": "object"
       },
+      "Evidence": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "NO_CONTENT",
+                  "ALL_FILTERED",
+                  "NO_MATCH",
+                  "LOW_RELEVANCE"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "enum": [
+              "sufficient",
+              "insufficient"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "supported": {
+            "title": "Supported",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "reason",
+          "detail",
+          "supported"
+        ],
+        "title": "Evidence",
+        "type": "object"
+      },
       "Explanation": {
         "properties": {
           "keyword": {
@@ -1292,12 +1337,17 @@
                 "type": "null"
               }
             ]
+          },
+          "supported": {
+            "title": "Supported",
+            "type": "boolean"
           }
         },
         "required": [
           "keyword",
           "semantic",
-          "rrf"
+          "rrf",
+          "supported"
         ],
         "title": "Explanation",
         "type": "object"
@@ -4687,6 +4737,28 @@
       },
       "RetrieveRequest": {
         "properties": {
+          "changed_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changed After"
+          },
+          "exclude_stale": {
+            "default": false,
+            "title": "Exclude Stale",
+            "type": "boolean"
+          },
+          "include_unsupported": {
+            "default": false,
+            "title": "Include Unsupported",
+            "type": "boolean"
+          },
           "kinds": {
             "anyOf": [
               {
@@ -4706,6 +4778,19 @@
               }
             ],
             "title": "Kinds"
+          },
+          "max_age_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Age Days"
           },
           "max_per_document": {
             "default": 3,
@@ -4769,6 +4854,9 @@
             "title": "Degraded",
             "type": "array"
           },
+          "evidence": {
+            "$ref": "#/components/schemas/Evidence"
+          },
           "excluded_terms": {
             "items": {
               "type": "string"
@@ -4815,6 +4903,7 @@
         },
         "required": [
           "mode",
+          "evidence",
           "model",
           "degraded",
           "query_terms",

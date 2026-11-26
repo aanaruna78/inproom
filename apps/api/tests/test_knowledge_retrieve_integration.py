@@ -77,29 +77,28 @@ MODES = ("keyword", "semantic", "hybrid")
 
 
 def everywhere(e, query, **body):
-    """The external ids found in every mode (top 50)."""
-    return set().union(*(found(e, query, mode=m, top_k=50, **body) for m in MODES))
+    """The external ids found in any mode (top 50, evidence or not: leaks are about candidates)."""
+    return set().union(*(found(e, query, mode=m, top_k=50, include_unsupported=True, **body) for m in MODES))
 
 
 def test_withheld_superseded_and_paused_content_is_never_retrieved(docs):
     e, errors, _ = docs
-    for mode in MODES:
-        assert "102" in found(e, "restart the api", mode=mode) and "101" in found(
-            e, "architecture", mode=mode
-        )
+    assert {"101", "102"} <= everywhere(e, "restart the api architecture")
     e.conf.pages[102].groups = ["bots"]  # RESTRICTED at the source
     e.conf.pages[101].add_version("<h1>Architecture</h1><p>Event sourcing with queues.</p>")  # superseded
     assert e.sync().status_code == 200
     drain(e)
     assert "102" not in everywhere(e, "restart the api")
     for mode in MODES:
-        hits = retrieve(e, "architecture event sourcing", mode=mode, top_k=50)["items"]
+        hits = retrieve(e, "architecture event sourcing", mode=mode, top_k=50, include_unsupported=True)[
+            "items"
+        ]
         assert {h["citation"]["seq"] for h in hits if h["citation"]["external_id"] == "101"} == {2}, mode
 
     base = f"/v1/projects/{e.pid}/sources/confluence/{e.sid}"
     assert e.client.post(f"{base}/exclude", headers=e.h()).status_code == 200  # SOURCE_PAUSED
     for mode in MODES:
-        hits = retrieve(e, "architecture", mode=mode, top_k=50)["items"]
+        hits = retrieve(e, "architecture", mode=mode, top_k=50, include_unsupported=True)["items"]
         assert all(h["citation"]["kind"] != "confluence" for h in hits), mode
     settings(e, allowed_kinds=["git", "jira", "confluence"])  # uploads disabled
     assert errors not in everywhere(e, "E1042 ledger lock")

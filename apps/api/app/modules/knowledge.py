@@ -7,7 +7,7 @@ app/content/feed.py for the invalidation contract.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Body, Query, Request
@@ -392,6 +392,11 @@ class RetrieveRequest(BaseModel):
     mode: Literal["hybrid", "keyword", "semantic"] = "hybrid"
     top_k: int = Field(default=10, ge=1, le=50)
     max_per_document: int = Field(default=3, ge=1, le=50)  # chunks of one item at most
+    # freshness: items INPROOM saw change after this time, or within the last N days (the stricter applies)
+    changed_after: datetime | None = None
+    max_age_days: int | None = Field(default=None, ge=1, le=3650)
+    exclude_stale: bool = False  # drop items whose provenance freshness is stale (e.g. their source's sync)
+    include_unsupported: bool = False  # also return hits that are not evidence (marked supported=false)
     kinds: list[Literal["confluence", "jira", "git", "upload"]] | None = None
     source_ids: list[uuid.UUID] | None = Field(default=None, max_length=50)
 
@@ -411,6 +416,7 @@ class Explanation(BaseModel):
     keyword: KeywordScore | None  # None: not among the keyword candidates
     semantic: SemanticScore | None  # None: not among the semantic candidates (or semantic was degraded)
     rrf: float  # the fused score: sum of 1 / (k + rank) over the lists it is in; the ranking key
+    supported: bool  # evidence: matched a query term, or similarity reached INPROOM_RETRIEVAL_MIN_SIMILARITY
 
 
 class Location(BaseModel):
@@ -435,8 +441,16 @@ class RetrieveHit(BaseModel):
     explanation: Explanation
 
 
+class Evidence(BaseModel):
+    status: Literal["sufficient", "insufficient"]  # insufficient: do not answer from these results
+    reason: Literal["NO_CONTENT", "ALL_FILTERED", "NO_MATCH", "LOW_RELEVANCE"] | None
+    detail: str
+    supported: int  # supported hits returned
+
+
 class RetrieveResult(BaseModel):
     mode: str
+    evidence: Evidence
     model: str | None  # the embedding model of the semantic candidates; None when none were used
     degraded: list[str]  # parts that could not run, e.g. ["semantic"] during an embedding outage
     query_terms: list[str]  # how the query was understood: the words and phrases searched for
@@ -491,13 +505,16 @@ def retrieve(
     embedding outage degrades to keyword candidates (`degraded: ["semantic"]`); `semantic` mode gives 503."""
     from app.config import get_settings
     from app.connectors.base import RateLimited
+    from app.content import provenance
     from app.content.embeddings import EmbeddingUnavailable, get_embedder, to_pgvector
     from app.content.retrieval import (
+        evidence,
         fuse,
         keyword_candidates,
         parse_query,
         scope,
         semantic_candidates,
+        supported,
         without_stop_words,
     )
 
@@ -522,40 +539,97 @@ def retrieve(
                 raise _embedding_unavailable(exc) from exc
             embedder, degraded = None, ["semantic"]
     limit = max(config.retrieval_candidates, payload.top_k)
+    cutoffs = [payload.changed_after] if payload.changed_after else []
+    if payload.max_age_days:
+        cutoffs.append(datetime.now(UTC) - timedelta(days=payload.max_age_days))
+    changed_after = max(cutoffs) if cutoffs else None
     with tenant_session(principal.tenant_id) as conn:
         parsed = without_stop_words(conn, parsed)
-        base = scope(
+        stale = []
+        if payload.exclude_stale:
+            stale = [
+                t["source_id"]
+                for t in _project_sources(conn, project_id)
+                if provenance.source_health(conn, t["kind"], t["source_id"])[0] in ("stale", "failing")
+            ]
+        unfiltered = scope(
             conn, project_id, kinds=payload.kinds, source_ids=payload.source_ids, excluded=parsed.excluded
         )
-        keyword = keyword_candidates(conn, base, parsed.units, limit) if payload.mode != "semantic" else []
-        semantic = (
-            semantic_candidates(conn, base, embedder.model, embedder.dimensions, vector, limit)
-            if embedder is not None
-            else []
-        )
-        fused = fuse(
-            keyword,
-            semantic,
-            k=config.retrieval_rrf_k,
-            top_k=payload.top_k,
-            max_per_document=payload.max_per_document,
-        )
-        items = [
-            RetrieveHit(
-                **_hit_fields(conn, row),
-                also_in=[Location(citation=_citation(o), title=o["title"] or "") for o in row["also_in"]],
-                explanation=Explanation(
-                    keyword=KeywordScore(**row["keyword"] | {"score": round(row["keyword"]["score"], 6)})
-                    if row["keyword"]
-                    else None,
-                    semantic=SemanticScore(**row["semantic"]) if row["semantic"] else None,
-                    rrf=row["rrf"],
-                ),
+
+        def candidates(base):
+            keyword = (
+                keyword_candidates(conn, base, parsed.units, limit) if payload.mode != "semantic" else []
             )
-            for row in fused
-        ]
+            semantic = (
+                semantic_candidates(conn, base, embedder.model, embedder.dimensions, vector, limit)
+                if embedder is not None
+                else []
+            )
+            fused = fuse(
+                keyword,
+                semantic,
+                k=config.retrieval_rrf_k,
+                top_k=2 * limit,
+                max_per_document=payload.max_per_document,
+            )
+            for row in fused:
+                row["supported"] = supported(row, config.retrieval_min_similarity)
+            return fused
+
+        filtering = bool(changed_after or stale)
+        base = (
+            scope(
+                conn,
+                project_id,
+                kinds=payload.kinds,
+                source_ids=payload.source_ids,
+                excluded=parsed.excluded,
+                changed_after=changed_after,
+                without_sources=stale,
+            )
+            if filtering
+            else unfiltered
+        )
+        fused = candidates(base)
+        items: list[RetrieveHit] = []
+        for row in fused:
+            if len(items) == payload.top_k:
+                break
+            if not (row["supported"] or payload.include_unsupported):
+                continue
+            fields = _hit_fields(conn, row)
+            if payload.exclude_stale and fields["provenance"]["freshness"] == "stale":
+                filtering = True
+                continue  # an item-level stale signal (e.g. the provider changed it after retrieval)
+            items.append(
+                RetrieveHit(
+                    **fields,
+                    also_in=[Location(citation=_citation(o), title=o["title"] or "") for o in row["also_in"]],
+                    explanation=Explanation(
+                        keyword=KeywordScore(**row["keyword"] | {"score": round(row["keyword"]["score"], 6)})
+                        if row["keyword"]
+                        else None,
+                        semantic=SemanticScore(**row["semantic"]) if row["semantic"] else None,
+                        rrf=row["rrf"],
+                        supported=row["supported"],
+                    ),
+                )
+            )
+        returned = sum(1 for i in items if i.explanation.supported)
+        has_content = would_match = False
+        if not returned:  # only an empty answer pays for the diagnosis
+            has_content = conn.execute(unfiltered.limit(1)).first() is not None
+            would_match = filtering and any(r["supported"] for r in candidates(unfiltered))
+        verdict = evidence(
+            returned,
+            has_content=has_content,
+            filtered_would_match=would_match,
+            candidates=len(fused),
+            degraded=degraded,
+        )
     return RetrieveResult(
         mode=payload.mode,
+        evidence=Evidence(**verdict, supported=returned),
         model=embedder.model if embedder is not None else None,
         degraded=degraded,
         query_terms=parsed.units,

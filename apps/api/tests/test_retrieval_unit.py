@@ -1,6 +1,6 @@
 """INPROOM-211: how a retrieval query is understood (words, phrases, exclusions)."""
 
-from app.content.retrieval import MAX_UNITS, ParsedQuery, fuse, parse_query
+from app.content.retrieval import MAX_UNITS, ParsedQuery, evidence, fuse, parse_query, supported
 
 
 def test_words_phrases_and_exclusions():
@@ -49,3 +49,22 @@ def test_identical_text_once_with_its_other_locations_and_a_per_document_cap():
     out = fuse(keyword, [], k=60, top_k=10, max_per_document=2)
     assert [r["id"] for r in out] == [1, 3]  # 2 is a duplicate of 1; object "a" capped at 2
     assert [o["id"] for o in out[0]["also_in"]] == [2]
+
+
+def test_supported_means_a_term_match_or_enough_similarity():
+    assert supported({"keyword": {"terms": ["x"]}, "semantic": None}, 0.9)
+    assert not supported({"keyword": {"terms": []}, "semantic": {"similarity": 0.2}}, 0.35)
+    assert supported({"keyword": None, "semantic": {"similarity": 0.35}}, 0.35)
+    assert not supported({"keyword": None, "semantic": None}, 0.0)
+
+
+def test_evidence_reasons_in_order():
+    facts = {"has_content": True, "filtered_would_match": False, "candidates": 4, "degraded": []}
+    assert evidence(2, **facts) == {"status": "sufficient", "reason": None, "detail": "2 supported result(s)"}
+    assert evidence(0, **facts)["reason"] == "LOW_RELEVANCE"
+    assert evidence(0, **facts | {"candidates": 0})["reason"] == "NO_MATCH"
+    assert evidence(0, **facts | {"candidates": 0, "filtered_would_match": True})["reason"] == "ALL_FILTERED"
+    empty = facts | {"has_content": False, "filtered_would_match": True}
+    assert evidence(0, **empty)["reason"] == "NO_CONTENT"
+    degraded = evidence(0, **facts | {"degraded": ["semantic"]})
+    assert degraded["status"] == "insufficient" and "semantic retrieval was unavailable" in degraded["detail"]

@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # Hybrid retrieval (INPROOM-33): candidates per list (keyword, semantic) and the RRF constant.
     retrieval_candidates: int = 50
     retrieval_rrf_k: int = 60
+    # A hit without a keyword match is evidence only from this cosine similarity on (model-dependent; see
+    # docs/operations/retrieval.md). Tuned for local-hash-v1 on the golden retrieval set.
+    retrieval_min_similarity: float = 0.35
     # Source sync worker (INPROOM-141): incremental reconcile interval, full reconcile interval, job lease.
     sync_interval_seconds: int = 900
     sync_full_interval_seconds: int = 86400

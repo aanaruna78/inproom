@@ -275,44 +275,54 @@ def decide(seq: int, current_seq: int | None, signals: list[dict[str, str]]) -> 
     return {"status": "stale" if signals else "current", "reasons": signals, "current_seq": current_seq}
 
 
-def _signals(conn: Connection, obj: dict[str, Any], rev: dict[str, Any], modified: dict) -> tuple[list, dict]:
-    """Stale signals for a revision, and the source sync summary (INPROOM-184)."""
+def source_health(conn: Connection, kind: str, source_id) -> tuple[str | None, datetime | None, dict | None]:
+    """A connected source's sync health (fresh, stale, failing, never, paused, excluded), when its data was
+    last synced successfully, and its sync state row. (None, None, None) for uploads and unknown sources."""
     from app.sync.freshness import freshness
 
-    signals: list[dict[str, str]] = []
-    sync: dict[str, Any] = {"health": None, "data_as_of": None}
-    kind = obj["source_kind"]
     tables = {
         "confluence": project_confluence_sources,
         "jira": project_jira_sources,
         "git": project_repositories,
     }
-    if kind in tables:
-        table = tables[kind]
-        row = (
-            conn.execute(
-                select(table, source_connections.c.status.label("connection_status"))
-                .join(source_connections, source_connections.c.id == table.c.connection_id)
-                .where(table.c.id == obj["source_id"])
-            )
-            .mappings()
-            .first()
+    if kind not in tables:
+        return None, None, None
+    table = tables[kind]
+    row = (
+        conn.execute(
+            select(table, source_connections.c.status.label("connection_status"))
+            .join(source_connections, source_connections.c.id == table.c.connection_id)
+            .where(table.c.id == source_id)
         )
-        state = (
-            conn.execute(
-                select(source_sync_state).where(
-                    source_sync_state.c.source_kind == kind, source_sync_state.c.source_id == obj["source_id"]
-                )
+        .mappings()
+        .first()
+    )
+    state = (
+        conn.execute(
+            select(source_sync_state).where(
+                source_sync_state.c.source_kind == kind, source_sync_state.c.source_id == source_id
             )
-            .mappings()
-            .first()
         )
-        if row is not None:
-            facts = dict(state or {})
-            if facts.get("last_success_at") is None and row.get("last_synced_at") is not None:
-                facts["last_success_at"] = row["last_synced_at"]  # synced through the API (e.g. at selection)
-            health = freshness(row["status"], row["pause_cause"], row["connection_status"], facts)
-            as_of = facts.get("last_success_at")
+        .mappings()
+        .first()
+    )
+    if row is None:
+        return None, None, dict(state) if state else None
+    facts = dict(state or {})
+    if facts.get("last_success_at") is None and row.get("last_synced_at") is not None:
+        facts["last_success_at"] = row["last_synced_at"]  # synced through the API (e.g. at selection)
+    health = freshness(row["status"], row["pause_cause"], row["connection_status"], facts)
+    return health, facts.get("last_success_at"), dict(state) if state else None
+
+
+def _signals(conn: Connection, obj: dict[str, Any], rev: dict[str, Any], modified: dict) -> tuple[list, dict]:
+    """Stale signals for a revision, and the source sync summary (INPROOM-184)."""
+    signals: list[dict[str, str]] = []
+    sync: dict[str, Any] = {"health": None, "data_as_of": None}
+    kind = obj["source_kind"]
+    if kind in ("confluence", "jira", "git"):
+        health, as_of, state = source_health(conn, kind, obj["source_id"])
+        if health is not None:
             sync = {"health": health, "data_as_of": as_of.isoformat() if as_of else None}
             # "never" cannot apply to content that exists: it was retrieved by some sync, so it is not stale
             if health in STALE_REASONS and health != "never":

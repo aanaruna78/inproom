@@ -18,6 +18,7 @@ why it ranked where it did (the `explanation` of the API).
 import re
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -121,11 +122,20 @@ def _any(values: list[str]) -> ColumnElement:
 
 
 def scope(
-    conn: Connection, project_id: uuid.UUID, *, kinds=None, source_ids=None, excluded: list[str] | None = None
+    conn: Connection,
+    project_id: uuid.UUID,
+    *,
+    kinds=None,
+    source_ids=None,
+    excluded: list[str] | None = None,
+    changed_after: datetime | None = None,
+    without_sources=None,
 ) -> Select:
     """Chunks of the current revision of visible items of the project (columns: HIT_COLUMNS, title,
     retrieved_at), narrowed by kinds and source ids, without chunks matching an `excluded` word or phrase.
-    Callers add their own ranking column and limit."""
+    Freshness: `changed_after` keeps items whose current revision was retrieved after it (a revision is only
+    created when the content changes, so this is when INPROOM last saw the item change); `without_sources`
+    drops sources (e.g. those whose sync is stale). Callers add their own ranking column and limit."""
     from app.content.visibility import visible
 
     k, o, r = knowledge_chunks, source_objects, source_revisions
@@ -141,6 +151,10 @@ def scope(
         stmt = stmt.where(k.c.source_id.in_(list(source_ids)))
     if excluded:
         stmt = stmt.where(~k.c.search_tsv.bool_op("@@")(_any(excluded)))
+    if changed_after is not None:
+        stmt = stmt.where(r.c.fetched_at > changed_after)
+    if without_sources:
+        stmt = stmt.where(k.c.source_id.not_in(list(without_sources)))
     return stmt
 
 
@@ -243,3 +257,43 @@ def fuse(
     for entry in out:
         entry["rrf"] = round(entry["rrf"], 6)
     return out[:top_k]
+
+
+def supported(entry: dict[str, Any], min_similarity: float) -> bool:
+    """Whether a fused hit is evidence for the query: it matched at least one query word or phrase, or its
+    semantic similarity reaches `min_similarity`. Rank fusion always yields *something*; this gate lets a
+    caller tell "nothing relevant" apart from "the least irrelevant". Pure (unit-tested)."""
+    if entry.get("keyword") and entry["keyword"]["terms"]:
+        return True
+    semantic = entry.get("semantic")
+    return bool(semantic) and semantic["similarity"] >= min_similarity
+
+
+REASONS = {
+    "NO_CONTENT": "The project has no retrievable content in this scope (no visible, chunked items)",
+    "ALL_FILTERED": "Matching content exists, but the freshness filters exclude all of it",
+    "NO_MATCH": "Nothing matched the query",
+    "LOW_RELEVANCE": "Candidates were found, but none matched a query term or reached the similarity floor",
+}
+
+
+def evidence(
+    returned: int, *, has_content: bool, filtered_would_match: bool, candidates: int, degraded: list[str]
+) -> dict[str, Any]:
+    """The evidence verdict for a retrieval. Pure (unit-tested). `returned` counts supported hits returned;
+    the other facts are only consulted when it is 0, in this order: no content at all, then content that only
+    the freshness filters removed, then no candidates, then only unsupported candidates."""
+    if returned:
+        return {"status": "sufficient", "reason": None, "detail": f"{returned} supported result(s)"}
+    if not has_content:
+        reason = "NO_CONTENT"
+    elif filtered_would_match:
+        reason = "ALL_FILTERED"
+    elif not candidates:
+        reason = "NO_MATCH"
+    else:
+        reason = "LOW_RELEVANCE"
+    detail = REASONS[reason]
+    if "semantic" in degraded:
+        detail += "; semantic retrieval was unavailable, so only keyword matches were considered"
+    return {"status": "insufficient", "reason": reason, "detail": detail}
