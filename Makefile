@@ -9,7 +9,7 @@ include .env
 export
 endif
 
-.PHONY: help doctor setup up down reset migrate api web test test-db test-api test-security e2e lint format contracts contracts-check rbac-matrix rbac-matrix-check test-full
+.PHONY: help doctor setup up down reset migrate api web test test-db test-api test-security e2e lint format contracts contracts-check rbac-matrix rbac-matrix-check test-full eval-retrieval
 
 help: ## List available commands
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  \033[36m%-16s\033[0m %s\n",$$1,$$2}'
@@ -52,6 +52,9 @@ test-db: ## Recreate and migrate the dedicated test database (INPROOM_TEST_DATAB
 test-full: test-db ## Everything in `test`, plus the exhaustive role x route matrix (slow; also runs nightly in CI)
 	$(API) INPROOM_FULL_MATRIX=1 uv run pytest -q
 	$(MAKE) contracts-check rbac-matrix-check
+
+eval-retrieval: test-db ## Golden retrieval set: recall@5, MRR, evidence and leaks per mode; writes apps/api/build/retrieval-eval.md
+	$(API) INPROOM_RETRIEVAL_REPORT=build/retrieval-eval.md uv run pytest -q -s tests/test_retrieval_golden_integration.py tests/test_retrieval_golden_code_integration.py
 
 test-api: test-db ## API unit + integration tests (on a freshly reset test database)
 	$(API) uv run pytest -v

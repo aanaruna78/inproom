@@ -1,6 +1,8 @@
 """INPROOM-211/212 (story INPROOM-33 AC 1, 2, 3, 6, 7): keyword, semantic and hybrid retrieval - exact
 identifiers, phrases, word forms, rank fusion, dedupe, caps, explanations, degradation; visible only."""
 
+import json
+
 import pytest
 
 from app.content import embeddings
@@ -150,7 +152,7 @@ def test_hybrid_fuses_dedupes_caps_and_explains(docs):
     assert deploy not in found(e, "restart the api -cache", mode="semantic", top_k=50)
 
 
-def test_an_embedding_outage_degrades_hybrid_to_keyword(docs, monkeypatch):
+def test_an_embedding_outage_degrades_hybrid_to_keyword(docs, monkeypatch, caplog):
     e, errors, _ = docs
 
     class Down:
@@ -160,8 +162,13 @@ def test_an_embedding_outage_degrades_hybrid_to_keyword(docs, monkeypatch):
             raise embeddings.EmbeddingUnavailable("connection refused")
 
     monkeypatch.setattr(embeddings, "get_embedder", lambda: Down())
-    result = retrieve(e, "E1042", mode="hybrid")
+    with caplog.at_level("INFO", logger="app.modules.knowledge"):
+        result = retrieve(e, "E1042", mode="hybrid")
     assert (result["degraded"], result["model"]) == (["semantic"], None)
+    [line] = [r.getMessage() for r in caplog.records if r.getMessage().startswith("knowledge retrieve")]
+    logged = json.loads(line.split(" ", 3)[3])  # telemetry: counts and verdicts, never the query text
+    assert logged["degraded"] == ["semantic"] and logged["evidence"] == "SUFFICIENT" and "E1042" not in line
+    assert logged["candidates"] == {"keyword": 1, "semantic": 0} and logged["ms"] >= 0
     assert [h["citation"]["external_id"] for h in result["items"]] == [errors]
     assert result["items"][0]["explanation"]["semantic"] is None
     r = e.client.post(

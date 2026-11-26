@@ -6,6 +6,9 @@ Entries carry identifiers only: consumers that hold copies (indexes, caches) dro
 app/content/feed.py for the invalidation contract.
 """
 
+import json
+import logging
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
@@ -34,6 +37,7 @@ from app.db_schema import (
 from app.modules.sync_status import SyncJob
 
 router = APIRouter(tags=["knowledge"])
+log = logging.getLogger(__name__)
 PROBLEM = {"description": "problem+json"}
 MAX_CHANGES = 500
 
@@ -518,6 +522,7 @@ def retrieve(
         without_stop_words,
     )
 
+    started = time.monotonic()
     parsed = parse_query(payload.query)
     if not parsed.units:
         raise ApiError(
@@ -556,6 +561,8 @@ def retrieve(
             conn, project_id, kinds=payload.kinds, source_ids=payload.source_ids, excluded=parsed.excluded
         )
 
+        counts: dict[str, int] = {}
+
         def candidates(base):
             keyword = (
                 keyword_candidates(conn, base, parsed.units, limit) if payload.mode != "semantic" else []
@@ -574,6 +581,8 @@ def retrieve(
             )
             for row in fused:
                 row["supported"] = supported(row, config.retrieval_min_similarity)
+            counts.setdefault("keyword", len(keyword))  # the first (served) run's candidate counts
+            counts.setdefault("semantic", len(semantic))
             return fused
 
         filtering = bool(changed_after or stale)
@@ -627,6 +636,22 @@ def retrieve(
             candidates=len(fused),
             degraded=degraded,
         )
+    # telemetry (INPROOM-214): never the query text, which may be sensitive
+    summary = {
+        "mode": payload.mode,
+        "model": embedder.model if embedder is not None else None,
+        "degraded": degraded,
+        "evidence": verdict["reason"] or "SUFFICIENT",
+        "candidates": counts,
+        "returned": len(items),
+        "supported": returned,
+        "filters": sorted(
+            k for k in ("changed_after", "max_age_days", "kinds", "source_ids") if getattr(payload, k)
+        )
+        + (["exclude_stale"] if payload.exclude_stale else []),
+        "ms": round((time.monotonic() - started) * 1000),
+    }
+    log.info("knowledge retrieve project=%s %s", project_id, json.dumps(summary))
     return RetrieveResult(
         mode=payload.mode,
         evidence=Evidence(**verdict, supported=returned),

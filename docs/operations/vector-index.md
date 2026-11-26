@@ -96,4 +96,6 @@ The embed job creates it on first use when the database login owns the table, wh
 | Results seem lexical rather than semantic | The `local` provider is active. Configure an `openai-compatible` model |
 | A restricted or deleted page never appears | Working as intended: search applies the visibility rule ([knowledge-propagation.md](knowledge-propagation.md)) |
 
+Hybrid retrieval (keyword + semantic, evidence verdicts) builds on this index: [retrieval.md](retrieval.md).
+
 Related: [content-store.md](content-store.md), [provenance.md](provenance.md), [knowledge-propagation.md](knowledge-propagation.md), [code-index.md](code-index.md).

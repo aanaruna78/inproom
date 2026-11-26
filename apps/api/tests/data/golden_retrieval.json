@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "about": "INPROOM-214 golden retrieval set. Documents are uploaded (and Confluence pages synced) into one project; leak bait is planted where it must never be returned. Expected hits are document names (uploads), conf:<page id> (Confluence) or git:<external id> (code). Answerable queries list what a useful answer must cite; unanswerable ones must return evidence=insufficient.",
+  "documents": {
+    "restart-runbook.md": "# Restarting services\n\nTo restart the API, drain the load balancer first, then run `make restart-api`. Wait for the health check to report ready before returning traffic.\n\n## Rolling restart\n\nRestart one replica at a time so the service keeps serving requests.",
+    "adr-007-event-sourcing.md": "# ADR-007 Event sourcing for the ledger\n\nWe record every ledger change as an immutable event and rebuild balances by replaying events. Snapshots are taken every 1,000 events to keep replays fast.\n\n## Consequences\n\nAuditors can reconstruct any balance at any point in time.",
+    "incident-2026-03-ledger-lock.md": "# Incident 2026-03: ledger lock timeouts\n\nBetween 09:10 and 09:42 UTC payments failed with error E1042 because the ledger lock timed out. Root cause: a long-running reconciliation job held the lock. Fix: the job now batches in chunks of 500 rows and releases the lock between batches.",
+    "pay-17-refund-rounding.md": "# PAY-17 Refunds round to the wrong cent\n\nRefunds for amounts with three decimal places are rounded half-up instead of half-even (banker's rounding). Expected: 10.125 refunds as 10.12. Status: fixed in release 4.2.",
+    "onboarding.md": "# Engineering onboarding\n\nRequest access to the VPN and the staging cluster on your first day. Your buddy will pair with you on the first ticket. Read the architecture overview and the coding standards before opening a pull request.",
+    "coding-standards.md": "# Coding standards\n\nPython code is formatted with ruff and type-checked. Every public function has a docstring. Database queries go through SQLAlchemy Core; raw SQL needs a review from a tech lead.",
+    "on-call.md": "# On-call handbook\n\nThe primary on-call engineer acknowledges pages within 5 minutes. Escalate to the secondary after 15 minutes without progress. Post a status update in the incident channel every 30 minutes.",
+    "rate-limits.md": "# API rate limits\n\nEach tenant may send 600 requests per minute. Exceeding the limit returns HTTP 429 with a Retry-After header. Bulk exports use a separate quota of 10 jobs per hour.",
+    "key-rotation.md": "# Signing key rotation\n\nRotate the token signing keys every 90 days. Publish the new key in the JWKS endpoint one day before switching, and keep the old key for verification for 7 days.",
+    "backup-restore.md": "# Backups and restore\n\nPostgreSQL is backed up nightly with point-in-time recovery enabled. To restore, pick a timestamp, provision a new instance from the base backup and replay the WAL to that time. Test a restore every quarter."
+  },
+  "confluence": {
+    "150": {"title": "Release checklist", "html": "<h1>Release checklist</h1><p>Freeze the release branch, run the migration dry-run, update the changelog and tag the release.</p>"}
+  },
+  "leaks": {
+    "restricted_page": {"id": "151", "title": "Payroll vault", "html": "<p>The payroll vault passphrase rotation uses the quokka escrow procedure.</p>", "phrase": "quokka escrow"},
+    "deleted_upload": {"name": "obsolete-failover.md", "text": "# Obsolete failover\n\nThe wombat failover switch moves traffic to the cold standby.", "phrase": "wombat failover"},
+    "other_project": {"name": "other-secrets.md", "text": "# Other project\n\nThe narwhal treasury key opens the settlement account.", "phrase": "narwhal treasury"}
+  },
+  "queries": [
+    {"q": "how do I restart the api", "expect": ["restart-runbook.md"]},
+    {"q": "rolling restart one replica at a time", "expect": ["restart-runbook.md"]},
+    {"q": "E1042", "expect": ["incident-2026-03-ledger-lock.md"]},
+    {"q": "why did payments fail with ledger lock timeouts", "expect": ["incident-2026-03-ledger-lock.md"]},
+    {"q": "PAY-17", "expect": ["pay-17-refund-rounding.md"]},
+    {"q": "refund rounding banker's rounding half-even", "expect": ["pay-17-refund-rounding.md"]},
+    {"q": "ADR-007", "expect": ["adr-007-event-sourcing.md"]},
+    {"q": "rebuild balances by replaying events", "expect": ["adr-007-event-sourcing.md"]},
+    {"q": "what should I do on my first day", "expect": ["onboarding.md"]},
+    {"q": "is raw SQL allowed", "expect": ["coding-standards.md"]},
+    {"q": "how fast must on-call acknowledge a page", "expect": ["on-call.md"]},
+    {"q": "429 Retry-After requests per minute", "expect": ["rate-limits.md"]},
+    {"q": "rotate signing keys JWKS", "expect": ["key-rotation.md"]},
+    {"q": "restore postgres to a point in time", "expect": ["backup-restore.md"]},
+    {"q": "release checklist migration dry-run changelog", "expect": ["conf:150"]},
+    {"q": "architecture services owner", "expect": ["conf:101"]}
+  ],
+  "unanswerable": [
+    "zebra quantum marmalade",
+    "kubernetes helm chart values for the billing cronjob",
+    "who won the football world cup"
+  ],
+  "code": [
+    {"q": "HandleRequest", "expect": ["git:main:cmd/main.go"]},
+    {"q": "handlerTs request", "expect": ["git:main:web/handler.ts"]}
+  ],
+  "thresholds": {"recall_at_5": 0.9, "mrr": 0.8}
+}
