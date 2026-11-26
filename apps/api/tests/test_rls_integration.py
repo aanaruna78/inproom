@@ -186,6 +186,9 @@ SEED_SQL = [
     "VALUES (:t, :p, :v, :v, :o, :s, 'main', 'a.py', 'b10b', 'python', 'function', 'f', 1, 2)",
     "INSERT INTO source_policies (tenant_id, project_id, source_kind, source_id, trust, classification, "
     "reason, updated_by) VALUES (:t, :p, 'confluence', :s, 'trusted', 'internal', 'seed', 'seed')",
+    "INSERT INTO knowledge_heads (project_id, tenant_id, seq) VALUES (:p, :t, 1)",
+    "INSERT INTO knowledge_changes (tenant_id, project_id, seq, change, scope, source_kind, source_id, "
+    "external_id, reason) VALUES (:t, :p, 1, 'invalidated', 'item', 'confluence', :s, '100', 'DELETED')",
 ]
 
 

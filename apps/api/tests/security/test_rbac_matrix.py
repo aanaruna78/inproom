@@ -167,6 +167,7 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
     ),
     # INPROOM-182
     ("POST", "/v1/projects/{project_id}/provenance/resolve"): ("project", "project.read"),
+    ("GET", "/v1/projects/{project_id}/knowledge/changes"): ("project", "project.read"),
     (
         "GET",
         "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/provenance",

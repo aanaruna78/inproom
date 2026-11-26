@@ -585,6 +585,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/knowledge/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The project's ordered, gap-free feed of invalidated, restored and refreshed knowledge */
+        get: operations["list_changes_v1_projects__project_id__knowledge_changes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/lifecycle": {
         parameters: {
             query?: never;
@@ -1353,6 +1370,44 @@ export interface components {
             status: string | null;
             /** Truncated */
             truncated: boolean;
+        };
+        /** Change */
+        Change: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Branch */
+            branch: string | null;
+            /** Change */
+            change: string;
+            /** External Id */
+            external_id: string | null;
+            /** Kind */
+            kind: string;
+            /** Reason */
+            reason: string;
+            /** Revision Seq */
+            revision_seq: number | null;
+            /** Scope */
+            scope: string;
+            /** Seq */
+            seq: number;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+        };
+        /** ChangePage */
+        ChangePage: {
+            /** Head */
+            head: number;
+            /** Items */
+            items: components["schemas"]["Change"][];
+            /** Next */
+            next: number | null;
         };
         /** Citation */
         Citation: {
@@ -5283,6 +5338,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_changes_v1_projects__project_id__knowledge_changes_get: {
+        parameters: {
+            query?: {
+                /** @description Return entries with seq greater than this */
+                after?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangePage"];
+                };
             };
             /** @description Validation Error */
             422: {

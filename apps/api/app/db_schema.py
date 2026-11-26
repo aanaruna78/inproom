@@ -61,6 +61,8 @@ TENANT_SCOPED_TABLES = (
     "code_snapshots",
     "code_symbols",
     "source_policies",
+    "knowledge_heads",
+    "knowledge_changes",
 )
 
 # Project roles allowed in project_members (mirrors app.authz.policy.PROJECT_ROLES; checked by a unit test).
@@ -827,6 +829,47 @@ source_policies = Table(
     ),
     CheckConstraint(
         "classification IN ('public','internal','confidential')", name="ck_source_policies_classification"
+    ),
+)
+
+# INPROOM-186: the per-project knowledge change feed (written by knowledge_append(); see migration 0020).
+knowledge_heads = Table(
+    "knowledge_heads",
+    metadata,
+    Column("project_id", UUID(as_uuid=True), primary_key=True),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("seq", BigInteger, nullable=False, server_default="0"),
+    Column("txid", BigInteger),
+    ForeignKeyConstraint(
+        ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_knowledge_heads_project"
+    ),
+)
+
+knowledge_changes = Table(
+    "knowledge_changes",
+    metadata,
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("seq", BigInteger, nullable=False),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("change", Text, nullable=False),
+    Column("scope", Text, nullable=False),
+    Column("source_kind", Text, nullable=False),
+    Column("source_id", UUID(as_uuid=True), nullable=False),
+    Column("external_id", Text),
+    Column("branch", Text),
+    Column("reason", Text, nullable=False),
+    Column("revision_seq", Integer),
+    PrimaryKeyConstraint("project_id", "seq", name="pk_knowledge_changes"),
+    ForeignKeyConstraint(
+        ["tenant_id", "project_id"],
+        ["projects.tenant_id", "projects.id"],
+        name="fk_knowledge_changes_project",
+    ),
+    CheckConstraint("change IN ('invalidated','restored','refreshed')", name="ck_knowledge_changes_change"),
+    CheckConstraint("scope IN ('item','source')", name="ck_knowledge_changes_scope"),
+    CheckConstraint(
+        "(scope = 'item') = (external_id IS NOT NULL)", name="ck_knowledge_changes_item_has_external_id"
     ),
 )
 

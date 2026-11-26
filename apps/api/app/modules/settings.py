@@ -378,6 +378,9 @@ def put_settings(
         if content_hash(new) == content_hash(current.settings):
             response.headers["ETag"] = etag(current.version)
             return current  # identical content: no new version, audit or event
+        from app.content import feed  # late: content -> modules -> settings
+
+        withheld_before = feed.setting_withheld(conn, project_id)
         changes = diff(current.settings, new)
         version = current.version + 1
         paths = [c.path for c in changes]
@@ -397,6 +400,10 @@ def put_settings(
             update(projects)
             .where(projects.c.tenant_id == principal.tenant_id, projects.c.id == project_id)
             .values(settings_version=version)
+        )
+        # INPROOM-186: the cap or the allowed kinds may withhold or restore whole sources
+        feed.append_setting_delta(
+            conn, principal.tenant_id, project_id, withheld_before, feed.setting_withheld(conn, project_id)
         )
         audit.record(
             conn,

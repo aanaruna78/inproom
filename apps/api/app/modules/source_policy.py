@@ -12,7 +12,7 @@ from app import audit
 from app.api_errors import ApiError, conflict, precondition_failed
 from app.auth import CurrentPrincipal
 from app.authz import authorize
-from app.content import policies
+from app.content import feed, policies
 from app.db import tenant_session
 from app.db_schema import outbox_events, source_policies
 
@@ -131,6 +131,7 @@ def put_policy(
             payload.reason,
         )
         if not same:  # identical updates change nothing (no new version, no event)
+            withheld_before = feed.setting_withheld(conn, project_id)
             now = datetime.now(UTC)
             values = {
                 "trust": payload.tier,
@@ -168,6 +169,13 @@ def put_policy(
                 insert(outbox_events).values(
                     tenant_id=principal.tenant_id, type="source.policy.changed", payload=change
                 )
+            )
+            feed.append_setting_delta(  # INPROOM-186: crossing the cap withholds or restores the source
+                conn,
+                principal.tenant_id,
+                project_id,
+                withheld_before,
+                feed.setting_withheld(conn, project_id),
             )
             audit.record(
                 conn,

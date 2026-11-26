@@ -17,6 +17,7 @@ from app.modules.content import router as content_router
 from app.modules.documents import router as documents_router
 from app.modules.jira_issues import router as jira_issues_router
 from app.modules.jira_sources import router as jira_sources_router
+from app.modules.knowledge import router as knowledge_router
 from app.modules.members import router as members_router
 from app.modules.migration import router as migration_router
 from app.modules.projects import router as projects_router
@@ -70,6 +71,7 @@ def create_app() -> FastAPI:
     app.include_router(documents_router)
     app.include_router(code_router)
     app.include_router(source_policy_router)
+    app.include_router(knowledge_router)
     app.include_router(webhooks_router)
     return app
 

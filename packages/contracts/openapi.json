@@ -320,6 +320,120 @@
         "title": "BranchSnapshot",
         "type": "object"
       },
+      "Change": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "change": {
+            "title": "Change",
+            "type": "string"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "revision_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision Seq"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "at",
+          "change",
+          "scope",
+          "kind",
+          "source_id",
+          "external_id",
+          "branch",
+          "reason",
+          "revision_seq"
+        ],
+        "title": "Change",
+        "type": "object"
+      },
+      "ChangePage": {
+        "properties": {
+          "head": {
+            "title": "Head",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Change"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next"
+          }
+        },
+        "required": [
+          "items",
+          "head",
+          "next"
+        ],
+        "title": "ChangePage",
+        "type": "object"
+      },
       "Citation": {
         "properties": {
           "blob_sha": {
@@ -8530,6 +8644,79 @@
         "summary": "Replace a document's content (If-Match: the current revision seq); identical bytes add nothing",
         "tags": [
           "documents"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/knowledge/changes": {
+      "get": {
+        "operationId": "list_changes_v1_projects__project_id__knowledge_changes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Return entries with seq greater than this",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Return entries with seq greater than this",
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The project's ordered, gap-free feed of invalidated, restored and refreshed knowledge",
+        "tags": [
+          "knowledge"
         ]
       }
     },
