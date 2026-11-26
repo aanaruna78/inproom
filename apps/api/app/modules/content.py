@@ -480,6 +480,7 @@ def post_invalidate(
 
 
 class ParsedDocument(BaseModel):
+    provenance: dict[str, Any]  # compact: freshness, reasons, trust, classification, derivation, retrieved_at
     kind: str
     source_id: uuid.UUID
     external_id: str
@@ -553,7 +554,13 @@ def get_document(
                 failure=exc.code,
             ) from exc
         document["attachments"] = resolve_attachments(conn, obj, document.get("attachments") or [])
+    from app.content import provenance as provenance_module
+
+    with tenant_session(principal.tenant_id) as conn:
+        record = provenance_module.build(conn, obj, rev, None)
+    record["derivation"] = {"method": "extracted"}
     return ParsedDocument(
+        provenance=provenance_module.summary(record),
         kind=obj["source_kind"],
         source_id=obj["source_id"],
         external_id=obj["external_id"],

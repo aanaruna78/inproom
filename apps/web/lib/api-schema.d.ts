@@ -1417,6 +1417,10 @@ export interface components {
             language: string;
             /** Owners */
             owners: string[];
+            /** Provenance */
+            provenance: {
+                [key: string]: unknown;
+            };
             /** Snapshot Status */
             snapshot_status: string | null;
             symbol: components["schemas"]["Symbol"];
@@ -2365,6 +2369,10 @@ export interface components {
             producer: string;
             /** Producer Version */
             producer_version: number;
+            /** Provenance */
+            provenance: {
+                [key: string]: unknown;
+            };
             /** Seq */
             seq: number;
             /**

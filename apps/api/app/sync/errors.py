@@ -134,6 +134,36 @@ CATALOG: dict[str, tuple[str, str, str]] = {
         "The cited revision is no longer the item's current one; the item changed after it was cited.",
         "Re-read the current revision before relying on the citation.",
     ),
+    "SOURCE_SYNC_FAILING": (
+        "Source sync is failing",
+        "The source's latest syncs failed, so newer changes may be missing from what is cited.",
+        "Check the source's status on the Sources page; it recovers automatically when the provider does.",
+    ),
+    "SOURCE_SYNC_STALE": (
+        "Source sync is out of date",
+        "The source has not synced successfully for more than three sync intervals.",
+        "Check that the worker is running and the connection is healthy; use Reconcile now.",
+    ),
+    "SOURCE_NEVER_SYNCED": (
+        "Source not synced yet",
+        "The source has not completed a sync yet, so its content may be incomplete.",
+        "Wait for the first sync, or use Reconcile now.",
+    ),
+    "CODE_BRANCH_BEHIND": (
+        "Branch has moved on",
+        "The branch head is newer than the commit this code was verified at; it is being re-indexed.",
+        "Re-read once indexing catches up (see the code snapshots list).",
+    ),
+    "PROVIDER_HAS_NEWER_VERSION": (
+        "Provider has a newer version",
+        "The provider lists a newer version of this item than the one INPROOM stored.",
+        "The next sync stores it; use Reconcile now if it is urgent.",
+    ),
+    "PROVIDER_CHANGED_AFTER_RETRIEVAL": (
+        "Changed after retrieval",
+        "The provider reports a change to this item after INPROOM retrieved the cited revision.",
+        "Re-read the current revision after the next sync.",
+    ),
     "PROVIDER_ERROR": (
         "Unexpected provider response",
         "The provider returned an unexpected error.",

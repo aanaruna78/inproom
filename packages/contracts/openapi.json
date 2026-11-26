@@ -484,6 +484,11 @@
             "title": "Owners",
             "type": "array"
           },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
           "snapshot_status": {
             "anyOf": [
               {
@@ -500,6 +505,7 @@
           }
         },
         "required": [
+          "provenance",
           "symbol",
           "language",
           "citation",
@@ -3146,6 +3152,11 @@
             "title": "Producer Version",
             "type": "integer"
           },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
           "seq": {
             "title": "Seq",
             "type": "integer"
@@ -3161,6 +3172,7 @@
           }
         },
         "required": [
+          "provenance",
           "kind",
           "source_id",
           "external_id",

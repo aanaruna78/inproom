@@ -33,6 +33,7 @@ from app.db_schema import (
     project_repositories,
     source_connections,
     source_objects,
+    source_revisions,
     source_sync_state,
 )
 
@@ -61,6 +62,7 @@ class Citation(BaseModel):
 
 
 class CodeHit(BaseModel):
+    provenance: dict[str, Any]  # compact: freshness, reasons, trust, classification, derivation, retrieved_at
     symbol: Symbol
     language: str
     citation: Citation
@@ -245,7 +247,8 @@ def search(
     rank = case((lname == ql, 0), (lname.like(_like(ql) + "%", escape="\\"), 1), else_=2)
     order = (rank, lname, s.c.path, s.c.line_start, s.c.id)
     stmt = (
-        select(s, rank.label("rank"), lname.label("lname"), o.c.verified_ref)
+        select(s, rank.label("rank"), lname.label("lname"), o.c.verified_ref, source_revisions.c.fetched_at)
+        .join(source_revisions, source_revisions.c.id == s.c.revision_id)
         .join(d, d.c.id == s.c.derivative_id)
         .join(o, o.c.id == s.c.object_id)
         .join(r, r.c.id == s.c.source_id)
@@ -280,12 +283,50 @@ def search(
             stmt = stmt.where(s.c.source_id.not_in(over))
         rows = [dict(x) for x in conn.execute(stmt).mappings()]
         ctx = _Context(conn, project_id) if rows else None
+        repo_facts = {}
+        for sid in {x["source_id"] for x in rows}:  # once per repository: policy and sync health
+            from app.content.provenance import STALE_REASONS
+            from app.sync.freshness import freshness
+
+            repo = ctx.repos[sid]
+            state = (
+                conn.execute(
+                    select(source_sync_state).where(
+                        source_sync_state.c.source_kind == "git", source_sync_state.c.source_id == sid
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            conn_status = conn.execute(
+                select(source_connections.c.status).where(source_connections.c.id == repo.connection_id)
+            ).scalar()
+            health = freshness(repo.status, repo.pause_cause, conn_status or "", dict(state or {}))
+            repo_facts[sid] = (policies.policy_of(conn, "git", sid), STALE_REASONS.get(health, (None,))[0])
     more, rows = len(rows) > limit, rows[:limit]
     items = []
     for x in rows:
         snap = ctx.snapshot(x["source_id"], x["branch"])
+        commit = x["verified_ref"] or x["commit_sha"]
+        policy, sync_reason = repo_facts[x["source_id"]]
+        reasons = [
+            r
+            for r in (
+                sync_reason,
+                "CODE_BRANCH_BEHIND" if ctx.behind_at(x["source_id"], x["branch"], commit) else None,
+            )
+            if r
+        ]
         items.append(
             CodeHit(
+                provenance={
+                    "freshness": "stale" if reasons else "current",
+                    "reasons": reasons,
+                    "trust": policy["tier"],
+                    "classification": policy["classification"],
+                    "derivation": "extracted",
+                    "retrieved_at": x["fetched_at"].isoformat() if x["fetched_at"] else None,
+                },
                 symbol=Symbol(
                     name=x["name"], kind=x["kind"], container=x["container"], signature=x["signature"]
                 ),
