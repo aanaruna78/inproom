@@ -13,7 +13,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import Connection, and_, bindparam, cast, func, select
+from sqlalchemy import Connection, and_, func, select
 
 from app import audit
 from app.api_errors import ApiError, conflict
@@ -339,13 +339,7 @@ def _hit_fields(conn: Connection, row: dict) -> dict:
         .one()
     )
     return {
-        "citation": Citation(
-            kind=row["source_kind"],
-            source_id=row["source_id"],
-            external_id=row["external_id"],
-            seq=row["seq"],
-            anchor=row["anchor"],
-        ),
+        "citation": _citation(row),
         "title": row["title"] or "",
         "path": list(row["path"] or []),
         "context": row["context"],
@@ -372,48 +366,20 @@ def search(
 ) -> SearchResult:
     from app.connectors.base import RateLimited
     from app.content.embeddings import EmbeddingUnavailable, get_embedder, to_pgvector
-    from app.content.retrieval import scope
-    from app.db_schema import Vector, chunk_embeddings, knowledge_chunks
+    from app.content.retrieval import scope, semantic_candidates
 
     with tenant_session(principal.tenant_id) as conn:
         authorize(conn, principal, request, "project.read", project_id)
     try:  # outside any transaction: the provider call can take seconds
         embedder = get_embedder()
         vector = embedder.embed([payload.query], "query")[0]
-    except RateLimited as exc:
-        raise ApiError(
-            503,
-            "EMBEDDING_UNAVAILABLE",
-            "Embedding provider busy",
-            "Retry shortly",
-            headers={"Retry-After": str(exc.retry_after)},
-        ) from exc
-    except EmbeddingUnavailable as exc:
-        raise ApiError(
-            503,
-            "EMBEDDING_UNAVAILABLE",
-            "Embedding provider unavailable",
-            str(exc)[:300],
-            headers={"Retry-After": "30"},
-        ) from exc
-    k, e = knowledge_chunks, chunk_embeddings
+    except (RateLimited, EmbeddingUnavailable) as exc:
+        raise _embedding_unavailable(exc) from exc
     dims = int(embedder.dimensions)
-    typed = Vector(dims)  # the same expression as the model's HNSW index: embedding::vector(n)
-    distance = cast(e.c.embedding, typed).op("<=>")(cast(bindparam("query"), typed))
     with tenant_session(principal.tenant_id) as conn:
-        stmt = (
-            scope(conn, project_id, kinds=payload.kinds, source_ids=payload.source_ids)
-            .add_columns(distance.label("distance"))
-            .join(
-                e, and_(e.c.tenant_id == k.c.tenant_id, e.c.model == embedder.model, e.c.sha256 == k.c.sha256)
-            )
-            .order_by(distance, k.c.id)
-            .limit(payload.top_k)
-        )
-        rows = [dict(x) for x in conn.execute(stmt, {"query": to_pgvector(vector)}).mappings()]
-        items = [
-            SearchHit(**_hit_fields(conn, row), score=round(1.0 - float(row["distance"]), 6)) for row in rows
-        ]
+        base = scope(conn, project_id, kinds=payload.kinds, source_ids=payload.source_ids)
+        rows = semantic_candidates(conn, base, embedder.model, dims, to_pgvector(vector), payload.top_k)
+        items = [SearchHit(**_hit_fields(conn, row), score=row["similarity"]) for row in rows]
     return SearchResult(model=embedder.model, model_version=embedder.version, dimensions=dims, items=items)
 
 
@@ -421,11 +387,11 @@ def search(
 
 
 class RetrieveRequest(BaseModel):
-    query: str = Field(
-        min_length=1, max_length=2000
-    )  # words, "phrases", -exclusions (see app.content.retrieval)
-    mode: Literal["keyword"] = "keyword"
+    # words, "phrases" and -exclusions (see app.content.retrieval)
+    query: str = Field(min_length=1, max_length=2000)
+    mode: Literal["hybrid", "keyword", "semantic"] = "hybrid"
     top_k: int = Field(default=10, ge=1, le=50)
+    max_per_document: int = Field(default=3, ge=1, le=50)  # chunks of one item at most
     kinds: list[Literal["confluence", "jira", "git", "upload"]] | None = None
     source_ids: list[uuid.UUID] | None = Field(default=None, max_length=50)
 
@@ -436,8 +402,22 @@ class KeywordScore(BaseModel):
     terms: list[str]  # the query words and phrases this chunk matched
 
 
+class SemanticScore(BaseModel):
+    rank: int  # 1-based rank among the semantic candidates
+    similarity: float  # cosine similarity under the active model, in [-1, 1]
+
+
 class Explanation(BaseModel):
-    keyword: KeywordScore | None  # None: not a keyword candidate
+    keyword: KeywordScore | None  # None: not among the keyword candidates
+    semantic: SemanticScore | None  # None: not among the semantic candidates (or semantic was degraded)
+    rrf: float  # the fused score: sum of 1 / (k + rank) over the lists it is in; the ranking key
+
+
+class Location(BaseModel):
+    """Another place the same text (same sha256) appears; the hit is returned once."""
+
+    citation: Citation
+    title: str
 
 
 class RetrieveHit(BaseModel):
@@ -451,22 +431,55 @@ class RetrieveHit(BaseModel):
     line_end: int | None
     retrieved_at: datetime
     provenance: dict
+    also_in: list[Location]
     explanation: Explanation
 
 
 class RetrieveResult(BaseModel):
     mode: str
+    model: str | None  # the embedding model of the semantic candidates; None when none were used
+    degraded: list[str]  # parts that could not run, e.g. ["semantic"] during an embedding outage
     query_terms: list[str]  # how the query was understood: the words and phrases searched for
     excluded_terms: list[str]
     ignored_terms: list[str]  # stop words only: they would match almost everything
     items: list[RetrieveHit]
 
 
+def _embedding_unavailable(exc: Exception) -> ApiError:
+    from app.connectors.base import RateLimited
+
+    if isinstance(exc, RateLimited):
+        return ApiError(
+            503,
+            "EMBEDDING_UNAVAILABLE",
+            "Embedding provider busy",
+            "Retry shortly",
+            headers={"Retry-After": str(exc.retry_after)},
+        )
+    return ApiError(
+        503,
+        "EMBEDDING_UNAVAILABLE",
+        "Embedding provider unavailable",
+        str(exc)[:300],
+        headers={"Retry-After": "30"},
+    )
+
+
+def _citation(row: dict) -> Citation:
+    return Citation(
+        kind=row["source_kind"],
+        source_id=row["source_id"],
+        external_id=row["external_id"],
+        seq=row["seq"],
+        anchor=row["anchor"],
+    )
+
+
 @router.post(
     "/v1/projects/{project_id}/knowledge/retrieve",
     response_model=RetrieveResult,
-    summary="Retrieve cited chunks by keyword: visible current content only, explained",
-    responses={404: PROBLEM, 422: PROBLEM},
+    summary="Hybrid retrieval: keyword and semantic candidates fused by rank, de-duplicated and explained",
+    responses={404: PROBLEM, 422: PROBLEM, 503: PROBLEM},
 )
 def retrieve(
     request: Request,
@@ -474,7 +487,19 @@ def retrieve(
     project_id: uuid.UUID,
     payload: Annotated[RetrieveRequest, Body()],
 ) -> RetrieveResult:
-    from app.content.retrieval import keyword_candidates, parse_query, scope, without_stop_words
+    """Visible current content only: every candidate query applies the visibility rule. In `hybrid` mode an
+    embedding outage degrades to keyword candidates (`degraded: ["semantic"]`); `semantic` mode gives 503."""
+    from app.config import get_settings
+    from app.connectors.base import RateLimited
+    from app.content.embeddings import EmbeddingUnavailable, get_embedder, to_pgvector
+    from app.content.retrieval import (
+        fuse,
+        keyword_candidates,
+        parse_query,
+        scope,
+        semantic_candidates,
+        without_stop_words,
+    )
 
     parsed = parse_query(payload.query)
     if not parsed.units:
@@ -486,20 +511,53 @@ def retrieve(
         )
     with tenant_session(principal.tenant_id) as conn:
         authorize(conn, principal, request, "project.read", project_id)
+    config = get_settings()
+    embedder, vector, degraded = None, None, []
+    if payload.mode != "keyword":
+        try:  # outside any transaction: the provider call can take seconds
+            embedder = get_embedder()
+            vector = to_pgvector(embedder.embed([" ".join(parsed.units)], "query")[0])
+        except (RateLimited, EmbeddingUnavailable) as exc:
+            if payload.mode == "semantic":
+                raise _embedding_unavailable(exc) from exc
+            embedder, degraded = None, ["semantic"]
+    limit = max(config.retrieval_candidates, payload.top_k)
+    with tenant_session(principal.tenant_id) as conn:
         parsed = without_stop_words(conn, parsed)
-        base = scope(conn, project_id, kinds=payload.kinds, source_ids=payload.source_ids)
-        rows = keyword_candidates(conn, base, parsed, payload.top_k)
+        base = scope(
+            conn, project_id, kinds=payload.kinds, source_ids=payload.source_ids, excluded=parsed.excluded
+        )
+        keyword = keyword_candidates(conn, base, parsed.units, limit) if payload.mode != "semantic" else []
+        semantic = (
+            semantic_candidates(conn, base, embedder.model, embedder.dimensions, vector, limit)
+            if embedder is not None
+            else []
+        )
+        fused = fuse(
+            keyword,
+            semantic,
+            k=config.retrieval_rrf_k,
+            top_k=payload.top_k,
+            max_per_document=payload.max_per_document,
+        )
         items = [
             RetrieveHit(
                 **_hit_fields(conn, row),
+                also_in=[Location(citation=_citation(o), title=o["title"] or "") for o in row["also_in"]],
                 explanation=Explanation(
-                    keyword=KeywordScore(rank=i, score=round(row["keyword_score"], 6), terms=row["terms"])
+                    keyword=KeywordScore(**row["keyword"] | {"score": round(row["keyword"]["score"], 6)})
+                    if row["keyword"]
+                    else None,
+                    semantic=SemanticScore(**row["semantic"]) if row["semantic"] else None,
+                    rrf=row["rrf"],
                 ),
             )
-            for i, row in enumerate(rows, start=1)
+            for row in fused
         ]
     return RetrieveResult(
         mode=payload.mode,
+        model=embedder.model if embedder is not None else None,
+        degraded=degraded,
         query_terms=parsed.units,
         excluded_terms=parsed.excluded,
         ignored_terms=parsed.ignored,

@@ -1278,10 +1278,26 @@
                 "type": "null"
               }
             ]
+          },
+          "rrf": {
+            "title": "Rrf",
+            "type": "number"
+          },
+          "semantic": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SemanticScore"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
-          "keyword"
+          "keyword",
+          "semantic",
+          "rrf"
         ],
         "title": "Explanation",
         "type": "object"
@@ -2283,6 +2299,24 @@
           "action"
         ],
         "title": "LifecycleRequest",
+        "type": "object"
+      },
+      "Location": {
+        "description": "Another place the same text (same sha256) appears; the hit is returned once.",
+        "properties": {
+          "citation": {
+            "$ref": "#/components/schemas/app__modules__knowledge__Citation"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "citation",
+          "title"
+        ],
+        "title": "Location",
         "type": "object"
       },
       "MappingOverrides": {
@@ -4558,6 +4592,13 @@
       },
       "RetrieveHit": {
         "properties": {
+          "also_in": {
+            "items": {
+              "$ref": "#/components/schemas/Location"
+            },
+            "title": "Also In",
+            "type": "array"
+          },
           "citation": {
             "$ref": "#/components/schemas/app__modules__knowledge__Citation"
           },
@@ -4638,6 +4679,7 @@
           "line_end",
           "retrieved_at",
           "provenance",
+          "also_in",
           "explanation"
         ],
         "title": "RetrieveHit",
@@ -4665,9 +4707,20 @@
             ],
             "title": "Kinds"
           },
+          "max_per_document": {
+            "default": 3,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Max Per Document",
+            "type": "integer"
+          },
           "mode": {
-            "const": "keyword",
-            "default": "keyword",
+            "default": "hybrid",
+            "enum": [
+              "hybrid",
+              "keyword",
+              "semantic"
+            ],
             "title": "Mode",
             "type": "string"
           },
@@ -4709,6 +4762,13 @@
       },
       "RetrieveResult": {
         "properties": {
+          "degraded": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Degraded",
+            "type": "array"
+          },
           "excluded_terms": {
             "items": {
               "type": "string"
@@ -4734,6 +4794,17 @@
             "title": "Mode",
             "type": "string"
           },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
           "query_terms": {
             "items": {
               "type": "string"
@@ -4744,6 +4815,8 @@
         },
         "required": [
           "mode",
+          "model",
+          "degraded",
           "query_terms",
           "excluded_terms",
           "ignored_terms",
@@ -5299,6 +5372,24 @@
           }
         },
         "title": "SelectRepository",
+        "type": "object"
+      },
+      "SemanticScore": {
+        "properties": {
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "similarity": {
+            "title": "Similarity",
+            "type": "number"
+          }
+        },
+        "required": [
+          "rank",
+          "similarity"
+        ],
+        "title": "SemanticScore",
         "type": "object"
       },
       "SettingsChange": {
@@ -9810,6 +9901,7 @@
     },
     "/v1/projects/{project_id}/knowledge/retrieve": {
       "post": {
+        "description": "Visible current content only: every candidate query applies the visibility rule. In `hybrid` mode an\nembedding outage degrades to keyword candidates (`degraded: [\"semantic\"]`); `semantic` mode gives 503.",
         "operationId": "retrieve_v1_projects__project_id__knowledge_retrieve_post",
         "parameters": [
           {
@@ -9849,6 +9941,9 @@
           },
           "422": {
             "description": "problem+json"
+          },
+          "503": {
+            "description": "problem+json"
           }
         },
         "security": [
@@ -9856,7 +9951,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Retrieve cited chunks by keyword: visible current content only, explained",
+        "summary": "Hybrid retrieval: keyword and semantic candidates fused by rank, de-duplicated and explained",
         "tags": [
           "knowledge"
         ]

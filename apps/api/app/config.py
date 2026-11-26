@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     embedding_batch_size: int = 64
     embedding_timeout_seconds: float = 30.0
     embedding_input_type: bool = False  # send input_type document/query (Voyage AI); off for strict APIs
+    # Hybrid retrieval (INPROOM-33): candidates per list (keyword, semantic) and the RRF constant.
+    retrieval_candidates: int = 50
+    retrieval_rrf_k: int = 60
     # Source sync worker (INPROOM-141): incremental reconcile interval, full reconcile interval, job lease.
     sync_interval_seconds: int = 900
     sync_full_interval_seconds: int = 86400

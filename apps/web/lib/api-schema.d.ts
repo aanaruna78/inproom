@@ -679,7 +679,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Retrieve cited chunks by keyword: visible current content only, explained */
+        /**
+         * Hybrid retrieval: keyword and semantic candidates fused by rank, de-duplicated and explained
+         * @description Visible current content only: every candidate query applies the visibility rule. In `hybrid` mode an
+         *     embedding outage degrades to keyword candidates (`degraded: ["semantic"]`); `semantic` mode gives 503.
+         */
         post: operations["retrieve_v1_projects__project_id__knowledge_retrieve_post"];
         delete?: never;
         options?: never;
@@ -1873,6 +1877,9 @@ export interface components {
         /** Explanation */
         Explanation: {
             keyword: components["schemas"]["KeywordScore"] | null;
+            /** Rrf */
+            rrf: number;
+            semantic: components["schemas"]["SemanticScore"] | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2253,6 +2260,15 @@ export interface components {
             action: "activate" | "archive" | "restore";
             /** Reason */
             reason?: string | null;
+        };
+        /**
+         * Location
+         * @description Another place the same text (same sha256) appears; the hit is returned once.
+         */
+        Location: {
+            citation: components["schemas"]["app__modules__knowledge__Citation"];
+            /** Title */
+            title: string;
         };
         /**
          * MappingOverrides
@@ -3108,6 +3124,8 @@ export interface components {
         };
         /** RetrieveHit */
         RetrieveHit: {
+            /** Also In */
+            also_in: components["schemas"]["Location"][];
             citation: components["schemas"]["app__modules__knowledge__Citation"];
             /** Context */
             context: string;
@@ -3139,11 +3157,16 @@ export interface components {
             /** Kinds */
             kinds?: ("confluence" | "jira" | "git" | "upload")[] | null;
             /**
-             * Mode
-             * @default keyword
-             * @constant
+             * Max Per Document
+             * @default 3
              */
-            mode: "keyword";
+            max_per_document: number;
+            /**
+             * Mode
+             * @default hybrid
+             * @enum {string}
+             */
+            mode: "hybrid" | "keyword" | "semantic";
             /** Query */
             query: string;
             /** Source Ids */
@@ -3156,6 +3179,8 @@ export interface components {
         };
         /** RetrieveResult */
         RetrieveResult: {
+            /** Degraded */
+            degraded: string[];
             /** Excluded Terms */
             excluded_terms: string[];
             /** Ignored Terms */
@@ -3164,6 +3189,8 @@ export interface components {
             items: components["schemas"]["RetrieveHit"][];
             /** Mode */
             mode: string;
+            /** Model */
+            model: string | null;
             /** Query Terms */
             query_terms: string[];
         };
@@ -3377,6 +3404,13 @@ export interface components {
              * @default false
              */
             register_webhook: boolean;
+        };
+        /** SemanticScore */
+        SemanticScore: {
+            /** Rank */
+            rank: number;
+            /** Similarity */
+            similarity: number;
         };
         /** SettingsChange */
         SettingsChange: {
@@ -6013,6 +6047,13 @@ export interface operations {
             };
             /** @description problem+json */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -1,4 +1,4 @@
-"""Retrieval over the project's chunks (INPROOM-33): keyword candidates, and the filter they all share.
+"""Hybrid retrieval over the project's chunks (INPROOM-33): keyword and semantic candidates, fused.
 
 Every candidate query, keyword or semantic, starts from `scope()`: chunks of the **current** revision of
 **visible** items (the INPROOM-187 rule) of one project, narrowed by kinds and sources. Filters therefore run
@@ -8,7 +8,11 @@ Keyword search uses the generated `knowledge_chunks.search_tsv` (migration 0024)
 web-search-like syntax (`parse_query`): bare words and "quoted phrases" are *units*, and units are OR-ed for
 recall (ranking rewards chunks that match more of them); `-word` / `-"a phrase"` excludes; the word `or` is
 accepted and ignored. Each unit matches stemmed (`english`) or verbatim (`simple`), so prose matches across
-word forms and identifiers, issue keys and error codes match exactly.
+word forms and identifiers, issue keys and error codes match exactly. Exclusions apply in every mode.
+
+Semantic candidates are the nearest chunks under the active embedding model. `fuse` combines both lists with
+Reciprocal Rank Fusion, collapses identical text and caps chunks per item; every hit keeps the evidence of
+why it ranked where it did (the `explanation` of the API).
 """
 
 import re
@@ -16,10 +20,22 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import Boolean, Connection, Select, and_, bindparam, func, literal_column, select, text
+from sqlalchemy import (
+    Boolean,
+    Connection,
+    Select,
+    Text,
+    and_,
+    cast,
+    func,
+    literal,
+    literal_column,
+    select,
+    text,
+)
 from sqlalchemy.sql.elements import ColumnElement
 
-from app.db_schema import knowledge_chunks, source_objects, source_revisions
+from app.db_schema import Vector, chunk_embeddings, knowledge_chunks, source_objects, source_revisions
 
 MAX_UNITS = 12  # query units (words and phrases) considered; the rest are ignored
 _TOKEN = re.compile(r'(-?)"([^"]*)"|(\S+)')
@@ -90,23 +106,26 @@ def without_stop_words(conn: Connection, parsed: ParsedQuery) -> ParsedQuery:
     return ParsedQuery(keep, parsed.excluded, parsed.ignored + gone)
 
 
-def _unit(name: str) -> ColumnElement:
+def _unit(value: str) -> ColumnElement:
     """One unit as a tsquery: its stemmed phrase OR its verbatim phrase."""
-    english = func.phraseto_tsquery(literal_column("'english'::regconfig"), bindparam(name))
-    simple = func.phraseto_tsquery(literal_column("'simple'::regconfig"), bindparam(name))
+    english = func.phraseto_tsquery(literal_column("'english'::regconfig"), literal(value, Text))
+    simple = func.phraseto_tsquery(literal_column("'simple'::regconfig"), literal(value, Text))
     return english.op("||")(simple)
 
 
-def _any(names: list[str]) -> ColumnElement:
-    out = _unit(names[0])
-    for name in names[1:]:
-        out = out.op("||")(_unit(name))
+def _any(values: list[str]) -> ColumnElement:
+    out = _unit(values[0])
+    for value in values[1:]:
+        out = out.op("||")(_unit(value))
     return out
 
 
-def scope(conn: Connection, project_id: uuid.UUID, *, kinds=None, source_ids=None) -> Select:
+def scope(
+    conn: Connection, project_id: uuid.UUID, *, kinds=None, source_ids=None, excluded: list[str] | None = None
+) -> Select:
     """Chunks of the current revision of visible items of the project (columns: HIT_COLUMNS, title,
-    retrieved_at), narrowed by kinds and source ids. Callers add their own ranking column and limit."""
+    retrieved_at), narrowed by kinds and source ids, without chunks matching an `excluded` word or phrase.
+    Callers add their own ranking column and limit."""
     from app.content.visibility import visible
 
     k, o, r = knowledge_chunks, source_objects, source_revisions
@@ -120,34 +139,107 @@ def scope(conn: Connection, project_id: uuid.UUID, *, kinds=None, source_ids=Non
         stmt = stmt.where(k.c.source_kind.in_(list(kinds)))
     if source_ids:
         stmt = stmt.where(k.c.source_id.in_(list(source_ids)))
+    if excluded:
+        stmt = stmt.where(~k.c.search_tsv.bool_op("@@")(_any(excluded)))
     return stmt
 
 
-def keyword_candidates(
-    conn: Connection, base: Select, parsed: ParsedQuery, limit: int
-) -> list[dict[str, Any]]:
-    """The `limit` best keyword matches of `base` (a `scope()` select), best first. Each row adds
-    `keyword_score` (ts_rank_cd) and `terms` (the query units the chunk matched, in query order)."""
-    if not parsed.units:
+def _row(row) -> dict[str, Any]:
+    return {c: row[c] for c in (*HIT_COLUMNS, "title", "retrieved_at")}
+
+
+def keyword_candidates(conn: Connection, base: Select, units: list[str], limit: int) -> list[dict[str, Any]]:
+    """The `limit` best keyword matches of `base` (a `scope()` select) for any of `units`, best first. Each
+    row adds `keyword_score` (ts_rank_cd) and `terms` (the units the chunk matched, in query order)."""
+    if not units:
         return []
     k = knowledge_chunks
-    params = {f"u{i}": u for i, u in enumerate(parsed.units)} | {
-        f"x{i}": u for i, u in enumerate(parsed.excluded)
-    }
-    units = [f"u{i}" for i in range(len(parsed.units))]
     query = _any(units)
-    matches = k.c.search_tsv.bool_op("@@")(query)
-    if parsed.excluded:
-        matches = and_(
-            matches, ~k.c.search_tsv.bool_op("@@")(_any([f"x{i}" for i in range(len(parsed.excluded))]))
-        )
     score = func.ts_rank_cd(k.c.search_tsv, query, 1).label("keyword_score")
-    flags = [k.c.search_tsv.op("@@", return_type=Boolean)(_unit(u)).label(f"m_{u}") for u in units]
-    stmt = base.add_columns(score, *flags).where(matches).order_by(score.desc(), k.c.id).limit(limit)
+    flags = [
+        k.c.search_tsv.op("@@", return_type=Boolean)(_unit(u)).label(f"m{i}") for i, u in enumerate(units)
+    ]
+    stmt = (
+        base.add_columns(score, *flags)
+        .where(k.c.search_tsv.bool_op("@@")(query))
+        .order_by(score.desc(), k.c.id)
+        .limit(limit)
+    )
     rows = []
-    for row in conn.execute(stmt, params).mappings():
-        item = {c: row[c] for c in (*HIT_COLUMNS, "title", "retrieved_at")}
+    for row in conn.execute(stmt).mappings():
+        item = _row(row)
         item["keyword_score"] = float(row["keyword_score"])
-        item["terms"] = [parsed.units[i] for i, u in enumerate(units) if row[f"m_{u}"]]
+        item["terms"] = [u for i, u in enumerate(units) if row[f"m{i}"]]
         rows.append(item)
     return rows
+
+
+def semantic_candidates(
+    conn: Connection, base: Select, model: str, dimensions: int, vector: str, limit: int
+) -> list[dict[str, Any]]:
+    """The `limit` chunks of `base` nearest to `vector` (pgvector text) under `model`, nearest first. Each row
+    adds `similarity` (cosine, in [-1, 1]). Uses the model's HNSW index expression `embedding::vector(n)`."""
+    k, e = knowledge_chunks, chunk_embeddings
+    typed = Vector(int(dimensions))
+    distance = cast(e.c.embedding, typed).op("<=>")(cast(literal(vector, Text), typed)).label("distance")
+    stmt = (
+        base.add_columns(distance)
+        .join(e, and_(e.c.tenant_id == k.c.tenant_id, e.c.model == model, e.c.sha256 == k.c.sha256))
+        .order_by(distance, k.c.id)
+        .limit(limit)
+    )
+    rows = []
+    for row in conn.execute(stmt).mappings():
+        item = _row(row)
+        item["similarity"] = round(1.0 - float(row["distance"]), 6)
+        rows.append(item)
+    return rows
+
+
+def fuse(
+    keyword: list[dict[str, Any]],
+    semantic: list[dict[str, Any]],
+    *,
+    k: int,
+    top_k: int,
+    max_per_document: int,
+) -> list[dict[str, Any]]:
+    """Reciprocal Rank Fusion of two best-first candidate lists, then dedupe and cap. Pure (unit-tested).
+
+    rrf(chunk) = sum over the lists it appears in of 1 / (k + rank). Ranks only, so the unrelated scales of
+    ts_rank_cd and cosine never need calibrating. Ties go to the chunk with the better single rank, then the
+    lower id (deterministic). Identical text (same sha256) is returned once, at its best position; its other
+    locations go to `also_in`. At most `max_per_document` chunks of one item (object) are returned.
+
+    Each result is the candidate row plus `keyword` ({rank, score, terms} or None), `semantic` ({rank,
+    similarity} or None), `rrf` and `also_in` (rows)."""
+    merged: dict[int, dict[str, Any]] = {}
+    for rank, row in enumerate(keyword, start=1):
+        entry = merged.setdefault(row["id"], dict(row, keyword=None, semantic=None, rrf=0.0, also_in=[]))
+        entry["keyword"] = {"rank": rank, "score": row["keyword_score"], "terms": row["terms"]}
+        entry["rrf"] += 1.0 / (k + rank)
+    for rank, row in enumerate(semantic, start=1):
+        entry = merged.setdefault(row["id"], dict(row, keyword=None, semantic=None, rrf=0.0, also_in=[]))
+        entry["semantic"] = {"rank": rank, "similarity": row["similarity"]}
+        entry["rrf"] += 1.0 / (k + rank)
+
+    def best(entry):
+        ranks = [p["rank"] for p in (entry["keyword"], entry["semantic"]) if p]
+        return (-entry["rrf"], min(ranks), entry["id"])
+
+    out: list[dict[str, Any]] = []
+    by_sha: dict[str, dict[str, Any]] = {}
+    per_object: dict[Any, int] = {}
+    for entry in sorted(merged.values(), key=best):
+        first = by_sha.get(entry["sha256"])
+        if first is not None:
+            first["also_in"].append(entry)
+            continue
+        if per_object.get(entry["object_id"], 0) >= max_per_document:
+            continue
+        by_sha[entry["sha256"]] = entry
+        per_object[entry["object_id"]] = per_object.get(entry["object_id"], 0) + 1
+        out.append(entry)
+    for entry in out:
+        entry["rrf"] = round(entry["rrf"], 6)
+    return out[:top_k]
