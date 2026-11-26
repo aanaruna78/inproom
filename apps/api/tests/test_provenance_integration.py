@@ -127,7 +127,13 @@ def test_unauthorized_citations_reveal_nothing_and_do_not_fail_the_batch(selecte
     withheld = body["results"][1]
     assert withheld["record"] is None and withheld["error"]["reason"] == "RESTRICTED"
     assert "Runbooks" not in str(withheld)  # no title, URL or hash of the withheld page
-    assert body["counts"] == {"resolved": 1, "withheld": 1, "not_found": 2, "anchor_not_found": 1}
+    assert body["counts"] == {
+        "resolved": 1,
+        "withheld": 1,
+        "not_found": 2,
+        "anchor_not_found": 1,
+        "invalid_citation": 0,
+    }
     denied = e.q(
         "SELECT reason FROM audit_events WHERE tenant_id=:t "
         "AND action='provenance.resolve' AND outcome='DENIED'"
@@ -144,9 +150,10 @@ def test_the_revision_route_and_input_limits(selected):
     too_many = [cite("confluence", e.sid, "101")] * 101
     r = e.client.post(f"/v1/projects/{e.pid}/provenance/resolve", json={"citations": too_many}, headers=e.h())
     assert r.status_code == 422
-    bad = e.client.post(
-        f"/v1/projects/{e.pid}/provenance/resolve",
-        json={"citations": [{"kind": "svn", "source_id": "x", "external_id": "", "seq": 0}]},
-        headers=e.h(),
+    mixed = resolve(  # INPROOM-185: malformed items fail alone
+        e, {"kind": "svn", "source_id": "x", "external_id": "", "seq": 0}, cite("confluence", e.sid, "101")
     )
-    assert bad.status_code == 422
+    bad, good = mixed["results"]
+    assert bad["error"]["code"] == "INVALID_CITATION" and "kind" in bad["error"]["detail"]
+    assert good["record"]["source"]["title"] == "Architecture"
+    assert mixed["counts"]["invalid_citation"] == 1 and mixed["counts"]["resolved"] == 1

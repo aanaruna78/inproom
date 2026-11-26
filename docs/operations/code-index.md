@@ -114,3 +114,5 @@ Lines GitHub would ignore (negation, `[ ]`, invalid owners) are reported in `cod
 | A deleted branch | The repository is paused (INPROOM-26); fix the selected branches on the Sources page. The last good index is kept. |
 
 Recovery is automatic: outages and rate limits retry with backoff and resume. A crash re-runs and records each file at most once.
+
+Code citations carry provenance (verified commit, trust, `CODE_BRANCH_BEHIND` freshness): see [provenance.md](provenance.md).

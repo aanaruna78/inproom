@@ -129,6 +129,12 @@ CATALOG: dict[str, tuple[str, str, str]] = {
         "Very long lines (usually minified or generated code) were skipped when looking for symbols.",
         "Nothing to do for generated code; otherwise split the long lines.",
     ),
+    "INVALID_CITATION": (
+        "The citation is malformed",
+        "A citation in a provenance batch has an unknown kind, a missing field or an invalid value; "
+        "only that citation fails.",
+        "Fix the field named in the detail and resolve the citation again.",
+    ),
     "NEWER_REVISION": (
         "A newer version exists",
         "The cited revision is no longer the item's current one; the item changed after it was cited.",

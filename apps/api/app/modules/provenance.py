@@ -10,7 +10,7 @@ import uuid
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 
 from app import audit
@@ -37,7 +37,9 @@ class Citation(BaseModel):
 
 
 class ResolveRequest(BaseModel):
-    citations: list[Citation] = Field(min_length=1, max_length=MAX_CITATIONS)
+    # Items are validated one by one (INPROOM-185): a malformed citation is an INVALID_CITATION result, not a
+    # failed batch. Each item has the Citation shape: {kind, source_id, external_id, seq, anchor?}.
+    citations: list[dict[str, Any]] = Field(min_length=1, max_length=MAX_CITATIONS)
 
 
 class CitationError(BaseModel):
@@ -47,7 +49,7 @@ class CitationError(BaseModel):
 
 
 class Resolved(BaseModel):
-    citation: Citation
+    citation: dict[str, Any]
     record: dict[str, Any] | None = None
     error: CitationError | None = None
 
@@ -110,12 +112,20 @@ def resolve(
     payload: Annotated[ResolveRequest, Body()],
 ) -> ResolveResponse:
     results: list[Resolved] = []
-    counts = {"resolved": 0, "withheld": 0, "not_found": 0, "anchor_not_found": 0}
+    counts = {"resolved": 0, "withheld": 0, "not_found": 0, "anchor_not_found": 0, "invalid_citation": 0}
     with tenant_session(principal.tenant_id) as conn:
         authorize(conn, principal, request, "project.read", project_id)
-        for c in payload.citations:
+        for raw in payload.citations:
+            try:
+                c = Citation.model_validate(raw)
+            except ValidationError as exc:
+                fields = sorted({".".join(str(p) for p in e["loc"]) for e in exc.errors()})
+                error = CitationError(code="INVALID_CITATION", detail=f"invalid fields: {', '.join(fields)}")
+                results.append(Resolved(citation=raw, error=error))
+                counts["invalid_citation"] += 1
+                continue
             record, error = _resolve_one(conn, project_id, c)
-            results.append(Resolved(citation=c, record=record, error=error))
+            results.append(Resolved(citation=c.model_dump(mode="json"), record=record, error=error))
             key = "resolved" if error is None else error.code.lower().replace("content_", "")
             counts[key] = counts.get(key, 0) + 1
     refused = counts["withheld"] + counts["not_found"]
@@ -124,7 +134,7 @@ def resolve(
             {
                 r.error.reason or r.error.code
                 for r in results
-                if r.error and r.error.code != "ANCHOR_NOT_FOUND"
+                if r.error and r.error.code in ("CONTENT_WITHHELD", "NOT_FOUND")  # refusals only
             }
         )
         audit.record_standalone(

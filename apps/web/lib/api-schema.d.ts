@@ -1355,23 +1355,23 @@ export interface components {
             truncated: boolean;
         };
         /** Citation */
-        "Citation-Input": {
-            /** Anchor */
-            anchor?: string | null;
-            /** External Id */
-            external_id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "confluence" | "jira" | "git" | "upload";
-            /** Seq */
-            seq: number;
-            /**
-             * Source Id
-             * Format: uuid
-             */
-            source_id: string;
+        Citation: {
+            /** Blob Sha */
+            blob_sha: string;
+            /** Branch */
+            branch: string;
+            /** Commit */
+            commit: string;
+            /** Line End */
+            line_end: number;
+            /** Line Start */
+            line_start: number;
+            /** Path */
+            path: string;
+            /** Permalink */
+            permalink: string;
+            /** Repository */
+            repository: string;
         };
         /** CitationError */
         CitationError: {
@@ -1386,7 +1386,7 @@ export interface components {
         CodeFile: {
             /** Behind */
             behind: boolean;
-            citation: components["schemas"]["app__modules__code__Citation"];
+            citation: components["schemas"]["Citation"];
             /** Definitions */
             definitions: {
                 [key: string]: unknown;
@@ -1408,7 +1408,7 @@ export interface components {
         CodeHit: {
             /** Behind */
             behind: boolean;
-            citation: components["schemas"]["app__modules__code__Citation"];
+            citation: components["schemas"]["Citation"];
             /** Item */
             item: {
                 [key: string]: string;
@@ -2757,7 +2757,9 @@ export interface components {
         /** ResolveRequest */
         ResolveRequest: {
             /** Citations */
-            citations: components["schemas"]["Citation-Input"][];
+            citations: {
+                [key: string]: unknown;
+            }[];
         };
         /** ResolveResponse */
         ResolveResponse: {
@@ -2770,7 +2772,10 @@ export interface components {
         };
         /** Resolved */
         Resolved: {
-            citation: components["schemas"]["app__modules__provenance__Citation"];
+            /** Citation */
+            citation: {
+                [key: string]: unknown;
+            };
             error?: components["schemas"]["CitationError"] | null;
             /** Record */
             record?: {
@@ -3454,44 +3459,6 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
-        };
-        /** Citation */
-        app__modules__code__Citation: {
-            /** Blob Sha */
-            blob_sha: string;
-            /** Branch */
-            branch: string;
-            /** Commit */
-            commit: string;
-            /** Line End */
-            line_end: number;
-            /** Line Start */
-            line_start: number;
-            /** Path */
-            path: string;
-            /** Permalink */
-            permalink: string;
-            /** Repository */
-            repository: string;
-        };
-        /** Citation */
-        app__modules__provenance__Citation: {
-            /** Anchor */
-            anchor?: string | null;
-            /** External Id */
-            external_id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "confluence" | "jira" | "git" | "upload";
-            /** Seq */
-            seq: number;
-            /**
-             * Source Id
-             * Format: uuid
-             */
-            source_id: string;
         };
     };
     responses: never;

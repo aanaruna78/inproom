@@ -192,3 +192,5 @@ Each project's settings carry `sources.retention`:
 | Item restored after its content was purged | The same bytes are stored again as a new revision whose parent is the purged one, and its derivatives are rebuilt. |
 | ACL, title or URI change with an unchanged body | The item's current ACL, title and URI are updated without a new revision (revisions keep the ACL they were fetched under), and `source.object.acl_changed` is emitted. |
 | Lost or corrupted blob | Reads are withheld (`BLOB_MISSING` / `BLOB_CORRUPT`) and audited. Derivatives built from it are `FAILED`. |
+
+Every cited passage carries a provenance record (source, revision, trust, freshness): see [provenance.md](provenance.md).
