@@ -195,6 +195,7 @@ def run_once(
 
 # Register the per-kind handlers.
 from app.content import derivatives as _derivatives  # noqa: E402, F401
+from app.content import embed as _embed  # noqa: E402, F401  (INPROOM-204: registers "embed")
 from app.content import retention as _retention  # noqa: E402, F401
 from app.content.code import snapshot as _code_snapshot  # noqa: E402, F401
 from app.migration import scan as _migration_scan  # noqa: E402, F401

@@ -90,6 +90,10 @@ def test_code_schema_matches_migrated_database(owner_engine):
         d
         for d in diff
         if not (isinstance(d, tuple) and d[0] == "remove_table" and d[1].name == "alembic_version")
+        # INPROOM-204: one HNSW index per embedding model, created at runtime (dimensions vary by model)
+        and not (
+            isinstance(d, tuple) and d[0] == "remove_index" and d[1].name.startswith("ix_chunk_embeddings_")
+        )
     ]
     assert relevant == [], relevant
 
@@ -192,6 +196,10 @@ SEED_SQL = [
     "INSERT INTO knowledge_chunks (tenant_id, project_id, derivative_id, revision_id, object_id, "
     "source_kind, source_id, external_id, seq, ordinal, text, tokens, sha256) "
     "VALUES (:t, :p, :v, :v, :o, 'confluence', :s, '100', 1, 0, 'x', 1, 'x')",
+    "INSERT INTO chunk_embeddings (tenant_id, model, model_version, dimensions, sha256, embedding) "
+    "VALUES (:t, 'seed', '1', 3, 'x', '[1,0,0]')",
+    "INSERT INTO chunk_embedding_failures (tenant_id, project_id, model, sha256, code, detail) "
+    "VALUES (:t, :p, 'seed', 'x', 'EMBEDDING_REJECTED', 'seed')",
 ]
 
 

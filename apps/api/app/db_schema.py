@@ -26,6 +26,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.types import UserDefinedType
 
 metadata = MetaData()
 
@@ -64,6 +65,8 @@ TENANT_SCOPED_TABLES = (
     "knowledge_heads",
     "knowledge_changes",
     "knowledge_chunks",
+    "chunk_embeddings",
+    "chunk_embedding_failures",
 )
 
 # Project roles allowed in project_members (mirrors app.authz.policy.PROJECT_ROLES; checked by a unit test).
@@ -78,6 +81,15 @@ PROJECT_ROLE_VALUES = (
     "release_manager",
     "viewer",
 )
+
+
+class Vector(UserDefinedType):
+    """pgvector's untyped `vector` (INPROOM-204): dimensions vary by model; values are bound as text."""
+
+    cache_ok = True
+
+    def get_col_spec(self, **kw) -> str:
+        return "vector"
 
 
 def _id() -> Column:
@@ -547,7 +559,8 @@ sync_jobs = Table(
     Column("started_at", DateTime(timezone=True)),
     Column("finished_at", DateTime(timezone=True)),
     CheckConstraint(
-        "source_kind IN ('git','jira','confluence','connection','migration','derive','purge','sweep','code')",
+        "source_kind IN ('git','jira','confluence','connection','migration','derive','purge','sweep','code',"
+        "'embed')",
         name="ck_sync_jobs_kind",
     ),
     CheckConstraint("reason IN ('webhook','schedule','manual','recovery')", name="ck_sync_jobs_reason"),
@@ -574,7 +587,8 @@ source_sync_state = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     PrimaryKeyConstraint("source_kind", "source_id", name="pk_source_sync_state"),
     CheckConstraint(
-        "source_kind IN ('git','jira','confluence','connection','migration','derive','purge','sweep','code')",
+        "source_kind IN ('git','jira','confluence','connection','migration','derive','purge','sweep','code',"
+        "'embed')",
         name="ck_source_sync_state_kind",
     ),
 )
@@ -912,6 +926,41 @@ knowledge_chunks = Table(
 )
 Index("ix_knowledge_chunks_revision", knowledge_chunks.c.project_id, knowledge_chunks.c.revision_id)
 Index("ix_knowledge_chunks_sha", knowledge_chunks.c.tenant_id, knowledge_chunks.c.sha256)
+
+# INPROOM-204: one vector per (tenant, model, chunk sha256), and chunks a model permanently rejected.
+chunk_embeddings = Table(
+    "chunk_embeddings",
+    metadata,
+    Column("id", BigInteger, Identity(), primary_key=True),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("model", Text, nullable=False),
+    Column("model_version", Text, nullable=False),
+    Column("dimensions", Integer, nullable=False),
+    Column("sha256", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("embedding", Vector(), nullable=False),
+    UniqueConstraint("tenant_id", "model", "sha256", name="uq_chunk_embeddings_key"),
+)
+
+chunk_embedding_failures = Table(
+    "chunk_embedding_failures",
+    metadata,
+    Column("id", BigInteger, Identity(), primary_key=True),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("model", Text, nullable=False),
+    Column("sha256", Text, nullable=False),
+    Column("code", Text, nullable=False),
+    Column("detail", Text, nullable=False),
+    Column("attempts", Integer, nullable=False, server_default="1"),
+    Column("last_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("project_id", "model", "sha256", name="uq_chunk_embedding_failures_key"),
+    ForeignKeyConstraint(
+        ["tenant_id", "project_id"],
+        ["projects.tenant_id", "projects.id"],
+        name="fk_chunk_embedding_failures_project",
+    ),
+)
 
 Index("ix_audit_events_tenant_time", audit_events.c.tenant_id, audit_events.c.occurred_at)
 Index("ix_outbox_unpublished", outbox_events.c.created_at, postgresql_where=text("published_at IS NULL"))

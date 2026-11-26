@@ -17,7 +17,10 @@ UNREACHABLE_DB = "postgresql+psycopg://inproom:inproom@127.0.0.1:1/inproom"
 
 
 def _reset_caches() -> None:
+    from app.content.embeddings import get_embedder
+
     get_settings.cache_clear()
+    get_embedder.cache_clear()
     get_engine.cache_clear()
     get_jwks_cache.cache_clear()
 

@@ -37,6 +37,19 @@ class Settings(BaseSettings):
     # Where a Confluence attachment download may redirect (INPROOM-166): Atlassian's media service on Cloud.
     # Same entry rules; the site itself is always allowed. Redirected requests never carry the credential.
     confluence_attachment_hosts: str = "api.media.atlassian.com"
+    # Embeddings (INPROOM-204, ADR-006). "local": a deterministic hashing embedder (dev, CI, air-gapped;
+    # lexical quality only). "openai-compatible": POST {base_url}/embeddings, e.g. Voyage AI, OpenAI, or a
+    # self-hosted Ollama/vLLM server. The base URL must pass embedding_allowed_hosts (HTTPS hostnames or
+    # explicit origins).
+    embedding_provider: str = "local"
+    embedding_model: str = "local-hash-v1"
+    embedding_dimensions: int = 256
+    embedding_base_url: str | None = None
+    embedding_api_key: str | None = None  # deployment secret; never logged or returned
+    embedding_allowed_hosts: str = "api.voyageai.com, api.openai.com"
+    embedding_batch_size: int = 64
+    embedding_timeout_seconds: float = 30.0
+    embedding_input_type: bool = False  # send input_type document/query (Voyage AI); off for strict APIs
     # Source sync worker (INPROOM-141): incremental reconcile interval, full reconcile interval, job lease.
     sync_interval_seconds: int = 900
     sync_full_interval_seconds: int = 86400

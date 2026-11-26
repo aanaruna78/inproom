@@ -135,6 +135,21 @@ CATALOG: dict[str, tuple[str, str, str]] = {
         "only that citation fails.",
         "Fix the field named in the detail and resolve the citation again.",
     ),
+    "EMBEDDING_UNAVAILABLE": (
+        "Embedding provider unavailable",
+        "The embedding provider timed out, failed or is not configured; nothing was recorded against chunks.",
+        "The embed job retries with backoff. Check INPROOM_EMBEDDING_* settings and the provider's status.",
+    ),
+    "EMBEDDING_CREDENTIAL_INVALID": (
+        "Embedding API key rejected",
+        "The embedding provider rejected the configured API key.",
+        "Rotate INPROOM_EMBEDDING_API_KEY in the deployment secrets; the embed job retries.",
+    ),
+    "EMBEDDING_REJECTED": (
+        "The provider rejected this chunk",
+        "The embedding provider refused this input (a 4xx, a malformed response or wrong dimensions).",
+        "See the index failures list for the reason; fix the model settings, then reindex embeddings.",
+    ),
     "UPSTREAM_FAILED": (
         "Built from a failed input",
         "This derived output (for example retrieval chunks) is built from the document's parse, "

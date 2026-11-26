@@ -389,6 +389,10 @@ def derive(ctx: JobContext) -> dict[str, Any]:
             queue.enqueue(
                 conn, tenant, ctx.job["project_id"], "derive", ctx.job["source_id"], ctx.job["reason"]
             )
+        if counts["chunks"]:  # INPROOM-204: new chunks are embedded by the project's embed job
+            from app.content.embed import queue_embed  # late: embed -> sync.worker -> derivatives
+
+            queue_embed(conn, tenant, ctx.job["project_id"])
         result = counts | {"more": more}
         queue.succeed(conn, ctx.job, result)
     return result
