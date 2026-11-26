@@ -363,7 +363,7 @@ def conflicts(
 ) -> tuple[list, list]:
     """Other VISIBLE items in the project that claim the same document (same normalized title; for code the
     same path, across branches and repositories): (conflicts with different content, duplicates)."""
-    from app.modules.content import access_reason
+    from app.content.visibility import visible  # INPROOM-187: never reveal items the caller may not see
 
     o, r = source_objects, source_revisions
     is_code = obj["source_kind"] == "git"
@@ -373,9 +373,7 @@ def conflicts(
         conn.execute(
             select(o, r.c.content_sha256, r.c.seq)
             .join(r, r.c.id == o.c.current_revision_id)
-            .where(
-                o.c.project_id == obj["project_id"], o.c.id != obj["id"], o.c.status == "CURRENT", same_kind
-            )
+            .where(visible(conn, obj["project_id"]), o.c.id != obj["id"], same_kind)
             .where((o.c.title == key) if is_code else (func.lower(o.c.title) == key.lower()))
             .order_by(o.c.source_kind, o.c.external_id)
             .limit(limit * 3)
@@ -387,8 +385,6 @@ def conflicts(
     for c in candidates:
         c = dict(c)
         if not is_code and _normal(c["title"]) != _normal(key):
-            continue
-        if access_reason(conn, c):  # never reveal items the caller may not see
             continue
         entry = {
             "kind": c["source_kind"],

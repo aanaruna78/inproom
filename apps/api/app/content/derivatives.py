@@ -172,13 +172,11 @@ def invalidate(
 
 
 def live(conn: Connection, project_id: uuid.UUID, kind: str | None = None) -> list[dict[str, Any]]:
-    """READY derivatives that consumers may use: current revision, CURRENT object, ACTIVE source, and a source
-    within the project's classification cap (INPROOM-183)."""
+    """READY derivatives that consumers may use: of the current revision of a VISIBLE item (see
+    app.content.visibility: CURRENT, ACTIVE source and selected branch, uploads allowed, within the cap)."""
+    from app.content.visibility import visible  # INPROOM-187: the same rule as every other read path
+
     o, r, d = source_objects, source_revisions, derivatives
-    active = [
-        and_(o.c.source_kind == k, o.c.source_id.in_(select(t.c.id).where(t.c.status == "ACTIVE")))
-        for k, t in SOURCE_TABLES.items()
-    ]
     stmt = (
         select(d, o.c.source_kind, o.c.source_id, o.c.external_id, r.c.seq, r.c.content_sha256)
         .select_from(d.join(r, r.c.id == d.c.revision_id).join(o, o.c.current_revision_id == r.c.id))
@@ -186,18 +184,12 @@ def live(conn: Connection, project_id: uuid.UUID, kind: str | None = None) -> li
             d.c.project_id == project_id,
             d.c.status == "READY",
             d.c.purged_at.is_(None),
-            o.c.status == "CURRENT",
-            or_(*active, o.c.source_kind.not_in(list(SOURCE_TABLES))),
+            visible(conn, project_id),
         )
         .order_by(o.c.source_kind, o.c.external_id, d.c.producer)
     )
     if kind:
         stmt = stmt.where(d.c.kind == kind)
-    from app.content import policies
-
-    over = policies.over_cap(conn, project_id)
-    if over:
-        stmt = stmt.where(tuple_(o.c.source_kind, o.c.source_id).not_in(sorted(over, key=str)))
     return [dict(x) for x in conn.execute(stmt).mappings()]
 
 

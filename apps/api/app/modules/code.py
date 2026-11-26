@@ -258,9 +258,6 @@ def search(
             d.c.status == "READY",
             d.c.purged_at.is_(None),
             o.c.current_revision_id == s.c.revision_id,
-            o.c.status == "CURRENT",
-            r.c.status == "ACTIVE",  # a paused or excluded repository's code is withheld
-            s.c.branch == func.any(r.c.branches),  # and so is a branch no longer selected (INPROOM-179)
         )
     )
     if kind:
@@ -276,11 +273,10 @@ def search(
     stmt = stmt.order_by(*order).limit(limit + 1)
     with tenant_session(principal.tenant_id) as conn:
         authorize(conn, principal, request, "project.read", project_id)
-        from app.content import policies  # INPROOM-183: repositories over the classification cap
+        from app.content import policies
+        from app.content.visibility import visible  # INPROOM-187: one rule (status, branch, cap)
 
-        over = [sid for kind, sid in policies.over_cap(conn, project_id) if kind == "git"]
-        if over:
-            stmt = stmt.where(s.c.source_id.not_in(over))
+        stmt = stmt.where(visible(conn, project_id))
         rows = [dict(x) for x in conn.execute(stmt).mappings()]
         ctx = _Context(conn, project_id) if rows else None
         repo_facts = {}
