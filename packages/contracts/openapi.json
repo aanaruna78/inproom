@@ -3209,6 +3209,132 @@
         "title": "PlanRequest",
         "type": "object"
       },
+      "Policy": {
+        "properties": {
+          "classification": {
+            "title": "Classification",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "default",
+              "policy"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "project_max_classification": {
+            "title": "Project Max Classification",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "tier": {
+            "title": "Tier",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "within_project_cap": {
+            "title": "Within Project Cap",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "source_id",
+          "tier",
+          "classification",
+          "origin",
+          "reason",
+          "version",
+          "updated_by",
+          "updated_at",
+          "project_max_classification",
+          "within_project_cap"
+        ],
+        "title": "Policy",
+        "type": "object"
+      },
+      "PolicyUpdate": {
+        "properties": {
+          "classification": {
+            "enum": [
+              "public",
+              "internal",
+              "confidential"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "authoritative",
+              "trusted",
+              "reference",
+              "untrusted"
+            ],
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tier",
+          "classification",
+          "reason"
+        ],
+        "title": "PolicyUpdate",
+        "type": "object"
+      },
       "Production": {
         "additionalProperties": false,
         "properties": {
@@ -11145,6 +11271,184 @@
         "summary": "Include an excluded source again and queue a reconcile to catch up. Idempotent",
         "tags": [
           "sync"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sources/{kind}/{source_id}/policy": {
+      "get": {
+        "operationId": "get_policy_v1_projects__project_id__sources__kind___source_id__policy_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "confluence",
+                "jira",
+                "git",
+                "upload"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Policy"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "A source's trust tier and classification (explicit policy or defaults) and the project cap",
+        "tags": [
+          "sources"
+        ]
+      },
+      "put": {
+        "operationId": "put_policy_v1_projects__project_id__sources__kind___source_id__policy_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "confluence",
+                "jira",
+                "git",
+                "upload"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Policy"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "412": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          },
+          "428": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set a source's trust tier and classification (If-Match: the current version, 0 for defaults)",
+        "tags": [
+          "sources"
         ]
       }
     },

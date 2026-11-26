@@ -1135,6 +1135,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/sources/{kind}/{source_id}/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A source's trust tier and classification (explicit policy or defaults) and the project cap */
+        get: operations["get_policy_v1_projects__project_id__sources__kind___source_id__policy_get"];
+        /** Set a source's trust tier and classification (If-Match: the current version, 0 for defaults) */
+        put: operations["put_policy_v1_projects__project_id__sources__kind___source_id__policy_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile": {
         parameters: {
             query?: never;
@@ -2376,6 +2394,52 @@ export interface components {
              * @description One of this project's selected Jira projects (stays authoritative)
              */
             jira_source_id: string;
+        };
+        /** Policy */
+        Policy: {
+            /** Classification */
+            classification: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "default" | "policy";
+            /** Project Max Classification */
+            project_max_classification: string;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Tier */
+            tier: string;
+            /** Updated At */
+            updated_at: string | null;
+            /** Updated By */
+            updated_by: string | null;
+            /** Version */
+            version: number;
+            /** Within Project Cap */
+            within_project_cap: boolean;
+        };
+        /** PolicyUpdate */
+        PolicyUpdate: {
+            /**
+             * Classification
+             * @enum {string}
+             */
+            classification: "public" | "internal" | "confidential";
+            /** Reason */
+            reason: string;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "authoritative" | "trusted" | "reference" | "untrusted";
         };
         /** Production */
         Production: {
@@ -7149,6 +7213,111 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    get_policy_v1_projects__project_id__sources__kind___source_id__policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                kind: "confluence" | "jira" | "git" | "upload";
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Policy"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_policy_v1_projects__project_id__sources__kind___source_id__policy_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string | null;
+            };
+            path: {
+                project_id: string;
+                kind: "confluence" | "jira" | "git" | "upload";
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Policy"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

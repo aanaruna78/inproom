@@ -184,6 +184,8 @@ SEED_SQL = [
     "INSERT INTO code_symbols (tenant_id, project_id, derivative_id, revision_id, object_id, source_id, "
     "branch, path, blob_sha, language, kind, name, line_start, line_end) "
     "VALUES (:t, :p, :v, :v, :o, :s, 'main', 'a.py', 'b10b', 'python', 'function', 'f', 1, 2)",
+    "INSERT INTO source_policies (tenant_id, project_id, source_kind, source_id, trust, classification, "
+    "reason, updated_by) VALUES (:t, :p, 'confluence', :s, 'trusted', 'internal', 'seed', 'seed')",
 ]
 
 

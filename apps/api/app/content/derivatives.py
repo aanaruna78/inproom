@@ -172,7 +172,8 @@ def invalidate(
 
 
 def live(conn: Connection, project_id: uuid.UUID, kind: str | None = None) -> list[dict[str, Any]]:
-    """READY derivatives that consumers may use: current revision, CURRENT object, ACTIVE source."""
+    """READY derivatives that consumers may use: current revision, CURRENT object, ACTIVE source, and a source
+    within the project's classification cap (INPROOM-183)."""
     o, r, d = source_objects, source_revisions, derivatives
     active = [
         and_(o.c.source_kind == k, o.c.source_id.in_(select(t.c.id).where(t.c.status == "ACTIVE")))
@@ -192,6 +193,11 @@ def live(conn: Connection, project_id: uuid.UUID, kind: str | None = None) -> li
     )
     if kind:
         stmt = stmt.where(d.c.kind == kind)
+    from app.content import policies
+
+    over = policies.over_cap(conn, project_id)
+    if over:
+        stmt = stmt.where(tuple_(o.c.source_kind, o.c.source_id).not_in(sorted(over, key=str)))
     return [dict(x) for x in conn.execute(stmt).mappings()]
 
 

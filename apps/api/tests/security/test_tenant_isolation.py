@@ -104,6 +104,8 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/v1/projects/{project_id}/content"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/code/search"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/provenance/resolve"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/sources/{kind}/{source_id}/policy"): "project_scoped",
+    ("PUT", "/v1/projects/{project_id}/sources/{kind}/{source_id}/policy"): "project_scoped",
     (
         "GET",
         "/v1/projects/{project_id}/content/{kind}/{source_id}/{external_id}/revisions/{seq}/provenance",
@@ -317,6 +319,9 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         kwargs["json"] = {"roles": ["viewer"]}
     elif method == "POST" and path_template.endswith("/adopt"):
         kwargs["json"] = {"from_connection_id": tenant_ids.connection["id"]}
+    elif method == "PUT" and path_template.endswith("/policy"):
+        kwargs["json"] = {"tier": "untrusted", "classification": "public", "reason": "cross-tenant"}
+        kwargs["headers"]["If-Match"] = '"0"'
     elif method == "POST" and path_template.endswith("/provenance/resolve"):
         kwargs["json"] = {
             "citations": [

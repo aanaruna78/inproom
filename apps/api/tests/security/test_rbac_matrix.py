@@ -159,6 +159,12 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
         "project.read",
     ),
     ("GET", "/v1/projects/{project_id}/content/parse-failures"): ("project", "project.read"),
+    # INPROOM-183
+    ("GET", "/v1/projects/{project_id}/sources/{kind}/{source_id}/policy"): ("project", "project.read"),
+    ("PUT", "/v1/projects/{project_id}/sources/{kind}/{source_id}/policy"): (
+        "project",
+        "project.source.manage",
+    ),
     # INPROOM-182
     ("POST", "/v1/projects/{project_id}/provenance/resolve"): ("project", "project.read"),
     (
@@ -443,6 +449,9 @@ def _call(client, method, path, world: World, headers):
         kwargs["headers"]["If-Match"] = f'"{world.project["version"]}"'
     elif method == "POST" and path.endswith("/adopt"):
         kwargs["json"] = {"from_connection_id": world.connection["id"]}
+    elif method == "PUT" and path.endswith("/policy"):
+        kwargs["json"] = {"tier": "trusted", "classification": "internal", "reason": "matrix"}
+        kwargs["headers"]["If-Match"] = '"0"'
     elif method == "POST" and path.endswith("/provenance/resolve"):
         kwargs["json"] = {
             "citations": [

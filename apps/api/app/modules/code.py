@@ -273,6 +273,11 @@ def search(
     stmt = stmt.order_by(*order).limit(limit + 1)
     with tenant_session(principal.tenant_id) as conn:
         authorize(conn, principal, request, "project.read", project_id)
+        from app.content import policies  # INPROOM-183: repositories over the classification cap
+
+        over = [sid for kind, sid in policies.over_cap(conn, project_id) if kind == "git"]
+        if over:
+            stmt = stmt.where(s.c.source_id.not_in(over))
         rows = [dict(x) for x in conn.execute(stmt).mappings()]
         ctx = _Context(conn, project_id) if rows else None
     more, rows = len(rows) > limit, rows[:limit]

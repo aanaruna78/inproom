@@ -16,6 +16,7 @@ from urllib.parse import quote
 
 from sqlalchemy import Connection, select
 
+from app.content import policies
 from app.content import store as blobs
 from app.db_schema import (
     code_symbols,
@@ -28,8 +29,6 @@ from app.db_schema import (
     source_revisions,
 )
 
-DEFAULT_TRUST = {"jira": "trusted", "git": "trusted", "confluence": "trusted", "upload": "reference"}
-DEFAULT_CLASSIFICATION = "internal"
 LINES = re.compile(r"^L(\d+)(?:-L(\d+))?$")
 CODE_MEDIA = ("text/x-python", "text/javascript", "text/x-typescript", "text/x-go", "text/x-java")
 
@@ -38,15 +37,9 @@ class AnchorNotFound(LookupError):
     pass
 
 
-def policy_of(conn: Connection, kind: str, source_id) -> dict[str, Any]:
-    """Trust tier and classification of a source (defaults by kind; explicit policies: INPROOM-183)."""
-    return {
-        "tier": DEFAULT_TRUST.get(kind, "reference"),
-        "classification": DEFAULT_CLASSIFICATION,
-        "origin": "default",
-        "reason": None,
-        "version": 0,
-    }
+def _trust(conn: Connection, obj: dict[str, Any]) -> dict[str, Any]:
+    policy = policies.policy_of(conn, obj["source_kind"], obj["source_id"])
+    return {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in policy.items()}
 
 
 def _site(base_url: str) -> str:
@@ -307,7 +300,7 @@ def build(conn: Connection, obj: dict[str, Any], rev: dict[str, Any], anchor: st
             "content_stored": rev["blob_key"] is not None and rev["purged_at"] is None,
         },
         "modified": modified,
-        "trust": policy_of(conn, obj["source_kind"], obj["source_id"]),
+        "trust": _trust(conn, obj),
         "access": {
             "fetched_under": rev.get("acl") or {},
             "item_status": obj["status"],

@@ -22,6 +22,7 @@ from app.modules.migration import router as migration_router
 from app.modules.projects import router as projects_router
 from app.modules.provenance import router as provenance_router
 from app.modules.settings import router as settings_router
+from app.modules.source_policy import router as source_policy_router
 from app.modules.sources import router as sources_router
 from app.modules.sync_status import router as sync_status_router
 from app.modules.webhooks import router as webhooks_router
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
     app.include_router(content_router)
     app.include_router(documents_router)
     app.include_router(code_router)
+    app.include_router(source_policy_router)
     app.include_router(webhooks_router)
     return app
 

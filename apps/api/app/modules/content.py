@@ -281,6 +281,14 @@ def access_reason(conn: Connection, obj: dict[str, Any]) -> tuple[str, str] | No
     source_status = _source_status(conn, obj)
     if source_status != "ACTIVE":
         return f"SOURCE_{source_status}", f"the item's source is {source_status.lower()}"
+    from app.content import policies  # INPROOM-183: the project's classification cap
+
+    over = policies.exceeds(conn, obj["source_kind"], obj["source_id"], obj["project_id"])
+    if over:
+        return (
+            "CLASSIFICATION_EXCEEDS_PROJECT",
+            f"the source is {over[0]}; this project allows up to {over[1]}",
+        )
     return None
 
 

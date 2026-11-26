@@ -60,6 +60,7 @@ TENANT_SCOPED_TABLES = (
     "derivatives",
     "code_snapshots",
     "code_symbols",
+    "source_policies",
 )
 
 # Project roles allowed in project_members (mirrors app.authz.policy.PROJECT_ROLES; checked by a unit test).
@@ -799,6 +800,33 @@ code_symbols = Table(
     Column("line_end", Integer, nullable=False),
     ForeignKeyConstraint(
         ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_code_symbols_project"
+    ),
+)
+
+source_policies = Table(
+    "source_policies",
+    metadata,
+    _id(),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("source_kind", Text, nullable=False),
+    Column("source_id", UUID(as_uuid=True), nullable=False),
+    Column("trust", Text, nullable=False),
+    Column("classification", Text, nullable=False),
+    Column("reason", Text, nullable=False),
+    Column("updated_by", Text, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("version", Integer, nullable=False, server_default="1"),
+    UniqueConstraint("source_kind", "source_id", name="uq_source_policies_source"),
+    ForeignKeyConstraint(
+        ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_source_policies_project"
+    ),
+    CheckConstraint("source_kind IN ('confluence','jira','git','upload')", name="ck_source_policies_kind"),
+    CheckConstraint(
+        "trust IN ('authoritative','trusted','reference','untrusted')", name="ck_source_policies_trust"
+    ),
+    CheckConstraint(
+        "classification IN ('public','internal','confidential')", name="ck_source_policies_classification"
     ),
 )
 
