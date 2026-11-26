@@ -602,6 +602,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/knowledge/index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The vector index: chunks, embedded, pending and failed for the active model; models present */
+        get: operations["index_status_v1_projects__project_id__knowledge_index_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/knowledge/index/failures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Chunks the embedding provider rejected for the active model, with the reason */
+        get: operations["index_failures_v1_projects__project_id__knowledge_index_failures_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/knowledge/refresh": {
         parameters: {
             query?: never;
@@ -613,6 +647,23 @@ export interface paths {
         put?: never;
         /** Reconcile the project's sources (or one) in full now: deletions and permission changes included */
         post: operations["refresh_v1_projects__project_id__knowledge_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/knowledge/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-embed (after a model switch or a fixed failure) or rebuild the chunks; coalesced, audited */
+        post: operations["reindex_v1_projects__project_id__knowledge_reindex_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1836,6 +1887,53 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** IndexFailure */
+        IndexFailure: {
+            /** Attempts */
+            attempts: number;
+            citation: components["schemas"]["app__modules__knowledge__Citation"];
+            /** Code */
+            code: string;
+            /** Detail */
+            detail: string;
+            /**
+             * Last At
+             * Format: date-time
+             */
+            last_at: string;
+            /** Model */
+            model: string;
+        };
+        /** IndexStatus */
+        IndexStatus: {
+            /** Chunks */
+            chunks: number;
+            /** Derivatives */
+            derivatives: {
+                [key: string]: number;
+            };
+            /** Dimensions */
+            dimensions: number;
+            /** Embedded */
+            embedded: number;
+            /** Failed */
+            failed: number;
+            /** Model */
+            model: string;
+            /** Model Version */
+            model_version: string;
+            /** Models */
+            models: components["schemas"]["ModelVectors"][];
+            /** Pending */
+            pending: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Provider */
+            provider: string;
+        };
         /** InvalidateRequest */
         InvalidateRequest: {
             /**
@@ -2270,6 +2368,13 @@ export interface components {
             write_readiness?: {
                 [key: string]: unknown;
             };
+        };
+        /** ModelVectors */
+        ModelVectors: {
+            /** Model */
+            model: string;
+            /** Vectors */
+            vectors: number;
         };
         /** MyPermissions */
         MyPermissions: {
@@ -2871,6 +2976,27 @@ export interface components {
             skipped: {
                 [key: string]: string;
             }[];
+        };
+        /** ReindexRequest */
+        ReindexRequest: {
+            /** Reason */
+            reason: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "embeddings" | "chunks";
+        };
+        /** ReindexResult */
+        ReindexResult: {
+            /** Chunks Invalidated */
+            chunks_invalidated: number;
+            /** Failures Cleared */
+            failures_cleared: number;
+            /** Model */
+            model: string;
+            /** Scope */
+            scope: string;
         };
         /** RepositoryOption */
         RepositoryOption: {
@@ -5603,6 +5729,68 @@ export interface operations {
             };
         };
     };
+    index_status_v1_projects__project_id__knowledge_index_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    index_failures_v1_projects__project_id__knowledge_index_failures_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexFailure"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     refresh_v1_projects__project_id__knowledge_refresh_post: {
         parameters: {
             query?: never;
@@ -5625,6 +5813,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RefreshResult"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reindex_v1_projects__project_id__knowledge_reindex_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReindexRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReindexResult"];
                 };
             };
             /** @description problem+json */

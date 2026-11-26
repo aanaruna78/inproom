@@ -81,3 +81,5 @@ Issues under a Jira security level are **withheld by default** (RESTRICTED, "sec
 | Secured Jira issues are missing | That is the default. Set the source's security policy if the project should serve them. |
 
 Related: [content-store.md](content-store.md), [provenance.md](provenance.md), [code-index.md](code-index.md), [sync-worker.md](sync-worker.md).
+
+Semantic search applies the same visibility rule, and vectors are deleted with their content: see [vector-index.md](vector-index.md).

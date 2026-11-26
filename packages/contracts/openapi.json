@@ -1348,6 +1348,114 @@
         "title": "Impact",
         "type": "object"
       },
+      "IndexFailure": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "citation": {
+            "$ref": "#/components/schemas/app__modules__knowledge__Citation"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "last_at": {
+            "format": "date-time",
+            "title": "Last At",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          }
+        },
+        "required": [
+          "citation",
+          "model",
+          "code",
+          "detail",
+          "attempts",
+          "last_at"
+        ],
+        "title": "IndexFailure",
+        "type": "object"
+      },
+      "IndexStatus": {
+        "properties": {
+          "chunks": {
+            "title": "Chunks",
+            "type": "integer"
+          },
+          "derivatives": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Derivatives",
+            "type": "object"
+          },
+          "dimensions": {
+            "title": "Dimensions",
+            "type": "integer"
+          },
+          "embedded": {
+            "title": "Embedded",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "string"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelVectors"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "provider",
+          "model",
+          "model_version",
+          "dimensions",
+          "chunks",
+          "embedded",
+          "failed",
+          "pending",
+          "derivatives",
+          "models"
+        ],
+        "title": "IndexStatus",
+        "type": "object"
+      },
       "InvalidateRequest": {
         "properties": {
           "external_id": {
@@ -2554,6 +2662,24 @@
           "latest_run"
         ],
         "title": "MigrationState",
+        "type": "object"
+      },
+      "ModelVectors": {
+        "properties": {
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "vectors": {
+            "title": "Vectors",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "model",
+          "vectors"
+        ],
+        "title": "ModelVectors",
         "type": "object"
       },
       "MyPermissions": {
@@ -4143,6 +4269,58 @@
           "skipped"
         ],
         "title": "RefreshResult",
+        "type": "object"
+      },
+      "ReindexRequest": {
+        "properties": {
+          "reason": {
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "embeddings",
+              "chunks"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "reason"
+        ],
+        "title": "ReindexRequest",
+        "type": "object"
+      },
+      "ReindexResult": {
+        "properties": {
+          "chunks_invalidated": {
+            "title": "Chunks Invalidated",
+            "type": "integer"
+          },
+          "failures_cleared": {
+            "title": "Failures Cleared",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "model",
+          "failures_cleared",
+          "chunks_invalidated"
+        ],
+        "title": "ReindexResult",
         "type": "object"
       },
       "RepositoryOption": {
@@ -9161,6 +9339,106 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/knowledge/index": {
+      "get": {
+        "operationId": "index_status_v1_projects__project_id__knowledge_index_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The vector index: chunks, embedded, pending and failed for the active model; models present",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/knowledge/index/failures": {
+      "get": {
+        "operationId": "index_failures_v1_projects__project_id__knowledge_index_failures_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IndexFailure"
+                  },
+                  "title": "Response Index Failures V1 Projects  Project Id  Knowledge Index Failures Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Chunks the embedding provider rejected for the active model, with the reason",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/knowledge/refresh": {
       "post": {
         "operationId": "refresh_v1_projects__project_id__knowledge_refresh_post",
@@ -9220,6 +9498,70 @@
           }
         ],
         "summary": "Reconcile the project's sources (or one) in full now: deletions and permission changes included",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/knowledge/reindex": {
+      "post": {
+        "operationId": "reindex_v1_projects__project_id__knowledge_reindex_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReindexRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReindexResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Re-embed (after a model switch or a fixed failure) or rebuild the chunks; coalesced, audited",
         "tags": [
           "knowledge"
         ]

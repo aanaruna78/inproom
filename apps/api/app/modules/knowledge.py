@@ -411,3 +411,223 @@ def search(
                 )
             )
     return SearchResult(model=embedder.model, model_version=embedder.version, dimensions=dims, items=items)
+
+
+# ---------------------------------------------------------------- index status and reindex (INPROOM-206)
+
+
+class ModelVectors(BaseModel):
+    model: str
+    vectors: int  # vectors of this model for the project's visible current chunks
+
+
+class IndexStatus(BaseModel):
+    project_id: uuid.UUID
+    provider: str
+    model: str  # the active model: search and the embed job use it
+    model_version: str
+    dimensions: int
+    chunks: int  # distinct chunks (by text) of visible current content
+    embedded: int  # ... with a vector for the active model
+    failed: int  # ... the provider rejected for the active model (see /index/failures)
+    pending: int  # ... still to embed (the embed job is queued or running)
+    derivatives: dict[str, int]  # chunks@1 derivatives of current revisions by status
+    models: list[ModelVectors]  # every model with vectors here: more than one while a model switch runs
+
+
+def _visible_chunks(conn: Connection, project_id: uuid.UUID):
+    from app.content.visibility import visible
+    from app.db_schema import knowledge_chunks as k
+
+    o = source_objects
+    return (
+        select(k.c.sha256)
+        .distinct()
+        .join(o, and_(o.c.id == k.c.object_id, o.c.current_revision_id == k.c.revision_id))
+        .where(k.c.project_id == project_id, visible(conn, project_id))
+        .subquery()
+    )
+
+
+@router.get(
+    "/v1/projects/{project_id}/knowledge/index",
+    response_model=IndexStatus,
+    summary="The vector index: chunks, embedded, pending and failed for the active model; models present",
+)
+def index_status(request: Request, principal: CurrentPrincipal, project_id: uuid.UUID) -> IndexStatus:
+    from app.config import get_settings
+    from app.content.embeddings import get_embedder
+    from app.db_schema import chunk_embedding_failures as f
+    from app.db_schema import chunk_embeddings as e
+    from app.db_schema import source_revisions as r
+
+    embedder = get_embedder()
+    with tenant_session(principal.tenant_id) as conn:
+        authorize(conn, principal, request, "project.read", project_id)
+        shas = _visible_chunks(conn, project_id)
+        total = conn.execute(select(func.count()).select_from(shas)).scalar_one()
+        by_model = {
+            row.model: row.n
+            for row in conn.execute(
+                select(e.c.model, func.count().label("n"))
+                .join(shas, shas.c.sha256 == e.c.sha256)
+                .group_by(e.c.model)
+            )
+        }
+        failed = conn.execute(
+            select(func.count())
+            .select_from(f)
+            .join(shas, shas.c.sha256 == f.c.sha256)
+            .where(f.c.project_id == project_id, f.c.model == embedder.model)
+        ).scalar_one()
+        derived = {
+            row.status: row.n
+            for row in conn.execute(
+                select(derivatives.c.status, func.count().label("n"))
+                .join(r, r.c.id == derivatives.c.revision_id)
+                .join(source_objects, source_objects.c.current_revision_id == r.c.id)
+                .where(derivatives.c.project_id == project_id, derivatives.c.producer == "chunks")
+                .group_by(derivatives.c.status)
+            )
+        }
+    embedded = by_model.get(embedder.model, 0)
+    return IndexStatus(
+        project_id=project_id,
+        provider=get_settings().embedding_provider,
+        model=embedder.model,
+        model_version=embedder.version,
+        dimensions=embedder.dimensions,
+        chunks=total,
+        embedded=embedded,
+        failed=failed,
+        pending=max(0, total - embedded - failed),
+        derivatives=derived,
+        models=[ModelVectors(model=m, vectors=n) for m, n in sorted(by_model.items())],
+    )
+
+
+class IndexFailure(BaseModel):
+    citation: Citation  # one chunk with this text (identical text elsewhere fails the same way)
+    model: str
+    code: str
+    detail: str
+    attempts: int
+    last_at: datetime
+
+
+@router.get(
+    "/v1/projects/{project_id}/knowledge/index/failures",
+    response_model=list[IndexFailure],
+    summary="Chunks the embedding provider rejected for the active model, with the reason",
+)
+def index_failures(
+    request: Request, principal: CurrentPrincipal, project_id: uuid.UUID
+) -> list[IndexFailure]:
+    from app.content.embeddings import get_embedder
+    from app.db_schema import chunk_embedding_failures as f
+    from app.db_schema import knowledge_chunks as k
+
+    model = get_embedder().model
+    with tenant_session(principal.tenant_id) as conn:
+        authorize(conn, principal, request, "project.read", project_id)
+        rows = conn.execute(
+            select(f, k.c.source_kind, k.c.source_id, k.c.external_id, k.c.seq, k.c.anchor)
+            .distinct(f.c.id)
+            .join(k, and_(k.c.project_id == f.c.project_id, k.c.sha256 == f.c.sha256))
+            .where(f.c.project_id == project_id, f.c.model == model)
+            .order_by(f.c.id, k.c.id)
+            .limit(500)
+        ).mappings()
+        return [
+            IndexFailure(
+                citation=Citation(
+                    kind=x["source_kind"],
+                    source_id=x["source_id"],
+                    external_id=x["external_id"],
+                    seq=x["seq"],
+                    anchor=x["anchor"],
+                ),
+                model=x["model"],
+                code=x["code"],
+                detail=x["detail"],
+                attempts=x["attempts"],
+                last_at=x["last_at"],
+            )
+            for x in rows
+        ]
+
+
+class ReindexRequest(BaseModel):
+    scope: Literal["embeddings", "chunks"]
+    reason: str = Field(min_length=3, max_length=300)
+
+
+class ReindexResult(BaseModel):
+    scope: str
+    model: str
+    failures_cleared: int  # embeddings: rejected chunks get another attempt
+    chunks_invalidated: int  # chunks: derivatives queued for a rebuild (then re-embedded)
+
+
+@router.post(
+    "/v1/projects/{project_id}/knowledge/reindex",
+    status_code=202,
+    response_model=ReindexResult,
+    summary="Re-embed (after a model switch or a fixed failure) or rebuild the chunks; coalesced, audited",
+    responses={404: PROBLEM, 409: PROBLEM},
+)
+def reindex(
+    request: Request,
+    principal: CurrentPrincipal,
+    project_id: uuid.UUID,
+    payload: Annotated[ReindexRequest, Body()],
+) -> JSONResponse:
+    from sqlalchemy import delete
+
+    from app.content import derivatives as derived
+    from app.content.embed import queue_embed
+    from app.content.embeddings import get_embedder
+    from app.db_schema import chunk_embedding_failures as f
+
+    model = get_embedder().model
+    with tenant_session(principal.tenant_id) as conn:
+        access = authorize(conn, principal, request, "project.source.manage", project_id)
+        if access.project["status"] == "ARCHIVED":
+            raise conflict("PROJECT_ARCHIVED", "Archived projects are read-only; restore the project first")
+        cleared = conn.execute(delete(f).where(f.c.project_id == project_id, f.c.model == model)).rowcount
+        invalidated = 0
+        if payload.scope == "chunks":
+            targets = [(t["kind"], t["source_id"]) for t in _project_sources(conn, project_id)]
+            for kind, source_id in [*targets, ("upload", project_id)]:
+                done = derived.invalidate(
+                    conn,
+                    principal.tenant_id,
+                    project_id,
+                    kind=kind,
+                    source_id=source_id,
+                    external_id=None,
+                    producer="chunks",
+                    reason=payload.reason,
+                )
+                invalidated += done["invalidated"]
+        queue_embed(conn, principal.tenant_id, project_id, "manual")  # coalesced with a queued run
+        audit.record(
+            conn,
+            principal,
+            "knowledge.reindex",
+            "project",
+            str(project_id),
+            trace_id=getattr(request.state, "trace_id", None),
+            payload={
+                "scope": payload.scope,
+                "reason": payload.reason,
+                "model": model,
+                "failures_cleared": cleared,
+                "chunks_invalidated": invalidated,
+            },
+            project_id=project_id,
+        )
+    body = ReindexResult(
+        scope=payload.scope, model=model, failures_cleared=cleared, chunks_invalidated=invalidated
+    )
+    return JSONResponse(body.model_dump(mode="json"), status_code=202)

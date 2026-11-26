@@ -109,6 +109,20 @@ def _referenced(conn: Connection, keys: set[str] | None = None) -> set[str]:
     return found
 
 
+def _orphan_vectors(conn: Connection) -> int:
+    """INPROOM-206: the tenant's vectors whose text no chunk carries any more (deleted, purged, superseded
+    content) are deleted with the content. Vectors are deduplicated per tenant, so one still used by any
+    project's chunk stays."""
+    from sqlalchemy import delete, exists
+
+    from app.db_schema import chunk_embeddings as e
+    from app.db_schema import knowledge_chunks as k
+
+    return conn.execute(
+        delete(e).where(~exists().where(k.c.tenant_id == e.c.tenant_id, k.c.sha256 == e.c.sha256))
+    ).rowcount
+
+
 def purge_project(tenant: uuid.UUID, project_id: uuid.UUID, store: blobs.BlobStore, now: datetime) -> dict:
     """Mark what the policy releases, then delete the blobs nobody references any more."""
     from app.modules import settings as settings_module
@@ -172,7 +186,11 @@ def purge_project(tenant: uuid.UUID, project_id: uuid.UUID, store: blobs.BlobSto
 
             projection.drop(conn, [p.id for p in purged])
         keys.discard(None)
-        counts = {"items_marked_deleted": marked_deleted, "revisions_purged": len(ids)}
+        counts = {
+            "items_marked_deleted": marked_deleted,
+            "revisions_purged": len(ids),
+            "vectors_deleted": _orphan_vectors(conn),
+        }
     # Released blobs: deleted under the exclusive tenant blob lock, re-checking references at that moment.
     deleted = 0
     with tenant_session(tenant) as conn:

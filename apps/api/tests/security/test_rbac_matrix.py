@@ -170,6 +170,9 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("GET", "/v1/projects/{project_id}/knowledge/changes"): ("project", "project.read"),
     ("GET", "/v1/projects/{project_id}/knowledge/status"): ("project", "project.read"),
     ("POST", "/v1/projects/{project_id}/knowledge/search"): ("project", "project.read"),
+    ("GET", "/v1/projects/{project_id}/knowledge/index"): ("project", "project.read"),
+    ("GET", "/v1/projects/{project_id}/knowledge/index/failures"): ("project", "project.read"),
+    ("POST", "/v1/projects/{project_id}/knowledge/reindex"): ("project", "project.source.manage"),
     ("POST", "/v1/projects/{project_id}/knowledge/refresh"): ("project", "project.source.manage"),
     ("PUT", "/v1/projects/{project_id}/sources/jira/{source_id}/security"): (
         "project",
@@ -215,6 +218,7 @@ ACCEPTED = {
     ("POST", "/v1/projects/{project_id}/sources/{kind}/{source_id}/reconcile"),
     ("POST", "/v1/projects/{project_id}/content/invalidate"),  # INPROOM-159: rebuild queued
     ("POST", "/v1/projects/{project_id}/knowledge/refresh"),  # INPROOM-189: full reconciles queued
+    ("POST", "/v1/projects/{project_id}/knowledge/reindex"),  # INPROOM-206: re-embedding queued
 }
 # Routes whose success is 201 Created (INPROOM-165 uploads).
 CREATED = {("POST", "/v1/projects/{project_id}/documents")}
@@ -514,6 +518,8 @@ def _call(client, method, path, world: World, headers):
         kwargs["headers"]["If-Match"] = '"1"'
     elif method == "PUT" and path.endswith("/migration"):
         kwargs["json"] = {"jira_source_id": world.jira_source["id"]}
+    elif method == "POST" and path.endswith("/knowledge/reindex"):
+        kwargs["json"] = {"scope": "embeddings", "reason": "matrix"}
     elif method == "POST" and path.endswith("/knowledge/search"):
         kwargs["json"] = {"query": "architecture"}
     elif method == "POST" and path.endswith("/knowledge/refresh"):

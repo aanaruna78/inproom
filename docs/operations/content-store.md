@@ -196,3 +196,5 @@ Each project's settings carry `sources.retention`:
 Every cited passage carries a provenance record (source, revision, trust, freshness): see [provenance.md](provenance.md).
 
 Deletions, restrictions and other invalidations reach every read path and the knowledge change feed atomically: see [knowledge-propagation.md](knowledge-propagation.md).
+
+Retrieval chunks, embeddings and semantic search are projections of this store: see [vector-index.md](vector-index.md).
