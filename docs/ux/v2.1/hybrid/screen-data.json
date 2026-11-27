@@ -1,0 +1,181 @@
+[
+  {
+    "id": 19,
+    "slug": "human-team-onboarding",
+    "title": "Human Team & Invitations",
+    "sub": "Verified developer and QA onboarding · skills, capacity and role controls",
+    "tab": "Team",
+    "main": "Invite team member",
+    "leftTitle": "People & Roles",
+    "left": [
+      "Developers",
+      "QA Engineers",
+      "Tech Leads",
+      "Invitations",
+      "Availability calendar"
+    ],
+    "centerTitle": "Project members",
+    "center": [
+      "Name / Role / Email",
+      "Asha Nair · Developer · Invited",
+      "Kiran Shah · QA Engineer · Active",
+      "Mina Rao · Developer · Active",
+      "Omar Ali · QA Lead · Active",
+      "Team capacity · Working calendar"
+    ],
+    "rightTitle": "Member inspector",
+    "right": [
+      "Verified identity: required",
+      "Role and permission scope",
+      "Email invitation status",
+      "Skills and capacity (hrs/week)",
+      "Jira account mapping",
+      "Revoke / resend invite"
+    ],
+    "parent": "INPROOM-191",
+    "purpose": "Invite human Dev/QA members by name and email, validate identity, permission and capacity before allocating work."
+  },
+  {
+    "id": 20,
+    "slug": "ai-agent-container-setup",
+    "title": "AI Agent & Container Setup",
+    "sub": "Provider adapters · runtime isolation · credentials and capability checks",
+    "tab": "AI Agents",
+    "main": "Validate configuration",
+    "leftTitle": "Agent catalog",
+    "left": [
+      "AI Developers",
+      "AI QA Agents",
+      "Installed adapters",
+      "Container templates",
+      "Run budgets"
+    ],
+    "centerTitle": "Development and QA agents",
+    "center": [
+      "Agent / Provider / Readiness",
+      "Dev Agent A · Claude Code-type",
+      "Dev Agent B · GPT-type",
+      "Dev Agent C · Gemini-type",
+      "QA Agent A · Playwright runner",
+      "Runtime image and permitted Git scope"
+    ],
+    "rightTitle": "Adapter inspector",
+    "right": [
+      "Adapter health: verification needed",
+      "Model and credential reference",
+      "Runner template: signed OCI image",
+      "Git path / network allowlist",
+      "Max concurrency and budget",
+      "Run read-only capability test"
+    ],
+    "parent": "INPROOM-192",
+    "purpose": "Configure validated AI Dev/QA provider adapters and a restricted versioned container; do not assume unsupported providers work."
+  },
+  {
+    "id": 21,
+    "slug": "auto-allocation-review",
+    "title": "Auto Allocate & HIL Approval",
+    "sub": "Explainable team matching · editable assignments · review before kickoff",
+    "tab": "Auto Allocate",
+    "main": "Submit allocation for approval",
+    "leftTitle": "Allocation context",
+    "left": [
+      "Selected Jira sprint",
+      "Ready Stories",
+      "Dependency blockers",
+      "Team skills and capacity",
+      "AI usage limits"
+    ],
+    "centerTitle": "Proposed story assignments",
+    "center": [
+      "Jira Story / Candidate / Fit",
+      "STORY-01 · Asha (Human Dev)",
+      "STORY-02 · Dev Agent A (AI)",
+      "STORY-03 · Kiran (Human QA)",
+      "STORY-04 · QA Agent A (AI)",
+      "Blocked Story · Unassigned"
+    ],
+    "rightTitle": "Approval impact",
+    "right": [
+      "Draft allocation version: v3",
+      "Jira assignments: 4 proposed",
+      "AI jobs: 2 (not started)",
+      "Capacity / cost warnings",
+      "Source snapshot & policy hash",
+      "Approve → Kick Start separately"
+    ],
+    "parent": "INPROOM-198",
+    "purpose": "Preview and override Auto Allocate recommendations, then require human approval of exact Jira assignments and runner scope."
+  },
+  {
+    "id": 22,
+    "slug": "hybrid-sprint-control-center",
+    "title": "Hybrid Sprint Control Center",
+    "sub": "Two-week sprint · human and AI workload · real PR and QA evidence",
+    "tab": "Sprint",
+    "main": "Review sprint blockers",
+    "leftTitle": "Sprint timeline",
+    "left": [
+      "Sprint 04 · 14 calendar days",
+      "Sprint goal and dates",
+      "Assigned human work",
+      "Queued and active AI runs",
+      "Blockers and spillover"
+    ],
+    "centerTitle": "Execution board",
+    "center": [
+      "Issue / Owner / State",
+      "DEV-101 · Human Developer · In progress",
+      "DEV-103 · AI Developer · PR review",
+      "QA-42 · AI QA · Test running",
+      "QA-47 · Human QA · Needs evidence",
+      "DEV-110 · Blocked dependency"
+    ],
+    "rightTitle": "Evidence and next actions",
+    "right": [
+      "Linked Git PR / actual CI status",
+      "Container run state / audit",
+      "Executed QA test artifacts",
+      "Reported Jira bugs",
+      "Allocation conflicts and replan",
+      "Sprint report / human sign-off"
+    ],
+    "parent": "INPROOM-202",
+    "purpose": "Monitor human+AI execution through real Jira/Git/QA events, explain blockers, manage sprint changes without implicit approvals."
+  },
+  {
+    "id": 23,
+    "slug": "ai-scrum-master-control",
+    "title": "AI Scrum Master & Ceremonies",
+    "sub": "Project-local scheduling · cited daily sprint report · governed Jira comments",
+    "tab": "Scrum Master",
+    "main": "Save schedule policy",
+    "leftTitle": "Scrum settings",
+    "left": [
+      "Enable Scrum Master service",
+      "Project timezone: Asia/Kolkata",
+      "Review time: 10:00 AM local",
+      "Working days: Mon–Fri",
+      "Configure holidays and exceptions"
+    ],
+    "centerTitle": "Daily review and ceremonies",
+    "center": [
+      "Read-only project/sprint snapshot",
+      "Sprint progress and stale work",
+      "Blocked work and issue comments",
+      "Daily standup agenda and digest",
+      "Planning / Review / Retrospective"
+    ],
+    "rightTitle": "Posting & audit policy",
+    "right": [
+      "Jira comments: Draft for review",
+      "Bot identity and Jira scopes",
+      "Maximum comments/day",
+      "Last / next scheduled check",
+      "Local-day idempotency + DST",
+      "Approve drafts / Pause service"
+    ],
+    "parent": "INPROOM-200",
+    "purpose": "Configure a separate scheduled Scrum service, review factual progress reports and draft-only Jira comments by default."
+  }
+]
