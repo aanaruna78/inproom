@@ -58,7 +58,6 @@ def test_duplicate_edge_is_removed_after_one_twin_changes(selected):
     assert obsolete == [], obsolete
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-223 (QA): fixed in its own commit")
 def test_purged_manual_edge_endpoint_is_not_resurrected_as_unresolved(selected):
     e = selected
     a = upload(e, "first.md", b"# A\n\nFirst.").json()["document_id"]

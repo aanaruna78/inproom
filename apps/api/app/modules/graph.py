@@ -196,6 +196,8 @@ def edges(
         ends = (m["from_key"], m["to_key"])
         if any(k in present and k not in shown for k in ends):
             continue  # an endpoint exists but is hidden: so is the edge
+        if m["origin"] == "manual" and not all(k in shown for k in ends):
+            continue  # INPROOM-223: a curator linked two visible nodes; deleted or purged, the link goes too
         review = reviews.get(natural)
         action = review["action"] if review else None
         status = {"confirm": "confirmed", "reject": "rejected", "manual": "confirmed"}.get(action, "active")
