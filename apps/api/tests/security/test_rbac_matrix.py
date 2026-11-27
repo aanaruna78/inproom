@@ -176,6 +176,8 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("GET", "/v1/projects/{project_id}/graph/nodes/{key}"): ("project", "project.read"),
     ("GET", "/v1/projects/{project_id}/graph/edges"): ("project", "project.read"),
     ("GET", "/v1/projects/{project_id}/graph/status"): ("project", "project.read"),
+    ("POST", "/v1/projects/{project_id}/graph/edges"): ("project", "project.graph.curate"),
+    ("POST", "/v1/projects/{project_id}/graph/edges/{edge_id}/review"): ("project", "project.graph.curate"),
     ("GET", "/v1/projects/{project_id}/knowledge/index/failures"): ("project", "project.read"),
     ("POST", "/v1/projects/{project_id}/knowledge/reindex"): ("project", "project.source.manage"),
     ("POST", "/v1/projects/{project_id}/knowledge/refresh"): ("project", "project.source.manage"),
@@ -226,7 +228,10 @@ ACCEPTED = {
     ("POST", "/v1/projects/{project_id}/knowledge/reindex"),  # INPROOM-206: re-embedding queued
 }
 # Routes whose success is 201 Created (INPROOM-165 uploads).
-CREATED = {("POST", "/v1/projects/{project_id}/documents")}
+CREATED = {
+    ("POST", "/v1/projects/{project_id}/documents"),
+    ("POST", "/v1/projects/{project_id}/graph/edges"),
+}
 # Authorized callers reach a business rule instead of success: adopt needs a REVOKED same-site connection,
 # which the shared world does not have, so 409 ADOPT_NOT_ALLOWED is the authorized outcome (INPROOM-146).
 BUSINESS_RULE = {
@@ -304,6 +309,8 @@ class World:
     confluence: dict
     confluence_source: dict
     document: dict
+    twin: str = ""  # INPROOM-218: a second copy of the document (an extracted `duplicates` edge)
+    edge_id: int = 0  # that edge, to review
 
 
 WORLD_DOCUMENT = ("world.md", b"# World document")  # PUT re-sends these bytes: same seq, repeatable
@@ -397,10 +404,38 @@ def _build_world(db_client, tokens) -> World:
         f"/v1/projects/{project['id']}/documents", files={"file": WORLD_DOCUMENT}, headers=owner
     )
     assert doc.status_code == 201, doc.text
-    from app.content import graph  # INPROOM-217: the document's graph node, for the graph routes
+    twin = db_client.post(
+        f"/v1/projects/{project['id']}/documents",
+        files={"file": ("twin.md", WORLD_DOCUMENT[1])},
+        headers=owner,
+    )
+    assert twin.status_code == 201, twin.text
+    from sqlalchemy import select
+
+    from app.content import graph  # INPROOM-217/218: graph nodes, and a duplicates edge to review
+    from app.db import tenant_session
+    from app.db_schema import graph_edges
 
     graph.run(tenant, uuid.UUID(project["id"]))
-    return World(tenant, ws, project, owner, connection, jira, jira_source, confluence, space, doc.json())
+    with tenant_session(tenant) as conn:
+        edge_id = (
+            conn.execute(select(graph_edges.c.id).where(graph_edges.c.kind == "duplicates")).scalars().first()
+        )
+    assert edge_id, "the world's twin documents state a duplicates edge"
+    return World(
+        tenant,
+        ws,
+        project,
+        owner,
+        connection,
+        jira,
+        jira_source,
+        confluence,
+        space,
+        doc.json(),
+        twin.json()["document_id"],
+        edge_id,
+    )
 
 
 def _tenant_allows(roles: tuple[str, ...], permission: str) -> bool:
@@ -471,6 +506,7 @@ def _call(client, method, path, world: World, headers):
         seq=1,
         document_id=world.document["document_id"],
         key=f"doc:{world.document['document_id']}",
+        edge_id=world.edge_id,
     )
     if path.startswith("/v1/connections/{connection_id}/") and path.endswith(
         ("/repositories", "/projects", "/spaces")
@@ -531,6 +567,16 @@ def _call(client, method, path, world: World, headers):
         kwargs["json"] = {"scope": "embeddings", "reason": "matrix"}
     elif method == "POST" and path.endswith(("/knowledge/search", "/knowledge/retrieve")):
         kwargs["json"] = {"query": "architecture"}
+    elif method == "POST" and path.endswith("/graph/edges"):
+        doc = f"doc:{world.document['document_id']}"
+        kwargs["json"] = {
+            "from_key": doc,
+            "kind": "matrix_link",
+            "to_key": f"doc:{world.twin}",
+            "reason": "m",
+        }
+    elif method == "POST" and path.endswith("/review"):
+        kwargs["json"] = {"action": "confirm", "reason": "matrix"}
     elif method == "POST" and path.endswith("/knowledge/refresh"):
         kwargs["json"] = {"reason": "matrix"}
     elif method == "PUT" and path.endswith("/security"):  # the default policy: idempotent for every actor

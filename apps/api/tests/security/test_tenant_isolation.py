@@ -113,6 +113,8 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/v1/projects/{project_id}/graph/nodes/{key}"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/graph/edges"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/graph/status"): "project_scoped",
+    ("POST", "/v1/projects/{project_id}/graph/edges"): "project_scoped",
+    ("POST", "/v1/projects/{project_id}/graph/edges/{edge_id}/review"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/knowledge/index/failures"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/knowledge/reindex"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/knowledge/refresh"): "project_scoped",
@@ -334,6 +336,7 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         seq=1,
         document_id=tenant_ids.document["document_id"],
         key=f"doc:{tenant_ids.document['document_id']}",
+        edge_id=1,
     )
     if (
         path_template.endswith(("/repositories", "/jira/projects", "/confluence/spaces"))
@@ -388,6 +391,11 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         kwargs["json"] = {"scope": "chunks", "reason": "cross-tenant"}
     elif method == "POST" and path_template.endswith(("/knowledge/search", "/knowledge/retrieve")):
         kwargs["json"] = {"query": "secret"}
+    elif method == "POST" and path_template.endswith("/graph/edges"):
+        doc = f"doc:{tenant_ids.document['document_id']}"
+        kwargs["json"] = {"from_key": doc, "kind": "x_link", "to_key": "doc:other", "reason": "cross-tenant"}
+    elif method == "POST" and path_template.endswith("/review"):
+        kwargs["json"] = {"action": "reject", "reason": "cross-tenant"}
     elif method == "POST" and path_template.endswith("/knowledge/refresh"):
         kwargs["json"] = {"reason": "cross-tenant"}
     elif method == "PUT" and path_template.endswith("/security"):

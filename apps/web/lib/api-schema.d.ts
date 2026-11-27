@@ -595,7 +595,34 @@ export interface paths {
         /** Graph edges of visible content, merged by natural key; filter by kind, origin and status */
         get: operations["list_edges_v1_projects__project_id__graph_edges_get"];
         put?: never;
-        post?: never;
+        /**
+         * Add (or restate) a manual graph edge between two visible nodes; audited
+         * @description Idempotent: restating a manual edge updates its reason. An edge the extractor already states is a
+         *     409 (confirm it instead); a rejected one is replaced by the manual edge.
+         */
+        post: operations["add_edge_v1_projects__project_id__graph_edges_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/graph/edges/{edge_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm, reject or correct a graph edge; durable across rebuilds and audited
+         * @description Reviews are keyed by the edge's natural key (from, kind, to), so re-extraction never undoes them: a
+         *     rejected edge stays hidden however often the graph is rebuilt. `correct` rejects the edge and adds a
+         *     manual edge of the same kind to `to` (a visible node).
+         */
+        post: operations["review_edge_v1_projects__project_id__graph_edges__edge_id__review_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2444,6 +2471,17 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** ManualEdgeRequest */
+        ManualEdgeRequest: {
+            /** From Key */
+            from_key: string;
+            /** Kind */
+            kind: string;
+            /** Reason */
+            reason: string;
+            /** To Key */
+            to_key: string;
+        };
         /**
          * MappingOverrides
          * @description Replaces the overrides. A field mapped to null means "do not read this canonical field".
@@ -3416,6 +3454,23 @@ export interface components {
             model: string | null;
             /** Query Terms */
             query_terms: string[];
+        };
+        /** ReviewRequest */
+        ReviewRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "confirm" | "reject" | "correct";
+            /** Reason */
+            reason: string;
+            /** To */
+            to?: string | null;
+        };
+        /** ReviewResult */
+        ReviewResult: {
+            corrected: components["schemas"]["Edge"] | null;
+            edge: components["schemas"]["Edge"];
         };
         /** Revision */
         Revision: {
@@ -6091,6 +6146,101 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    add_edge_v1_projects__project_id__graph_edges_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualEdgeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Edge"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    review_edge_v1_projects__project_id__graph_edges__edge_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                edge_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewResult"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

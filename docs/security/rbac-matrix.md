@@ -27,6 +27,7 @@ tenant_admin overrides the cap.
 | project.settings.update | admin | ✓ |  |  |  |  |  |  |  |  |
 | project.source.manage | admin | ✓ |  |  |  |  |  |  |  |  |
 | project.content.upload | propose | ✓ | ✓ | ✓ |  |  | ✓ |  |  |  |
+| project.graph.curate | propose | ✓ | ✓ | ✓ |  |  | ✓ |  |  |  |
 | audit.read | read | ✓ |  |  |  |  |  |  |  |  |
 | artifact.propose | propose | ✓ | ✓ | ✓ | ✓ |  | ✓ | ✓ |  |  |
 | artifact.review | propose | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  |

@@ -2615,6 +2615,41 @@
         "title": "Location",
         "type": "object"
       },
+      "ManualEdgeRequest": {
+        "properties": {
+          "from_key": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "From Key",
+            "type": "string"
+          },
+          "kind": {
+            "pattern": "^[a-z][a-z0-9_]{1,40}$",
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "to_key": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "To Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_key",
+          "kind",
+          "to_key",
+          "reason"
+        ],
+        "title": "ManualEdgeRequest",
+        "type": "object"
+      },
       "MappingOverrides": {
         "description": "Replaces the overrides. A field mapped to null means \"do not read this canonical field\".",
         "properties": {
@@ -5261,6 +5296,67 @@
           "items"
         ],
         "title": "RetrieveResult",
+        "type": "object"
+      },
+      "ReviewRequest": {
+        "properties": {
+          "action": {
+            "enum": [
+              "confirm",
+              "reject",
+              "correct"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          }
+        },
+        "required": [
+          "action",
+          "reason"
+        ],
+        "title": "ReviewRequest",
+        "type": "object"
+      },
+      "ReviewResult": {
+        "properties": {
+          "corrected": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Edge"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "edge": {
+            "$ref": "#/components/schemas/Edge"
+          }
+        },
+        "required": [
+          "edge",
+          "corrected"
+        ],
+        "title": "ReviewResult",
         "type": "object"
       },
       "Revision": {
@@ -10204,6 +10300,129 @@
           }
         ],
         "summary": "Graph edges of visible content, merged by natural key; filter by kind, origin and status",
+        "tags": [
+          "graph"
+        ]
+      },
+      "post": {
+        "description": "Idempotent: restating a manual edge updates its reason. An edge the extractor already states is a\n409 (confirm it instead); a rejected one is replaced by the manual edge.",
+        "operationId": "add_edge_v1_projects__project_id__graph_edges_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualEdgeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Edge"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add (or restate) a manual graph edge between two visible nodes; audited",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/graph/edges/{edge_id}/review": {
+      "post": {
+        "description": "Reviews are keyed by the edge's natural key (from, kind, to), so re-extraction never undoes them: a\nrejected edge stays hidden however often the graph is rebuilt. `correct` rejects the edge and adds a\nmanual edge of the same kind to `to` (a visible node).",
+        "operationId": "review_edge_v1_projects__project_id__graph_edges__edge_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "edge_id",
+            "required": true,
+            "schema": {
+              "title": "Edge Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Confirm, reject or correct a graph edge; durable across rebuilds and audited",
         "tags": [
           "graph"
         ]

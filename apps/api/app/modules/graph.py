@@ -12,8 +12,8 @@ reviews (INPROOM-218) set `status`: `confirmed`, `rejected` (hidden unless asked
 import uuid
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Query, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Body, Query, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import Connection, func, or_, select
 
 from app.api_errors import ApiError
@@ -423,3 +423,214 @@ def graph_status(request: Request, principal: CurrentPrincipal, project_id: uuid
             Unresolved(key=k, references=v) for k, v in sorted(missing.items(), key=lambda x: (-x[1], x[0]))
         ][:LISTED],
     )
+
+
+# ---------------------------------------------------------------- review (INPROOM-218)
+
+KIND_PATTERN = r"^[a-z][a-z0-9_]{1,40}$"
+
+
+class ReviewRequest(BaseModel):
+    action: Literal["confirm", "reject", "correct"]
+    to: str | None = Field(default=None, min_length=1, max_length=1000)  # correct: the right target key
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class ManualEdgeRequest(BaseModel):
+    from_key: str = Field(min_length=1, max_length=1000)
+    kind: str = Field(pattern=KIND_PATTERN)
+    to_key: str = Field(min_length=1, max_length=1000)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class ReviewResult(BaseModel):
+    edge: Edge  # the reviewed edge, with its new status
+    corrected: Edge | None  # correct: the manual edge to the right target
+
+
+def _not_found(what: str) -> ApiError:
+    return ApiError(404, "GRAPH_EDGE_NOT_FOUND", "Graph edge not found", what)
+
+
+def _find(conn: Connection, project_id: uuid.UUID, edge_id: int) -> dict[str, Any]:
+    """The visible (merged) edge an id names: a stating row's id, or minus a manual edge's review id."""
+    if edge_id > 0:
+        row = conn.execute(
+            select(graph_edges.c.from_key, graph_edges.c.kind, graph_edges.c.to_key).where(
+                graph_edges.c.project_id == project_id, graph_edges.c.id == edge_id
+            )
+        ).first()
+    else:
+        row = conn.execute(
+            select(graph_reviews.c.from_key, graph_reviews.c.kind, graph_reviews.c.to_key).where(
+                graph_reviews.c.project_id == project_id,
+                graph_reviews.c.id == -edge_id,
+                graph_reviews.c.action == "manual",
+            )
+        ).first()
+    if row is None:
+        raise _not_found("No edge of this project has this id")
+    for m in edges(conn, project_id, keys=[row.from_key], kind=row.kind, include_rejected=True):
+        if (m["from_key"], m["kind"], m["to_key"]) == tuple(row):
+            return m
+    raise _not_found("The edge is not visible: its content is withheld or gone")
+
+
+def _upsert_review(conn, principal, project_id, natural, action: str, reason: str) -> None:
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    values = {"action": action, "reason": reason, "actor": principal.user_id, "at": func.now()}
+    conn.execute(
+        pg_insert(graph_reviews)
+        .values(
+            tenant_id=principal.tenant_id,
+            project_id=project_id,
+            from_key=natural[0],
+            kind=natural[1],
+            to_key=natural[2],
+            **values,
+        )
+        .on_conflict_do_update(constraint="uq_graph_reviews_edge", set_=values)
+    )
+
+
+def _audit(conn, principal, request, project_id, action: str, natural, reason: str, **extra) -> None:
+    from app import audit
+
+    audit.record(
+        conn,
+        principal,
+        action,
+        "graph_edge",
+        f"{natural[0]} {natural[1]} {natural[2]}"[:500],
+        trace_id=getattr(request.state, "trace_id", None),
+        payload={"from_key": natural[0], "kind": natural[1], "to_key": natural[2], "reason": reason} | extra,
+        project_id=project_id,
+    )
+
+
+def _writable(conn, principal, request, project_id) -> None:
+    from app.api_errors import conflict
+
+    access = authorize(conn, principal, request, "project.graph.curate", project_id)
+    if access.project["status"] == "ARCHIVED":
+        raise conflict("PROJECT_ARCHIVED", "Archived projects are read-only; restore the project first")
+
+
+def _require_nodes(conn, project_id, *keys: str) -> None:
+    found = {n["key"] for n in _nodes(conn, project_id, list(keys))}
+    missing = [k for k in keys if k not in found]
+    if missing:
+        raise ApiError(
+            404,
+            "GRAPH_NODE_NOT_FOUND",
+            "Graph node not found",
+            f"No visible content of this project carries {missing[0]}",
+        )
+
+
+def _one(conn, project_id, natural) -> Edge:
+    for m in edges(conn, project_id, keys=[natural[0]], kind=natural[1], include_rejected=True):
+        if (m["from_key"], m["kind"], m["to_key"]) == natural:
+            return _edge(m)
+    raise _not_found("The edge is not visible")
+
+
+@router.post(
+    "/v1/projects/{project_id}/graph/edges/{edge_id}/review",
+    response_model=ReviewResult,
+    summary="Confirm, reject or correct a graph edge; durable across rebuilds and audited",
+    responses={404: PROBLEM, 409: PROBLEM, 422: PROBLEM},
+)
+def review_edge(
+    request: Request,
+    principal: CurrentPrincipal,
+    project_id: uuid.UUID,
+    edge_id: int,
+    payload: Annotated[ReviewRequest, Body()],
+) -> ReviewResult:
+    """Reviews are keyed by the edge's natural key (from, kind, to), so re-extraction never undoes them: a
+    rejected edge stays hidden however often the graph is rebuilt. `correct` rejects the edge and adds a
+    manual edge of the same kind to `to` (a visible node)."""
+    if payload.action == "correct" and not payload.to:
+        raise ApiError(422, "GRAPH_CORRECTION_TARGET_REQUIRED", "Correction needs a target", "Send `to`")
+    with tenant_session(principal.tenant_id) as conn:
+        _writable(conn, principal, request, project_id)
+        edge = _find(conn, project_id, edge_id)
+        natural = (edge["from_key"], edge["kind"], edge["to_key"])
+        corrected = None
+        if payload.action == "confirm":
+            if edge["origin"] == "manual":
+                raise ApiError(
+                    409, "GRAPH_EDGE_MANUAL", "A manual edge is confirmed already", "Nothing to do"
+                )
+            _upsert_review(conn, principal, project_id, natural, "confirm", payload.reason)
+        else:
+            if payload.action == "correct":
+                target = (natural[0], natural[1], payload.to)
+                if payload.to == natural[2]:
+                    raise ApiError(
+                        409, "GRAPH_CORRECTION_SAME_TARGET", "Same target", "Choose a different node"
+                    )
+                _require_nodes(conn, project_id, payload.to)
+                _upsert_review(conn, principal, project_id, target, "manual", payload.reason)
+            _upsert_review(conn, principal, project_id, natural, "reject", payload.reason)
+            if payload.action == "correct":
+                corrected = _one(conn, project_id, target)
+        _audit(
+            conn,
+            principal,
+            request,
+            project_id,
+            "graph.edge.reviewed",
+            natural,
+            payload.reason,
+            review=payload.action,
+            origin=edge["origin"],
+            corrected_to=payload.to if payload.action == "correct" else None,
+        )
+        if edge["origin"] == "manual" and payload.action != "confirm":
+            # a rejected manual edge exists only as its reject review now
+            review = {"action": "reject", "reason": payload.reason, "actor": principal.user_id, "at": None}
+            reviewed = Edge(
+                **{k: edge[k] for k in Edge.model_fields} | {"status": "rejected", "reviewed": review}
+            )
+        else:
+            reviewed = _one(conn, project_id, natural)
+    return ReviewResult(edge=reviewed, corrected=corrected)
+
+
+@router.post(
+    "/v1/projects/{project_id}/graph/edges",
+    status_code=201,
+    response_model=Edge,
+    summary="Add (or restate) a manual graph edge between two visible nodes; audited",
+    responses={404: PROBLEM, 409: PROBLEM, 422: PROBLEM},
+)
+def add_edge(
+    request: Request,
+    principal: CurrentPrincipal,
+    project_id: uuid.UUID,
+    payload: Annotated[ManualEdgeRequest, Body()],
+) -> Edge:
+    """Idempotent: restating a manual edge updates its reason. An edge the extractor already states is a
+    409 (confirm it instead); a rejected one is replaced by the manual edge."""
+    natural = (payload.from_key, payload.kind, payload.to_key)
+    if payload.from_key == payload.to_key:
+        raise ApiError(422, "GRAPH_EDGE_SELF", "An edge needs two different nodes", "Choose another target")
+    with tenant_session(principal.tenant_id) as conn:
+        _writable(conn, principal, request, project_id)
+        _require_nodes(conn, project_id, payload.from_key, payload.to_key)
+        for m in edges(conn, project_id, keys=[payload.from_key], kind=payload.kind, include_rejected=True):
+            if (m["from_key"], m["kind"], m["to_key"]) == natural and m["origin"] != "manual":
+                if m["status"] != "rejected":
+                    raise ApiError(
+                        409,
+                        "GRAPH_EDGE_EXISTS",
+                        "The graph already has this edge",
+                        f"Confirm edge {m['id']} instead",
+                    )
+        _upsert_review(conn, principal, project_id, natural, "manual", payload.reason)
+        _audit(conn, principal, request, project_id, "graph.edge.created", natural, payload.reason)
+        edge = _one(conn, project_id, natural)
+    return edge
