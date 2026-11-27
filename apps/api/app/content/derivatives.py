@@ -393,6 +393,10 @@ def derive(ctx: JobContext) -> dict[str, Any]:
             from app.content.embed import queue_embed  # late: embed -> sync.worker -> derivatives
 
             queue_embed(conn, tenant, ctx.job["project_id"])
+        if counts["built"] or counts["failed"] or counts["upstream_failed"]:  # INPROOM-215: graph follows
+            from app.content.graph import queue_graph  # late: graph -> sync.worker -> derivatives
+
+            queue_graph(conn, tenant, ctx.job["project_id"])
         result = counts | {"more": more}
         queue.succeed(conn, ctx.job, result)
     return result

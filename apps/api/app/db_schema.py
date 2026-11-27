@@ -11,6 +11,7 @@ from sqlalchemy import (
     Computed,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Identity,
@@ -68,6 +69,10 @@ TENANT_SCOPED_TABLES = (
     "knowledge_chunks",
     "chunk_embeddings",
     "chunk_embedding_failures",
+    "graph_nodes",
+    "graph_edges",
+    "graph_sources",
+    "graph_reviews",
 )
 
 # Project roles allowed in project_members (mirrors app.authz.policy.PROJECT_ROLES; checked by a unit test).
@@ -565,7 +570,7 @@ sync_jobs = Table(
     Column("finished_at", DateTime(timezone=True)),
     CheckConstraint(
         "source_kind IN ('git','jira','confluence','connection','migration','derive','purge','sweep','code',"
-        "'embed')",
+        "'embed', 'graph')",
         name="ck_sync_jobs_kind",
     ),
     CheckConstraint("reason IN ('webhook','schedule','manual','recovery')", name="ck_sync_jobs_reason"),
@@ -593,7 +598,7 @@ source_sync_state = Table(
     PrimaryKeyConstraint("source_kind", "source_id", name="pk_source_sync_state"),
     CheckConstraint(
         "source_kind IN ('git','jira','confluence','connection','migration','derive','purge','sweep','code',"
-        "'embed')",
+        "'embed', 'graph')",
         name="ck_source_sync_state_kind",
     ),
 )
@@ -980,6 +985,89 @@ chunk_embedding_failures = Table(
         ["projects.tenant_id", "projects.id"],
         name="fk_chunk_embedding_failures_project",
     ),
+)
+
+# INPROOM-215: the knowledge graph (a projection of the content store; reviews are the only durable data).
+
+
+def _graph_fk(name: str) -> ForeignKeyConstraint:
+    return ForeignKeyConstraint(
+        ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name=f"fk_{name}_project"
+    )
+
+
+graph_nodes = Table(
+    "graph_nodes",
+    metadata,
+    Column("id", BigInteger, Identity(), primary_key=True),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("key", Text, nullable=False),  # natural key, e.g. jira:PAY-17
+    Column("type", Text, nullable=False),
+    Column("label", Text, nullable=False, server_default=""),
+    Column("role", Text, nullable=False),  # item: the item's own node; derived: an entity the item names
+    Column("attributes", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("object_id", UUID(as_uuid=True), nullable=False),
+    Column("revision_id", UUID(as_uuid=True), nullable=False),
+    UniqueConstraint("project_id", "key", "object_id", name="uq_graph_nodes_occurrence"),
+    CheckConstraint("role IN ('item','derived')", name="ck_graph_nodes_role"),
+    _graph_fk("graph_nodes"),
+)
+Index("ix_graph_nodes_object", graph_nodes.c.object_id)
+
+graph_edges = Table(
+    "graph_edges",
+    metadata,
+    Column("id", BigInteger, Identity(), primary_key=True),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("from_key", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("to_key", Text, nullable=False),
+    Column("origin", Text, nullable=False),  # validated (a source field) | inferred (read from text)
+    Column("confidence", Float, nullable=False),
+    Column("extractor", Text, nullable=False),
+    Column("evidence", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("object_id", UUID(as_uuid=True), nullable=False),  # the item whose extraction produced it
+    Column("revision_id", UUID(as_uuid=True), nullable=False),
+    UniqueConstraint("project_id", "object_id", "from_key", "kind", "to_key", name="uq_graph_edges_key"),
+    CheckConstraint("origin IN ('validated','inferred')", name="ck_graph_edges_origin"),
+    _graph_fk("graph_edges"),
+)
+Index("ix_graph_edges_from", graph_edges.c.project_id, graph_edges.c.from_key)
+Index("ix_graph_edges_to", graph_edges.c.project_id, graph_edges.c.to_key)
+Index("ix_graph_edges_object", graph_edges.c.object_id)
+
+graph_sources = Table(
+    "graph_sources",
+    metadata,
+    Column("id", BigInteger, Identity(), primary_key=True),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("object_id", UUID(as_uuid=True), nullable=False),
+    Column("revision_id", UUID(as_uuid=True), nullable=False),
+    Column("extractor", Text, nullable=False),
+    Column("extracted_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("object_id", name="uq_graph_sources_object"),
+    _graph_fk("graph_sources"),
+)
+
+graph_reviews = Table(
+    "graph_reviews",
+    metadata,
+    Column("id", BigInteger, Identity(), primary_key=True),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("from_key", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("to_key", Text, nullable=False),
+    Column("action", Text, nullable=False),  # confirm | reject | manual
+    Column("reason", Text, nullable=False),
+    Column("actor", Text, nullable=False),
+    Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("project_id", "from_key", "kind", "to_key", name="uq_graph_reviews_edge"),
+    CheckConstraint("action IN ('confirm','reject','manual')", name="ck_graph_reviews_action"),
+    _graph_fk("graph_reviews"),
 )
 
 Index("ix_audit_events_tenant_time", audit_events.c.tenant_id, audit_events.c.occurred_at)

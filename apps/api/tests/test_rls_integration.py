@@ -200,6 +200,15 @@ SEED_SQL = [
     "VALUES (:t, 'seed', '1', 3, 'x', '[1,0,0]')",
     "INSERT INTO chunk_embedding_failures (tenant_id, project_id, model, sha256, code, detail) "
     "VALUES (:t, :p, 'seed', 'x', 'EMBEDDING_REJECTED', 'seed')",
+    "INSERT INTO graph_nodes (tenant_id, project_id, key, type, role, object_id, revision_id) "
+    "VALUES (:t, :p, 'doc:x', 'document', 'item', :o, :v)",
+    "INSERT INTO graph_edges (tenant_id, project_id, from_key, kind, to_key, origin, confidence, extractor, "
+    "object_id, revision_id) "
+    "VALUES (:t, :p, 'doc:x', 'mentions', 'jira:X-1', 'inferred', 0.9, 'seed', :o, :v)",
+    "INSERT INTO graph_sources (tenant_id, project_id, object_id, revision_id, extractor) "
+    "VALUES (:t, :p, :o, :v, 'seed')",
+    "INSERT INTO graph_reviews (tenant_id, project_id, from_key, kind, to_key, action, reason, actor) "
+    "VALUES (:t, :p, 'doc:x', 'mentions', 'jira:X-1', 'reject', 'seed', 'seed')",
 ]
 
 

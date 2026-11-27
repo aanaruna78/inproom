@@ -185,6 +185,9 @@ def purge_project(tenant: uuid.UUID, project_id: uuid.UUID, store: blobs.BlobSto
             from app.content.code import projection  # INPROOM-175: purged symbols leave the search projection
 
             projection.drop(conn, [p.id for p in purged])
+            from app.content import graph  # INPROOM-215: purged revisions leave the knowledge graph
+
+            graph.drop_revisions(conn, ids)
         keys.discard(None)
         counts = {
             "items_marked_deleted": marked_deleted,
