@@ -139,8 +139,12 @@ def test_golden_retrieval_set(corpus):
     hybrid, limits = results["hybrid"], GOLDEN["thresholds"]
     assert all(not r["leaks"] for r in results.values()), results  # nothing withheld, in any mode
     assert hybrid["recall_at_5"] >= limits["recall_at_5"] and hybrid["mrr"] >= limits["mrr"], hybrid
+    # Story AC8 as amended (2026-11-27): hybrid recalls at least as much as either single mode, and ranks
+    # within `mrr_margin` of the better one. With the local hash embedder the semantic list is lexical, so
+    # hybrid cannot strictly beat keyword here; a hosted model shows a strict gain (retrieval.md).
     for single in ("keyword", "semantic"):
         assert hybrid["recall_at_5"] >= results[single]["recall_at_5"], results
+        assert hybrid["mrr"] >= results[single]["mrr"] - limits["mrr_margin"], results
     total = len(queries) + len(GOLDEN["unanswerable"])
     assert (
         hybrid["evidence"] == f"{total}/{total}"

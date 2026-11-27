@@ -108,7 +108,7 @@ When `degraded` contains `semantic`, `detail` says that only keyword matches wer
 The test asserts four things:
 - zero leaks in every mode;
 - hybrid recall@5 ≥ 0.9 and MRR ≥ 0.8;
-- hybrid recall at least that of either single mode;
+- hybrid recall at least that of either single mode, and hybrid MRR within 0.05 of the better single mode (story AC8 as amended on 2026-11-27);
 - every answerable query is `sufficient` and every unanswerable one `insufficient`.
 
 Baseline (local-hash-v1, golden set v1):
@@ -119,7 +119,7 @@ Baseline (local-hash-v1, golden set v1):
 | semantic | 0.312 | 0.312 | 9/19 | 0 |
 | hybrid | 1.0 | 0.969 | 19/19 | 0 |
 
-The local embedder hashes words, so its semantic-only results are weak, and most fall under the similarity floor. That is expected, and why hybrid is the default. To evaluate a hosted model:
+The local embedder hashes words, so its semantic-only results are weak, and most fall under the similarity floor. That is expected, and why hybrid is the default. With this model hybrid cannot strictly beat keyword-only, so the CI gate allows the 0.05 MRR margin; a strict gain over both single modes is demonstrated by evaluating a hosted model. To evaluate a hosted model:
 1. Set the `INPROOM_EMBEDDING_*` settings for the test run.
 2. Run `make eval-retrieval`.
 3. Tune `INPROOM_RETRIEVAL_MIN_SIMILARITY` until the unanswerable queries come back `insufficient` and the answerable ones `sufficient`.
