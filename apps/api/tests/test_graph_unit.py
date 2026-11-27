@@ -1,6 +1,6 @@
 """INPROOM-215: node keys and the validated edges a Jira record states."""
 
-from app.content.graph import jira_graph, node_key
+from app.content.graph import jira_graph, mentions, node_key
 
 
 def test_node_keys():
@@ -65,3 +65,30 @@ def test_a_bare_record_states_only_its_node():
     nodes, edges = jira_graph({"id": "7", "key": "ABC-7", "fields": {}})
     assert [n["key"] for n in nodes] == ["jira:ABC-7"] and edges == []
     assert nodes[0]["attributes"]["issue_type"] == "other"
+
+
+FILES = {"src/billing.py": ["file:acme/api:main:src/billing.py", "file:acme/api:dev:src/billing.py"]}
+
+
+def found(text, projects=("ABC",)):
+    return {k: (c, t) for k, c, t in mentions(text, jira_projects=set(projects), files=FILES)}
+
+
+def test_jira_keys_known_unknown_and_not_issues():
+    got = found("Fixes ABC-12 (see also PAY-7). Encoded as UTF-8, hashed with SHA-256, dated ISO-8601.")
+    assert got == {"jira:ABC-12": (0.9, "ABC-12"), "jira:PAY-7": (0.5, "PAY-7")}
+    assert found("abc-12 ABC-0 ABC-12x xABC-12 a/ABC-12") == {}  # case, zero, glued, part of a path
+
+
+def test_confluence_links_and_file_paths():
+    got = found(
+        "Design: https://acme.atlassian.net/wiki/spaces/ENG/pages/101/Architecture and "
+        "/pages/viewpage.action?pageId=102. Code in src/billing.py, tests in tests/test_x.py, "
+        "image at assets/logo.png, docs at https://example.com/src/billing.py"
+    )
+    assert got["confluence:101"][0] == 0.9 and got["confluence:102"][0] == 0.9
+    assert got["file:acme/api:main:src/billing.py"] == (0.8, "src/billing.py")
+    assert "file:acme/api:dev:src/billing.py" in got  # every file at that path
+    assert got["path:tests/test_x.py"] == (0.4, "tests/test_x.py")  # unknown code path: unresolved
+    assert not any(k.startswith("path:assets") for k in got)  # not a code extension
+    assert "path:example.com/src/billing.py" not in got  # inside a URL

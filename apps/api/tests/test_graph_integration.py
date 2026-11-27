@@ -12,6 +12,7 @@ from tests import test_jira_sources_integration as jira
 from tests.sync_helpers import run_sync
 from tests.test_document_api_integration import drain
 from tests.test_documents_integration import upload
+from tests.test_provenance_integration import resolve
 
 pytestmark = pytest.mark.integration
 env, selected = conf.env, conf.selected
@@ -115,3 +116,39 @@ def test_confluence_pages_attachments_and_uploads(selected):
             .scalars()
             .all()
         )
+
+
+MENTIONS = (
+    b"# Invoicing notes\n\nThe PDF work is tracked in ABC-2 and blocked by ABC-3. "
+    b"Legacy ticket OLD-9 is gone. "
+    b"Architecture: https://acme.atlassian.net/wiki/spaces/ENG/pages/101/Architecture"
+)
+
+
+def test_mentions_become_inferred_edges_with_citable_evidence(jira_env):
+    e = jira_env
+    e.cid = e.connect().json()["id"]
+    e.sid = e.select().json()["id"]
+    run_sync({"jira": e.jira.transport()}, e.tenant)
+    doc = upload(e, "invoicing.md", MENTIONS).json()["document_id"]
+    twin = upload(e, "invoicing-copy.md", MENTIONS).json()["document_id"]
+    drain(e)
+
+    mine = {x["to_key"]: x for x in edges(e) if x["from_key"] == f"doc:{doc}" and x["kind"] == "mentions"}
+    assert mine["jira:ABC-2"]["confidence"] == 0.9 and mine["jira:ABC-3"]["origin"] == "inferred"
+    assert mine["jira:OLD-9"]["confidence"] == 0.5  # unknown prefix: kept, unresolved (no node carries it)
+    assert mine["confluence:101"]["confidence"] == 0.9  # no Confluence here: an unresolved reference too
+    [ev] = mine["jira:ABC-2"]["evidence"]
+    assert ev["text"] == "ABC-2" and "tracked in ABC-2" in ev["excerpt"]
+    assert ev["citation"]["kind"] == "upload" and ev["citation"]["external_id"] == doc
+    [cited] = resolve(e, ev["citation"])["results"]  # the evidence resolves through provenance
+    assert cited["error"] is None
+    keys = {n["key"] for n in nodes(e)}
+    assert "jira:ABC-2" in keys and "jira:OLD-9" not in keys  # nothing invented
+
+    a, b = sorted((f"doc:{doc}", f"doc:{twin}"))
+    dupes = [x for x in edges(e) if x["kind"] == "duplicates"]
+    assert {(x["from_key"], x["to_key"]) for x in dupes} == {(a, b)}  # one natural edge (stated by both)
+    assert all(x["confidence"] == 0.95 and x["evidence"][0]["field"] == "content_sha256" for x in dupes)
+    # issues mention each other too: their descriptions are chunks like any other
+    assert not [x for x in edges(e) if x["kind"] == "mentions" and x["from_key"] == x["to_key"]]
