@@ -500,7 +500,30 @@ def _stale(conn: Connection, project_id: uuid.UUID, limit: int) -> tuple[list[di
     return rows[:limit], gone, len(rows) > limit
 
 
-def _write(conn, tenant, project_id, obj: dict, nodes: list[Node], edges: list[Edge]) -> None:
+def _twins_to_recheck(conn: Connection, project_id: uuid.UUID, obj: dict) -> int:
+    """INPROOM-222: a `duplicates` edge is stated by BOTH twins. When one's CONTENT changes, the other's
+    statement is stale: forget the other's extraction so the next run re-checks it. Only a content change
+    triggers this (a re-extraction of unchanged content does not), so twins never re-queue each other forever.
+    Returns how many twins were forgotten."""
+    g, r = graph_sources, source_revisions
+    before = conn.execute(
+        select(r.c.content_sha256).join(g, g.c.revision_id == r.c.id).where(g.c.object_id == obj["id"])
+    ).scalar()
+    if before is None or before == obj["content_sha256"]:
+        return 0
+    e, n = graph_edges, graph_nodes
+    mine = select(n.c.key).where(n.c.object_id == obj["id"], n.c.role == "item")
+    twins = select(e.c.object_id).where(
+        e.c.project_id == project_id,
+        e.c.kind == "duplicates",
+        e.c.object_id != obj["id"],
+        (e.c.from_key.in_(mine)) | (e.c.to_key.in_(mine)),
+    )
+    return conn.execute(delete(graph_sources).where(graph_sources.c.object_id.in_(twins))).rowcount
+
+
+def _write(conn, tenant, project_id, obj: dict, nodes: list[Node], edges: list[Edge]) -> int:
+    rechecks = _twins_to_recheck(conn, project_id, obj)
     _drop(conn, [obj["id"]])
     base = {
         "tenant_id": tenant,
@@ -520,6 +543,7 @@ def _write(conn, tenant, project_id, obj: dict, nodes: list[Node], edges: list[E
             set_={"revision_id": obj["rev_id"], "extractor": EXTRACTOR, "extracted_at": func.now()},
         )
     )
+    return rechecks
 
 
 def run(tenant: uuid.UUID, project_id: uuid.UUID, limit: int = JOB_LIMIT) -> dict[str, Any]:
@@ -538,7 +562,8 @@ def run(tenant: uuid.UUID, project_id: uuid.UUID, limit: int = JOB_LIMIT) -> dic
             except (blobs.BlobMissing, blobs.BlobCorrupt, ValueError) as exc:
                 log.warning("graph: item %s not extracted: %s", obj["id"], exc)
                 nodes, edges = [], []
-            _write(conn, tenant, project_id, obj, nodes, edges)
+            if _write(conn, tenant, project_id, obj, nodes, edges):
+                more = True  # twins to re-check: the job requeues itself
         counts["items"] += 1
         counts["nodes"] += len(nodes)
         counts["edges"] += len(edges)

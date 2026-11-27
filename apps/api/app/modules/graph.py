@@ -171,6 +171,7 @@ def edges(
             m["origin"] = "validated"
         m["confidence"] = max(m["confidence"], row["confidence"])
         m["evidence"] = (m["evidence"] + list(row["evidence"] or []))[:MAX_EVIDENCE]
+    _drop_diverged_duplicates(conn, project_id, merged)
     reviews = _reviews(conn, project_id, merged.keys())
     for natural, review in reviews.items():  # manual edges (INPROOM-218) live only as reviews
         if review["action"] == "manual" and natural not in merged:
@@ -208,6 +209,30 @@ def edges(
         out.append(m)
     out.sort(key=lambda m: (-m["confidence"], abs(m["id"])))
     return out
+
+
+def _drop_diverged_duplicates(conn: Connection, project_id: uuid.UUID, merged: dict) -> None:
+    """INPROOM-222: a `duplicates` edge holds only while both twins' CURRENT content still has the sha256 its
+    evidence names. Until the graph job re-checks a twin, a pair whose content diverged is not served."""
+    pairs = {k: m for k, m in merged.items() if k[1] == "duplicates"}
+    if not pairs:
+        return
+    from app.db_schema import source_revisions
+
+    n, o, r = graph_nodes, source_objects, source_revisions
+    keys = {k for natural in pairs for k in (natural[0], natural[2])}
+    current: dict[str, set[str]] = {}
+    for key, sha in conn.execute(
+        select(n.c.key, r.c.content_sha256)
+        .join(o, o.c.id == n.c.object_id)
+        .join(r, r.c.id == o.c.current_revision_id)
+        .where(n.c.project_id == project_id, n.c.role == "item", n.c.key.in_(list(keys)))
+    ):
+        current.setdefault(key, set()).add(sha)
+    for natural, m in pairs.items():
+        shas = {ev.get("value") for ev in m["evidence"] if ev.get("field") == "content_sha256"}
+        if not any(sha in current.get(natural[0], ()) and sha in current.get(natural[2], ()) for sha in shas):
+            del merged[natural]
 
 
 def _reviews(conn: Connection, project_id: uuid.UUID, naturals) -> dict[tuple[str, str, str], dict]:

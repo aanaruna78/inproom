@@ -152,3 +152,26 @@ def test_mentions_become_inferred_edges_with_citable_evidence(jira_env):
     assert all(x["confidence"] == 0.95 and x["evidence"][0]["field"] == "content_sha256" for x in dupes)
     # issues mention each other too: their descriptions are chunks like any other
     assert not [x for x in edges(e) if x["kind"] == "mentions" and x["from_key"] == x["to_key"]]
+
+
+def test_a_changed_twin_drops_the_duplicates_edge_everywhere(selected):
+    """INPROOM-222: when one of two identical documents changes, the pair is no longer a duplicate - in the
+    stored graph too, not only in what is served - and unchanged twins do not re-check each other forever."""
+    e = selected
+    body = b"# Same\n\nIdentical content."
+    a = upload(e, "first.md", body).json()["document_id"]
+    b = upload(e, "second.md", body).json()["document_id"]
+    c = upload(e, "third.md", body).json()["document_id"]
+    drain(e)
+    assert len({(x["from_key"], x["to_key"]) for x in edges(e) if x["kind"] == "duplicates"}) == 3
+    assert graph.run(e.tenant, e.pid) == {"items": 0, "nodes": 0, "edges": 0, "dropped": 0, "more": False}
+    r = e.client.put(
+        f"/v1/projects/{e.pid}/documents/{a}",
+        files={"file": ("first.md", b"# Different\n\nNow different.")},
+        headers=e.h(**{"If-Match": '"1"'}),
+    )
+    assert r.status_code == 200, r.text
+    drain(e)
+    pairs = {tuple(sorted((x["from_key"], x["to_key"]))) for x in edges(e) if x["kind"] == "duplicates"}
+    assert pairs == {tuple(sorted((f"doc:{b}", f"doc:{c}")))}  # the stored rows converged
+    assert graph.run(e.tenant, e.pid)["items"] == 0  # and settled

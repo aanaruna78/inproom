@@ -42,7 +42,6 @@ def test_graph_never_returns_evidence_from_superseded_revision(selected):
     assert obsolete == [], obsolete
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-222 (QA): fixed in its own commit")
 def test_duplicate_edge_is_removed_after_one_twin_changes(selected):
     e = selected
     body = b"# Same\n\nIdentical content."
