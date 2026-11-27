@@ -982,6 +982,24 @@
         "title": "ConnectionSource",
         "type": "object"
       },
+      "Count": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "count"
+        ],
+        "title": "Count",
+        "type": "object"
+      },
       "CredentialRotate": {
         "properties": {
           "token": {
@@ -1267,6 +1285,119 @@
         "title": "Drift",
         "type": "object"
       },
+      "Edge": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "extractor": {
+            "title": "Extractor",
+            "type": "string"
+          },
+          "from_key": {
+            "title": "From Key",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "validated",
+              "inferred",
+              "manual"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "reviewed": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "confirmed",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "to_key": {
+            "title": "To Key",
+            "type": "string"
+          },
+          "unresolved": {
+            "title": "Unresolved",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "from_key",
+          "kind",
+          "to_key",
+          "origin",
+          "confidence",
+          "status",
+          "unresolved",
+          "extractor",
+          "evidence",
+          "reviewed"
+        ],
+        "title": "Edge",
+        "type": "object"
+      },
+      "EdgePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Edge"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next"
+          }
+        },
+        "required": [
+          "items",
+          "next"
+        ],
+        "title": "EdgePage",
+        "type": "object"
+      },
       "Evidence": {
         "properties": {
           "detail": {
@@ -1350,6 +1481,92 @@
           "supported"
         ],
         "title": "Explanation",
+        "type": "object"
+      },
+      "GraphStatus": {
+        "properties": {
+          "edge_kinds": {
+            "items": {
+              "$ref": "#/components/schemas/Count"
+            },
+            "title": "Edge Kinds",
+            "type": "array"
+          },
+          "edges": {
+            "title": "Edges",
+            "type": "integer"
+          },
+          "extractor": {
+            "title": "Extractor",
+            "type": "string"
+          },
+          "node_types": {
+            "items": {
+              "$ref": "#/components/schemas/Count"
+            },
+            "title": "Node Types",
+            "type": "array"
+          },
+          "nodes": {
+            "title": "Nodes",
+            "type": "integer"
+          },
+          "origins": {
+            "items": {
+              "$ref": "#/components/schemas/Count"
+            },
+            "title": "Origins",
+            "type": "array"
+          },
+          "orphan_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Orphan Keys",
+            "type": "array"
+          },
+          "orphans": {
+            "title": "Orphans",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "statuses": {
+            "items": {
+              "$ref": "#/components/schemas/Count"
+            },
+            "title": "Statuses",
+            "type": "array"
+          },
+          "unresolved": {
+            "title": "Unresolved",
+            "type": "integer"
+          },
+          "unresolved_keys": {
+            "items": {
+              "$ref": "#/components/schemas/Unresolved"
+            },
+            "title": "Unresolved Keys",
+            "type": "array"
+          }
+        },
+        "required": [
+          "extractor",
+          "pending",
+          "nodes",
+          "edges",
+          "node_types",
+          "edge_kinds",
+          "origins",
+          "statuses",
+          "orphans",
+          "orphan_keys",
+          "unresolved",
+          "unresolved_keys"
+        ],
+        "title": "GraphStatus",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1845,6 +2062,35 @@
           "target_key"
         ],
         "title": "IssueLink",
+        "type": "object"
+      },
+      "Item": {
+        "properties": {
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "source_id",
+          "external_id",
+          "title"
+        ],
+        "title": "Item",
         "type": "object"
       },
       "JiraIssue": {
@@ -2865,6 +3111,109 @@
           "approval_scopes"
         ],
         "title": "MyPermissions",
+        "type": "object"
+      },
+      "Node": {
+        "properties": {
+          "asserted_by": {
+            "title": "Asserted By",
+            "type": "integer"
+          },
+          "attributes": {
+            "additionalProperties": true,
+            "title": "Attributes",
+            "type": "object"
+          },
+          "degree": {
+            "title": "Degree",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Item"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "type",
+          "label",
+          "attributes",
+          "items",
+          "asserted_by",
+          "degree"
+        ],
+        "title": "Node",
+        "type": "object"
+      },
+      "NodeDetail": {
+        "properties": {
+          "incoming": {
+            "items": {
+              "$ref": "#/components/schemas/Edge"
+            },
+            "title": "Incoming",
+            "type": "array"
+          },
+          "node": {
+            "$ref": "#/components/schemas/Node"
+          },
+          "outgoing": {
+            "items": {
+              "$ref": "#/components/schemas/Edge"
+            },
+            "title": "Outgoing",
+            "type": "array"
+          }
+        },
+        "required": [
+          "node",
+          "outgoing",
+          "incoming"
+        ],
+        "title": "NodeDetail",
+        "type": "object"
+      },
+      "NodePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Node"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next"
+          }
+        },
+        "required": [
+          "items",
+          "next"
+        ],
+        "title": "NodePage",
         "type": "object"
       },
       "PageCatalog": {
@@ -6716,6 +7065,24 @@
         "title": "SyncStatus",
         "type": "object"
       },
+      "Unresolved": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "references": {
+            "title": "References",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "references"
+        ],
+        "title": "Unresolved",
+        "type": "object"
+      },
       "UploadedDocument": {
         "properties": {
           "content_sha256": {
@@ -9684,6 +10051,397 @@
         "summary": "Replace a document's content (If-Match: the current revision seq); identical bytes add nothing",
         "tags": [
           "documents"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/graph/edges": {
+      "get": {
+        "operationId": "list_edges_v1_projects__project_id__graph_edges_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "origin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "validated",
+                    "inferred",
+                    "manual"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "confirmed",
+                    "rejected"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "unresolved",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unresolved"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EdgePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Graph edges of visible content, merged by natural key; filter by kind, origin and status",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/graph/nodes": {
+      "get": {
+        "operationId": "list_nodes_v1_projects__project_id__graph_nodes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 1000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Graph nodes of visible content, by key; filter by type or text",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/graph/nodes/{key}": {
+      "get": {
+        "operationId": "get_node_v1_projects__project_id__graph_nodes__key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_rejected",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Rejected",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "A graph node with its edges in both directions, each with origin, status and evidence",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/graph/status": {
+      "get": {
+        "operationId": "graph_status_v1_projects__project_id__graph_status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Graph health: counts, orphan nodes, unresolved references and items pending extraction",
+        "tags": [
+          "graph"
         ]
       }
     },

@@ -455,10 +455,11 @@ def drop_revisions(conn: Connection, revision_ids: list) -> None:
             conn.execute(delete(table).where(table.c.revision_id.in_(revision_ids)))
 
 
-def _stale(conn: Connection, project_id: uuid.UUID, limit: int) -> tuple[list[dict], list, bool]:
-    """(items to (re)extract with their current revision, object ids to drop, more remain)."""
+def _changed(project_id: uuid.UUID):
+    """Items whose graph is missing or stale: new, a new current revision, a new extractor, or chunks built
+    since the last extraction."""
     o, r, g, d = source_objects, source_revisions, graph_sources, derivatives
-    current = (
+    return (
         select(o, r.c.seq, r.c.blob_key, r.c.content_sha256, r.c.id.label("rev_id"))
         .join(r, r.c.id == o.c.current_revision_id)
         .outerjoin(g, g.c.object_id == o.c.id)
@@ -475,9 +476,18 @@ def _stale(conn: Connection, project_id: uuid.UUID, limit: int) -> tuple[list[di
                 d.c.built_at > g.c.extracted_at,
             ),
         )
-        .order_by(o.c.id)
-        .limit(limit + 1)
     )
+
+
+def pending(conn: Connection, project_id: uuid.UUID) -> int:
+    """How many items wait for (re)extraction."""
+    return conn.execute(select(func.count()).select_from(_changed(project_id).subquery())).scalar_one()
+
+
+def _stale(conn: Connection, project_id: uuid.UUID, limit: int) -> tuple[list[dict], list, bool]:
+    """(items to (re)extract with their current revision, object ids to drop, more remain)."""
+    o, r, g = source_objects, source_revisions, graph_sources
+    current = _changed(project_id).order_by(o.c.id).limit(limit + 1)
     rows = [dict(x) for x in conn.execute(current).mappings()]
     gone = list(
         conn.execute(

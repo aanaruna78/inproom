@@ -585,6 +585,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/graph/edges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Graph edges of visible content, merged by natural key; filter by kind, origin and status */
+        get: operations["list_edges_v1_projects__project_id__graph_edges_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/graph/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Graph nodes of visible content, by key; filter by type or text */
+        get: operations["list_nodes_v1_projects__project_id__graph_nodes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/graph/nodes/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A graph node with its edges in both directions, each with origin, status and evidence */
+        get: operations["get_node_v1_projects__project_id__graph_nodes__key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/graph/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Graph health: counts, orphan nodes, unresolved references and items pending extraction */
+        get: operations["graph_status_v1_projects__project_id__graph_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/knowledge/changes": {
         parameters: {
             query?: never;
@@ -1775,6 +1843,13 @@ export interface components {
             /** Status Reason */
             status_reason: string | null;
         };
+        /** Count */
+        Count: {
+            /** Count */
+            count: number;
+            /** Name */
+            name: string;
+        };
         /** CredentialRotate */
         CredentialRotate: {
             /**
@@ -1874,6 +1949,48 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        /** Edge */
+        Edge: {
+            /** Confidence */
+            confidence: number;
+            /** Evidence */
+            evidence: {
+                [key: string]: unknown;
+            }[];
+            /** Extractor */
+            extractor: string;
+            /** From Key */
+            from_key: string;
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "validated" | "inferred" | "manual";
+            /** Reviewed */
+            reviewed: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "confirmed" | "rejected";
+            /** To Key */
+            to_key: string;
+            /** Unresolved */
+            unresolved: boolean;
+        };
+        /** EdgePage */
+        EdgePage: {
+            /** Items */
+            items: components["schemas"]["Edge"][];
+            /** Next */
+            next: number | null;
+        };
         /** Evidence */
         Evidence: {
             /** Detail */
@@ -1896,6 +2013,33 @@ export interface components {
             semantic: components["schemas"]["SemanticScore"] | null;
             /** Supported */
             supported: boolean;
+        };
+        /** GraphStatus */
+        GraphStatus: {
+            /** Edge Kinds */
+            edge_kinds: components["schemas"]["Count"][];
+            /** Edges */
+            edges: number;
+            /** Extractor */
+            extractor: string;
+            /** Node Types */
+            node_types: components["schemas"]["Count"][];
+            /** Nodes */
+            nodes: number;
+            /** Origins */
+            origins: components["schemas"]["Count"][];
+            /** Orphan Keys */
+            orphan_keys: string[];
+            /** Orphans */
+            orphans: number;
+            /** Pending */
+            pending: number;
+            /** Statuses */
+            statuses: components["schemas"]["Count"][];
+            /** Unresolved */
+            unresolved: number;
+            /** Unresolved Keys */
+            unresolved_keys: components["schemas"]["Unresolved"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2080,6 +2224,20 @@ export interface components {
             target_key: string;
             /** Type */
             type: string;
+        };
+        /** Item */
+        Item: {
+            /** External Id */
+            external_id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Title */
+            title: string;
         };
         /** JiraIssue */
         JiraIssue: {
@@ -2461,6 +2619,40 @@ export interface components {
             roles: string[];
             /** Tenant Roles */
             tenant_roles: string[];
+        };
+        /** Node */
+        Node: {
+            /** Asserted By */
+            asserted_by: number;
+            /** Attributes */
+            attributes: {
+                [key: string]: unknown;
+            };
+            /** Degree */
+            degree: number;
+            /** Items */
+            items: components["schemas"]["Item"][];
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Type */
+            type: string;
+        };
+        /** NodeDetail */
+        NodeDetail: {
+            /** Incoming */
+            incoming: components["schemas"]["Edge"][];
+            node: components["schemas"]["Node"];
+            /** Outgoing */
+            outgoing: components["schemas"]["Edge"][];
+        };
+        /** NodePage */
+        NodePage: {
+            /** Items */
+            items: components["schemas"]["Node"][];
+            /** Next */
+            next: string | null;
         };
         /** PageCatalog */
         PageCatalog: {
@@ -3898,6 +4090,13 @@ export interface components {
             project_id: string;
             /** Sources */
             sources: components["schemas"]["SourceSyncStatus"][];
+        };
+        /** Unresolved */
+        Unresolved: {
+            /** Key */
+            key: string;
+            /** References */
+            references: number;
         };
         /** UploadedDocument */
         UploadedDocument: {
@@ -5834,6 +6033,173 @@ export interface operations {
             };
             /** @description problem+json */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_edges_v1_projects__project_id__graph_edges_get: {
+        parameters: {
+            query?: {
+                kind?: string | null;
+                origin?: ("validated" | "inferred" | "manual") | null;
+                status?: ("active" | "confirmed" | "rejected") | null;
+                unresolved?: boolean | null;
+                limit?: number;
+                cursor?: number | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EdgePage"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_nodes_v1_projects__project_id__graph_nodes_get: {
+        parameters: {
+            query?: {
+                type?: string | null;
+                q?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodePage"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_node_v1_projects__project_id__graph_nodes__key__get: {
+        parameters: {
+            query?: {
+                include_rejected?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeDetail"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    graph_status_v1_projects__project_id__graph_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphStatus"];
+                };
+            };
+            /** @description problem+json */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

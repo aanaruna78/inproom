@@ -172,6 +172,10 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("POST", "/v1/projects/{project_id}/knowledge/search"): ("project", "project.read"),
     ("POST", "/v1/projects/{project_id}/knowledge/retrieve"): ("project", "project.read"),
     ("GET", "/v1/projects/{project_id}/knowledge/index"): ("project", "project.read"),
+    ("GET", "/v1/projects/{project_id}/graph/nodes"): ("project", "project.read"),
+    ("GET", "/v1/projects/{project_id}/graph/nodes/{key}"): ("project", "project.read"),
+    ("GET", "/v1/projects/{project_id}/graph/edges"): ("project", "project.read"),
+    ("GET", "/v1/projects/{project_id}/graph/status"): ("project", "project.read"),
     ("GET", "/v1/projects/{project_id}/knowledge/index/failures"): ("project", "project.read"),
     ("POST", "/v1/projects/{project_id}/knowledge/reindex"): ("project", "project.source.manage"),
     ("POST", "/v1/projects/{project_id}/knowledge/refresh"): ("project", "project.source.manage"),
@@ -393,6 +397,9 @@ def _build_world(db_client, tokens) -> World:
         f"/v1/projects/{project['id']}/documents", files={"file": WORLD_DOCUMENT}, headers=owner
     )
     assert doc.status_code == 201, doc.text
+    from app.content import graph  # INPROOM-217: the document's graph node, for the graph routes
+
+    graph.run(tenant, uuid.UUID(project["id"]))
     return World(tenant, ws, project, owner, connection, jira, jira_source, confluence, space, doc.json())
 
 
@@ -463,6 +470,7 @@ def _call(client, method, path, world: World, headers):
         external_id="101",
         seq=1,
         document_id=world.document["document_id"],
+        key=f"doc:{world.document['document_id']}",
     )
     if path.startswith("/v1/connections/{connection_id}/") and path.endswith(
         ("/repositories", "/projects", "/spaces")

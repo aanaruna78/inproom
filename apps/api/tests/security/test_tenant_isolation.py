@@ -109,6 +109,10 @@ ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/v1/projects/{project_id}/knowledge/search"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/knowledge/retrieve"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/knowledge/index"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/graph/nodes"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/graph/nodes/{key}"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/graph/edges"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/graph/status"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/knowledge/index/failures"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/knowledge/reindex"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/knowledge/refresh"): "project_scoped",
@@ -287,6 +291,9 @@ def _build_world(db_client, tokens) -> tuple["Tenant", "Tenant"]:
             headers=h,
         )
         assert doc.status_code == 201, doc.text
+        from app.content import graph  # INPROOM-217: the document's graph node, for the graph routes
+
+        graph.run(tid, uuid.UUID(pj["id"]))
         return Tenant(
             tid, h, ws, pj, conn, jira, source.json(), confluence, space.json()["source"], doc.json()
         )
@@ -326,6 +333,7 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         external_id="101",
         seq=1,
         document_id=tenant_ids.document["document_id"],
+        key=f"doc:{tenant_ids.document['document_id']}",
     )
     if (
         path_template.endswith(("/repositories", "/jira/projects", "/confluence/spaces"))
