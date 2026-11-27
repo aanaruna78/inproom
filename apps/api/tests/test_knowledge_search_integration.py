@@ -99,3 +99,26 @@ def test_a_provider_outage_is_a_retryable_503(selected, monkeypatch):
     r = e.client.post(f"/v1/projects/{e.pid}/knowledge/search", json={"query": "x"}, headers=e.h())
     assert r.status_code == 503 and r.json()["code"] == "EMBEDDING_UNAVAILABLE"
     assert r.headers["Retry-After"] == "30"
+
+
+def test_zero_vectors_never_produce_undefined_scores(selected):
+    """INPROOM-207/220: the local embedder sees no features in CJK text, so both the stored vector of a
+    CJK-only document and a CJK query are zero. Cosine is undefined there: no NaN may reach a response."""
+    e = selected
+    upload(e, "greeting.md", "# 你好\n\n你好世界".encode())
+    drain(e)
+    for mode in ("semantic", "hybrid"):
+        r = e.client.post(
+            f"/v1/projects/{e.pid}/knowledge/retrieve",
+            json={"query": "restart the api", "mode": mode, "top_k": 50, "include_unsupported": True},
+            headers=e.h(),
+        )
+        assert r.status_code == 200, r.text
+        sims = [
+            h["explanation"]["semantic"]["similarity"]
+            for h in r.json()["items"]
+            if h["explanation"]["semantic"]
+        ]
+        assert sims and all(-1 <= s <= 1 for s in sims)
+    assert all(-1 <= h["score"] <= 1 for h in search(e, "restart the api", top_k=50)["items"])
+    assert search(e, "你好")["items"] == []  # a query the model cannot represent: no semantic candidates

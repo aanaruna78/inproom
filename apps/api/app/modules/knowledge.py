@@ -369,7 +369,7 @@ def search(
     payload: Annotated[SearchRequest, Body()],
 ) -> SearchResult:
     from app.connectors.base import RateLimited
-    from app.content.embeddings import EmbeddingUnavailable, get_embedder, to_pgvector
+    from app.content.embeddings import EmbeddingUnavailable, get_embedder
     from app.content.retrieval import scope, semantic_candidates
 
     with tenant_session(principal.tenant_id) as conn:
@@ -382,7 +382,7 @@ def search(
     dims = int(embedder.dimensions)
     with tenant_session(principal.tenant_id) as conn:
         base = scope(conn, project_id, kinds=payload.kinds, source_ids=payload.source_ids)
-        rows = semantic_candidates(conn, base, embedder.model, dims, to_pgvector(vector), payload.top_k)
+        rows = semantic_candidates(conn, base, embedder.model, dims, vector, payload.top_k)
         items = [SearchHit(**_hit_fields(conn, row), score=row["similarity"]) for row in rows]
     return SearchResult(model=embedder.model, model_version=embedder.version, dimensions=dims, items=items)
 
@@ -510,7 +510,7 @@ def retrieve(
     from app.config import get_settings
     from app.connectors.base import RateLimited
     from app.content import provenance
-    from app.content.embeddings import EmbeddingUnavailable, get_embedder, to_pgvector
+    from app.content.embeddings import EmbeddingUnavailable, get_embedder
     from app.content.retrieval import (
         evidence,
         fuse,
@@ -538,7 +538,7 @@ def retrieve(
     if payload.mode != "keyword":
         try:  # outside any transaction: the provider call can take seconds
             embedder = get_embedder()
-            vector = to_pgvector(embedder.embed([" ".join(parsed.units)], "query")[0])
+            vector = embedder.embed([" ".join(parsed.units)], "query")[0]
         except (RateLimited, EmbeddingUnavailable) as exc:
             if payload.mode == "semantic":
                 raise _embedding_unavailable(exc) from exc

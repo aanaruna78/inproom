@@ -157,6 +157,11 @@ def get_embedder() -> Embedder:
     raise EmbeddingUnavailable(f"unknown embedding provider {s.embedding_provider!r}")
 
 
+def usable(vector: list[float]) -> bool:
+    """Whether a vector can take part in cosine similarity: every value finite, and not all zero."""
+    return all(math.isfinite(x) for x in vector) and any(x != 0 for x in vector)
+
+
 def to_pgvector(vector: list[float]) -> str:
     """pgvector's text form: '[0.1,0.2,...]' (bound as text and cast with ::vector)."""
     return "[" + ",".join(f"{x:.7g}" for x in vector) + "]"

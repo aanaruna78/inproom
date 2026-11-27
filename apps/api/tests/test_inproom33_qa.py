@@ -34,9 +34,7 @@ def test_rejected_embedding_is_a_controlled_retrieval_error(selected, monkeypatc
     "include_unsupported",
     [
         False,
-        pytest.param(
-            True, marks=pytest.mark.xfail(strict=True, reason="INPROOM-220 (QA): fixed in its own commit")
-        ),
+        True,
     ],
 )
 def test_unicode_semantic_query_does_not_crash(selected, monkeypatch, include_unsupported):

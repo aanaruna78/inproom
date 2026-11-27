@@ -189,16 +189,25 @@ def keyword_candidates(conn: Connection, base: Select, units: list[str], limit: 
 
 
 def semantic_candidates(
-    conn: Connection, base: Select, model: str, dimensions: int, vector: str, limit: int
+    conn: Connection, base: Select, model: str, dimensions: int, vector: list[float], limit: int
 ) -> list[dict[str, Any]]:
-    """The `limit` chunks of `base` nearest to `vector` (pgvector text) under `model`, nearest first. Each row
-    adds `similarity` (cosine, in [-1, 1]). Uses the model's HNSW index expression `embedding::vector(n)`."""
+    """The `limit` chunks of `base` nearest to `vector` under `model`, nearest first. Each row adds
+    `similarity` (cosine, in [-1, 1]). Uses the model's HNSW index expression `embedding::vector(n)`.
+
+    Cosine is undefined for a zero vector (INPROOM-207/220): a query the model cannot represent (the local
+    embedder sees no features in "!!!", whitespace or CJK text) has no semantic candidates, and stored vectors
+    whose distance is NaN never match, so no undefined score can reach a response."""
+    from app.content.embeddings import to_pgvector, usable
+
+    if not usable(vector):
+        return []
     k, e = knowledge_chunks, chunk_embeddings
     typed = Vector(int(dimensions))
-    distance = cast(e.c.embedding, typed).op("<=>")(cast(literal(vector, Text), typed)).label("distance")
+    distance = cast(e.c.embedding, typed).op("<=>")(cast(literal(to_pgvector(vector), Text), typed))
     stmt = (
-        base.add_columns(distance)
+        base.add_columns(distance.label("distance"))
         .join(e, and_(e.c.tenant_id == k.c.tenant_id, e.c.model == model, e.c.sha256 == k.c.sha256))
+        .where(distance <= 2.0)  # cosine distance is in [0, 2]; NaN (a zero stored vector) compares false
         .order_by(distance, k.c.id)
         .limit(limit)
     )

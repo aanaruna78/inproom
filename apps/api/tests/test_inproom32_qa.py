@@ -16,7 +16,6 @@ env, selected = conf.env, conf.selected
 
 @pytest.mark.integration
 @pytest.mark.parametrize("query", ["!!!", "   ", "你好"])
-@pytest.mark.xfail(strict=True, reason="INPROOM-207 (QA): fixed in its own commit")
 def test_zero_feature_query_does_not_crash_search(selected, query, monkeypatch):
     e = selected
     drain(e)
