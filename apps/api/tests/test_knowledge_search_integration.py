@@ -122,3 +122,28 @@ def test_zero_vectors_never_produce_undefined_scores(selected):
         assert sims and all(-1 <= s <= 1 for s in sims)
     assert all(-1 <= h["score"] <= 1 for h in search(e, "restart the api", top_k=50)["items"])
     assert search(e, "你好")["items"] == []  # a query the model cannot represent: no semantic candidates
+
+
+def test_a_rejected_query_is_a_422_and_hybrid_falls_back_to_keyword(selected, monkeypatch):
+    """INPROOM-209/219: the provider rejecting the query (over its input limit, unsupported input) is the
+    caller's to fix: 422 EMBEDDING_REJECTED, never a 500; hybrid retrieval answers from keywords instead."""
+    e = selected
+    drain(e)
+
+    class Rejecting:
+        model, version, dimensions, batch_size = "local-hash-v1", "1", 256, 64
+
+        def embed(self, texts, purpose="document"):
+            raise embeddings.EmbeddingRejected("input too long for the model")
+
+    monkeypatch.setattr(embeddings, "get_embedder", lambda: Rejecting())
+    url = f"/v1/projects/{e.pid}/knowledge"
+    for path, body in (
+        ("search", {"query": "x"}),
+        ("retrieve", {"query": "architecture", "mode": "semantic"}),
+    ):
+        r = e.client.post(f"{url}/{path}", json=body, headers=e.h())
+        assert r.status_code == 422 and r.json()["code"] == "EMBEDDING_REJECTED", r.text
+        assert "input too long" in r.json()["detail"]
+    hybrid = e.client.post(f"{url}/retrieve", json={"query": "architecture"}, headers=e.h()).json()
+    assert hybrid["degraded"] == ["semantic"] and hybrid["items"]

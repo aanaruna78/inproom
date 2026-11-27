@@ -369,7 +369,7 @@ def search(
     payload: Annotated[SearchRequest, Body()],
 ) -> SearchResult:
     from app.connectors.base import RateLimited
-    from app.content.embeddings import EmbeddingUnavailable, get_embedder
+    from app.content.embeddings import EmbeddingRejected, EmbeddingUnavailable, get_embedder
     from app.content.retrieval import scope, semantic_candidates
 
     with tenant_session(principal.tenant_id) as conn:
@@ -377,7 +377,7 @@ def search(
     try:  # outside any transaction: the provider call can take seconds
         embedder = get_embedder()
         vector = embedder.embed([payload.query], "query")[0]
-    except (RateLimited, EmbeddingUnavailable) as exc:
+    except (RateLimited, EmbeddingUnavailable, EmbeddingRejected) as exc:
         raise _embedding_unavailable(exc) from exc
     dims = int(embedder.dimensions)
     with tenant_session(principal.tenant_id) as conn:
@@ -464,8 +464,18 @@ class RetrieveResult(BaseModel):
 
 
 def _embedding_unavailable(exc: Exception) -> ApiError:
+    """The problem response for a failed query embedding: a rejection of this query is the caller's to fix
+    (422, nothing to retry); a rate limit or an outage is transient (503 with Retry-After)."""
     from app.connectors.base import RateLimited
+    from app.content.embeddings import EmbeddingRejected
 
+    if isinstance(exc, EmbeddingRejected):  # INPROOM-209/219: e.g. over the input limit, unsupported input
+        return ApiError(
+            422,
+            "EMBEDDING_REJECTED",
+            "The embedding provider rejected the query",
+            f"{str(exc)[:300]}. Shorten or rephrase the query; keyword retrieval does not need embeddings",
+        )
     if isinstance(exc, RateLimited):
         return ApiError(
             503,
@@ -510,7 +520,7 @@ def retrieve(
     from app.config import get_settings
     from app.connectors.base import RateLimited
     from app.content import provenance
-    from app.content.embeddings import EmbeddingUnavailable, get_embedder
+    from app.content.embeddings import EmbeddingRejected, EmbeddingUnavailable, get_embedder
     from app.content.retrieval import (
         evidence,
         fuse,
@@ -539,10 +549,10 @@ def retrieve(
         try:  # outside any transaction: the provider call can take seconds
             embedder = get_embedder()
             vector = embedder.embed([" ".join(parsed.units)], "query")[0]
-        except (RateLimited, EmbeddingUnavailable) as exc:
+        except (RateLimited, EmbeddingUnavailable, EmbeddingRejected) as exc:
             if payload.mode == "semantic":
                 raise _embedding_unavailable(exc) from exc
-            embedder, degraded = None, ["semantic"]
+            embedder, degraded = None, ["semantic"]  # hybrid: keyword candidates still answer
     limit = max(config.retrieval_candidates, payload.top_k)
     cutoffs = [payload.changed_after] if payload.changed_after else []
     if payload.max_age_days:

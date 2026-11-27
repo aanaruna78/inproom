@@ -12,7 +12,6 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.mark.parametrize("mode", ["hybrid", "semantic"])
-@pytest.mark.xfail(strict=True, reason="INPROOM-219 (QA): fixed in its own commit")
 def test_rejected_embedding_is_a_controlled_retrieval_error(selected, monkeypatch, mode):
     e = selected
 

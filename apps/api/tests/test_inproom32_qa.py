@@ -48,7 +48,6 @@ def test_malformed_vectors_rejected_before_storage(data):
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(strict=True, reason="INPROOM-209 (QA): fixed in its own commit")
 def test_rejected_query_has_a_controlled_api_error(selected, monkeypatch):
     from app.content import embeddings
 
