@@ -26,7 +26,6 @@ def replace(e, doc, data):
     assert response.json()["seq"] == 2
 
 
-@pytest.mark.xfail(strict=True, reason="INPROOM-221 (QA): fixed in its own commit")
 def test_graph_never_returns_evidence_from_superseded_revision(selected):
     e = selected
     doc = upload(e, "notes.md", b"# Notes\n\nSee /pages/101.").json()["document_id"]

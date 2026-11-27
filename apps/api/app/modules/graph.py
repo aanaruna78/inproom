@@ -1,11 +1,14 @@
 """Knowledge graph read API (INPROOM-217 / story INPROOM-34). See app/content/graph.py for the model.
 
-Everything returned passes the visibility rule (app.content.visibility): a node is shown when at least one
-of its occurrences belongs to a visible item, an edge when the item that stated it is visible, and evidence
-only from visible items. An edge whose endpoint exists but is hidden is hidden too, so a restricted item is
-never revealed through a link; an endpoint no item carries at all is an **unresolved reference** (shown,
-flagged). Rows from several items stating the same edge are merged by natural key (from, kind, to): origin
-is `validated` when any source field states it, confidence is the highest, evidence is combined. Curators'
+Everything returned passes the visibility rule (app.content.visibility):
+- a node is shown when at least one of its occurrences belongs to a visible item;
+- an edge is shown when the item that stated it is visible AND it was extracted from that item's current
+  revision, so evidence is never served from a superseded revision while the graph job catches up
+  (INPROOM-221); evidence only ever comes from visible items;
+- an edge whose endpoint exists but is hidden is hidden too, so a restricted item is never revealed through
+  a link; an endpoint no item carries at all is an **unresolved reference** (shown, flagged).
+Rows from several items stating the same edge are merged by natural key (from, kind, to): origin is
+`validated` when any source field states it, confidence is the highest, evidence is combined. Curators'
 reviews (INPROOM-218) set `status`: `confirmed`, `rejected` (hidden unless asked for) or `active`.
 """
 
@@ -14,7 +17,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import Connection, func, or_, select
+from sqlalchemy import Connection, func, or_, select, tuple_
 
 from app.api_errors import ApiError
 from app.auth import CurrentPrincipal
@@ -109,6 +112,15 @@ def _visible_ids(conn: Connection, project_id: uuid.UUID):
     return select(source_objects.c.id).where(visible(conn, project_id))
 
 
+def _current_visible(conn: Connection, project_id: uuid.UUID):
+    """(object, current revision) of visible items. An edge row extracted from an older revision is evidence
+    of content that is no longer current: not served until the graph job re-extracts (INPROOM-221)."""
+    from app.content.visibility import visible
+
+    o = source_objects
+    return select(o.c.id, o.c.current_revision_id).where(visible(conn, project_id))
+
+
 def _shown_keys(conn: Connection, project_id: uuid.UUID, keys: set[str]) -> tuple[set[str], set[str]]:
     """(keys some node occurrence carries, keys a visible occurrence carries) among `keys`."""
     if not keys:
@@ -132,7 +144,10 @@ def edges(
 ) -> list[dict[str, Any]]:
     """Visible edges merged by natural key, best confidence first (then by id)."""
     e = graph_edges
-    stmt = select(e).where(e.c.project_id == project_id, e.c.object_id.in_(_visible_ids(conn, project_id)))
+    stmt = select(e).where(
+        e.c.project_id == project_id,
+        tuple_(e.c.object_id, e.c.revision_id).in_(_current_visible(conn, project_id)),
+    )
     if keys is not None:
         stmt = stmt.where(or_(e.c.from_key.in_(keys), e.c.to_key.in_(keys)))
     if kind:
