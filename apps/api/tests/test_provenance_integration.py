@@ -157,3 +157,25 @@ def test_the_revision_route_and_input_limits(selected):
     assert bad["error"]["code"] == "INVALID_CITATION" and "kind" in bad["error"]["detail"]
     assert good["record"]["source"]["title"] == "Architecture"
     assert mixed["counts"]["invalid_citation"] == 1 and mixed["counts"]["resolved"] == 1
+
+
+def test_an_old_revision_never_borrows_current_facts(selected):
+    """INPROOM-210: revisions keep their own author, time and commit. Revisions stored before those facts were
+    recorded say so explicitly instead of borrowing the current version's."""
+    from tests.test_provenance_freshness_integration import owner
+
+    e = selected
+    first = resolve(e, cite("confluence", e.sid, "101"))["results"][0]["record"]
+    assert first["modified"]["at"] and first["modified"]["by"]
+    e.conf.pages[101].add_version("<h1>Architecture</h1><p>Changed</p>", by="Grace")
+    assert e.sync().status_code == 200
+    old = resolve(e, cite("confluence", e.sid, "101"))["results"][0]["record"]
+    new = resolve(e, cite("confluence", e.sid, "101", seq=2))["results"][0]["record"]
+    assert old["modified"] == first["modified"] and new["modified"]["by"] == "Grace"
+    owner(e, "UPDATE source_revisions SET provider_meta = NULL WHERE tenant_id=:t")  # as stored before 0026
+    legacy = resolve(e, cite("confluence", e.sid, "101"))["results"][0]["record"]
+    assert legacy["modified"] == {"at": None, "by": None}
+    assert {m["field"] for m in legacy["completeness"]["missing"]} >= {"modified.at", "modified.by"}
+    assert any("not retained" in m["reason"] for m in legacy["completeness"]["missing"])
+    current = resolve(e, cite("confluence", e.sid, "101", seq=2))["results"][0]["record"]
+    assert current["modified"]["by"] == "Grace"  # the current revision may use the catalog's current facts

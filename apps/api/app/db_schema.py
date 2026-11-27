@@ -735,6 +735,7 @@ source_revisions = Table(
     Column("seq", Integer, nullable=False),
     Column("parent_revision_id", UUID(as_uuid=True)),
     Column("provider_version", Text),
+    Column("provider_meta", JSONB),  # INPROOM-210: this revision's provider facts (author, time, commit)
     Column("content_sha256", Text, nullable=False),
     Column("size_bytes", BigInteger, nullable=False),
     Column("media_type", Text, nullable=False),

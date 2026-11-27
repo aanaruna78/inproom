@@ -89,17 +89,44 @@ def _source(conn: Connection, obj: dict[str, Any]) -> dict[str, Any]:
     return {"name": name, "base_url": row["base_url"], "full_name": row.get("full_name")}
 
 
-def _modified(conn: Connection, obj: dict[str, Any], rev: dict[str, Any], missing: list) -> dict[str, Any]:
-    kind, at, by = obj["source_kind"], None, None
-    if kind == "confluence" and not obj["external_id"].startswith("att:"):
-        page = conn.execute(
-            select(confluence_pages.c.last_modified_at, confluence_pages.c.author).where(
+def _provider_now(conn: Connection, obj: dict[str, Any], modified: dict[str, Any]) -> dict[str, Any]:
+    """When the provider last reports the item changed - the CURRENT fact, for freshness signals (a change
+    after retrieval), as opposed to the cited revision's own `modified` (INPROOM-210)."""
+    if obj["source_kind"] == "confluence" and not obj["external_id"].startswith("att:"):
+        at = conn.execute(
+            select(confluence_pages.c.last_modified_at).where(
                 confluence_pages.c.source_id == obj["source_id"],
                 confluence_pages.c.page_id == obj["external_id"],
             )
-        ).first()
-        if page is not None:
-            at, by = page.last_modified_at, page.author
+        ).scalar()
+        return {"at": at}
+    return modified
+
+
+def _modified(
+    conn: Connection, obj: dict[str, Any], rev: dict[str, Any], missing: list, is_current: bool
+) -> dict[str, Any]:
+    """Who changed the item and when - for THIS revision (INPROOM-210): its recorded provider facts, else the
+    catalog's (current facts) only when it is the current revision, else explicitly not retained."""
+    kind, at, by = obj["source_kind"], None, None
+    meta = rev.get("provider_meta") or {}
+    if kind == "confluence" and not obj["external_id"].startswith("att:"):
+        if meta:
+            at, by = meta.get("modified_at"), meta.get("author")
+        elif is_current:
+            page = conn.execute(
+                select(confluence_pages.c.last_modified_at, confluence_pages.c.author).where(
+                    confluence_pages.c.source_id == obj["source_id"],
+                    confluence_pages.c.page_id == obj["external_id"],
+                )
+            ).first()
+            if page is not None:
+                at, by = page.last_modified_at, page.author
+        else:
+            reason = "not retained for this older version (stored before version facts were recorded)"
+            missing.append({"field": "modified.at", "reason": reason})
+            missing.append({"field": "modified.by", "reason": reason})
+            return {"at": None, "by": None}
         if at is None:
             missing.append({"field": "modified.at", "reason": "Confluence did not report the version time"})
         if by is None:
@@ -129,15 +156,23 @@ def _modified(conn: Connection, obj: dict[str, Any], rev: dict[str, Any], missin
     return {"at": at, "by": by}
 
 
-def _url(obj: dict[str, Any], src: dict[str, Any], missing: list) -> str | None:
+def revision_commit(obj: dict[str, Any], rev: dict[str, Any], is_current: bool) -> str | None:
+    """The commit a git revision's bytes were read at (INPROOM-210): recorded with the revision; for revisions
+    stored before that, the item's verified commit when this revision is current, else unknown."""
+    commit = (rev.get("provider_meta") or {}).get("commit")
+    if commit:
+        return commit
+    return obj.get("verified_ref") if is_current else None
+
+
+def _url(obj: dict[str, Any], src: dict[str, Any], missing: list, commit: str | None = None) -> str | None:
     kind = obj["source_kind"]
     if kind == "upload":
         missing.append({"field": "source.url", "reason": "uploaded documents have no provider location"})
         return None
     if kind == "git":
-        commit = obj.get("verified_ref")
         if not (src.get("base_url") and src.get("full_name") and commit):
-            missing.append({"field": "source.url", "reason": "no verified commit for this file"})
+            missing.append({"field": "source.url", "reason": "no verified commit for this revision"})
             return None
         path = obj["external_id"].split(":", 1)[1]
         return f"{_web_base(src['base_url'])}/{src['full_name']}/blob/{commit}/{quote(path, safe='/')}"
@@ -433,8 +468,11 @@ def build(conn: Connection, obj: dict[str, Any], rev: dict[str, Any], anchor: st
     """The provenance record of one revision (and optionally one passage of it)."""
     missing: list[dict[str, str]] = []
     src = _source(conn, obj)
-    url = _url(obj, src, missing)
-    modified = _modified(conn, obj, rev, missing)
+    current = _current_seq(conn, obj)
+    is_current = current is None or current == rev["seq"]
+    commit = revision_commit(obj, rev, is_current) if obj["source_kind"] == "git" else None
+    url = _url(obj, src, missing, commit)
+    modified = _modified(conn, obj, rev, missing, is_current)
     if rev["provider_version"] is None:
         missing.append(
             {"field": "revision.provider_version", "reason": "the provider has no version for this item"}
@@ -445,8 +483,7 @@ def build(conn: Connection, obj: dict[str, Any], rev: dict[str, Any], anchor: st
     )
     if anchor:
         passage, derivation = _passage(conn, obj, rev, anchor, missing)
-    current = _current_seq(conn, obj)
-    signals, sync = _signals(conn, obj, rev, modified)
+    signals, sync = _signals(conn, obj, rev, _provider_now(conn, obj, modified))
     freshness = decide(rev["seq"], current, signals) | {"source_sync": sync}
     found_conflicts, found_duplicates = conflicts(conn, obj, rev)
     known_fields = 6 + (
@@ -471,7 +508,7 @@ def build(conn: Connection, obj: dict[str, Any], rev: dict[str, Any], anchor: st
             "size_bytes": rev["size_bytes"],
             "retrieved_at": rev["fetched_at"].isoformat() if rev["fetched_at"] else None,
             "retrieved_by_job": str(rev["job_id"]) if rev["job_id"] else None,
-            "verified_ref": obj.get("verified_ref"),
+            "verified_ref": commit if obj["source_kind"] == "git" else obj.get("verified_ref"),
             "content_stored": rev["blob_key"] is not None and rev["purged_at"] is None,
         },
         "modified": modified,

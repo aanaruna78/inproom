@@ -331,6 +331,7 @@ def confluence(
             title=page.title,
             uri=page.web_url,
             provider_version=str(page.version),
+            provider_meta={"modified_at": page.created_at, "author": page.author},  # this version's
             acl=acl,
             job_id=job_id,
         )

@@ -55,6 +55,7 @@ def record_revision(
     acl: dict[str, Any] | None = None,
     job_id: uuid.UUID | None = None,
     parent_external_id: str | None = None,
+    provider_meta: dict[str, Any] | None = None,
 ) -> Recorded:
     if source_kind not in SOURCE_KINDS:
         raise ValueError(f"unknown source kind {source_kind!r}")
@@ -124,6 +125,7 @@ def record_revision(
             seq=seq,
             parent_revision_id=current["id"] if current else None,
             provider_version=provider_version,
+            provider_meta=provider_meta,
             content_sha256=digest,
             size_bytes=len(data),
             media_type=media_type,

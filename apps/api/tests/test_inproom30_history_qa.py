@@ -11,7 +11,6 @@ env, connected, repo = code.env, code.connected, code.repo
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(strict=True, reason="INPROOM-210 (QA): fixed in its own commit")
 def test_old_code_citation_keeps_its_own_commit(repo):
     g = repo
     rid = g.q("SELECT id FROM project_repositories WHERE tenant_id=:t AND provider_repo_id='1'")

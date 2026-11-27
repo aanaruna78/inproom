@@ -394,6 +394,7 @@ def _index_branch(
                 title=entry.path,
                 uri=None,  # citations use the item's verified_ref (set below), not a per-revision URI
                 provider_version=entry.sha,
+                provider_meta={"commit": commit},  # INPROOM-210: the commit these bytes were read at
                 acl=acl,
                 job_id=ctx.job["id"],
             )

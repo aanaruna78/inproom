@@ -10,7 +10,6 @@ env, selected = conf.env, conf.selected
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(strict=True, reason="INPROOM-210 (QA): fixed in its own commit")
 def test_old_page_citation_preserves_modified_metadata(selected):
     e = selected
     citation = cite("confluence", e.sid, "101")
