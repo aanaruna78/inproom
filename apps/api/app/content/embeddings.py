@@ -19,7 +19,7 @@ import math
 import re
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 import httpx
 
@@ -120,17 +120,46 @@ class OpenAICompatibleEmbedder:
         except ProviderError as exc:
             raise EmbeddingRejected(str(exc)) from exc
         try:
-            data = sorted(response.json()["data"], key=lambda d: d.get("index", 0))
-            vectors = [[float(x) for x in d["embedding"]] for d in data]
+            data = response.json()["data"]
         except (ValueError, KeyError, TypeError) as exc:
             raise EmbeddingRejected("the embedding provider returned a malformed response") from exc
-        if len(vectors) != len(texts):
-            raise EmbeddingRejected(f"expected {len(texts)} vectors, got {len(vectors)}")
-        if any(len(v) != self.dimensions for v in vectors):
+        return vectors_from(data, len(texts), self.dimensions)
+
+
+def vectors_from(data: Any, count: int, dimensions: int) -> list[list[float]]:
+    """The vectors of an OpenAI-compatible `data` array, in input order, or EmbeddingRejected (INPROOM-208).
+    Pure (unit-tested). Nothing unsuitable may reach storage, where it would fail outside per-input isolation:
+    - `data` is a list of objects, one per input;
+    - `index`, when given, is given for every entry and maps one-to-one onto the inputs (0..count-1);
+      without indexes, the order is the input order;
+    - each embedding is a list of `dimensions` finite numbers, not all zero (cosine needs a direction)."""
+    if not isinstance(data, list) or not all(isinstance(d, dict) for d in data):
+        raise EmbeddingRejected("the embedding provider returned a malformed response (data entries)")
+    if len(data) != count:
+        raise EmbeddingRejected(f"expected {count} vectors, got {len(data)}")
+    indexed = [d for d in data if "index" in d]
+    if indexed:
+        indexes = [d["index"] for d in data if "index" in d]
+        valid = all(isinstance(i, int) and not isinstance(i, bool) for i in indexes)
+        if len(indexed) != count or not valid or sorted(indexes) != list(range(count)):
             raise EmbeddingRejected(
-                f"the model returned {len(vectors[0])} dimensions; configured {self.dimensions}"
+                "the embedding provider's response indexes do not match the inputs one-to-one"
             )
-        return vectors
+        data = sorted(data, key=lambda d: d["index"])
+    vectors = []
+    for d in data:
+        raw = d.get("embedding")
+        if not isinstance(raw, list) or not all(
+            isinstance(x, int | float) and not isinstance(x, bool) for x in raw
+        ):
+            raise EmbeddingRejected("the embedding provider returned a malformed vector")
+        if len(raw) != dimensions:
+            raise EmbeddingRejected(f"the model returned {len(raw)} dimensions; configured {dimensions}")
+        vector = [float(x) for x in raw]
+        if not usable(vector):
+            raise EmbeddingRejected("the embedding provider returned a non-finite or all-zero vector")
+        vectors.append(vector)
+    return vectors
 
 
 @lru_cache

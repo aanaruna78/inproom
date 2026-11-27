@@ -99,3 +99,24 @@ def test_the_base_url_must_pass_the_embedding_allowlist(monkeypatch):
     get_embedder.cache_clear()
     with pytest.raises(EmbeddingUnavailable):  # no base URL configured: an actionable, retryable error
         get_embedder()
+
+
+def test_provider_vectors_are_validated_before_storage():
+    """INPROOM-208: valid responses map onto the inputs; unsuitable ones are rejected, never stored."""
+    from app.content.embeddings import EmbeddingRejected, vectors_from
+
+    a, b = {"embedding": [1, 0]}, {"embedding": [0, 2.5]}
+    assert vectors_from([a, b], 2, 2) == [[1.0, 0.0], [0.0, 2.5]]  # no indexes: input order
+    shuffled = [b | {"index": 1}, a | {"index": 0}]
+    assert vectors_from(shuffled, 2, 2) == [[1.0, 0.0], [0.0, 2.5]]  # indexes: reordered
+    for data in (
+        [a | {"index": 0}, b],  # some indexed, some not
+        [a | {"index": 1}, b | {"index": 2}],  # not 0..n-1
+        [a | {"index": True}, b | {"index": 0}],  # a bool is not an index
+        [{"embedding": [True, 0]}, b],  # nor a number
+        [{"embedding": "1,0"}, b],
+        [{"vector": [1, 0]}, b],
+        [a],  # one vector for two inputs
+    ):
+        with pytest.raises(EmbeddingRejected):
+            vectors_from(data, 2, 2)

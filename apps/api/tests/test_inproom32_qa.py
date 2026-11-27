@@ -36,7 +36,6 @@ def test_zero_feature_query_does_not_crash_search(selected, query, monkeypatch):
         [None],
     ],
 )
-@pytest.mark.xfail(strict=True, reason="INPROOM-208 (QA): fixed in its own commit")
 def test_malformed_vectors_rejected_before_storage(data):
     # Non-finite/zero vectors cannot support cosine search; duplicate indexes misassign text vectors.
     import json
