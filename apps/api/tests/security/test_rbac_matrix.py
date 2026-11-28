@@ -178,6 +178,9 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("GET", "/v1/projects/{project_id}/graph/status"): ("project", "project.read"),
     ("POST", "/v1/projects/{project_id}/graph/edges"): ("project", "project.graph.curate"),
     ("POST", "/v1/projects/{project_id}/graph/edges/{edge_id}/review"): ("project", "project.graph.curate"),
+    ("POST", "/v1/projects/{project_id}/memory/snapshots"): ("project", "project.memory.publish"),
+    ("GET", "/v1/projects/{project_id}/memory/snapshots"): ("project", "project.read"),
+    ("GET", "/v1/projects/{project_id}/memory/snapshots/{version}"): ("project", "project.read"),
     ("GET", "/v1/projects/{project_id}/knowledge/index/failures"): ("project", "project.read"),
     ("POST", "/v1/projects/{project_id}/knowledge/reindex"): ("project", "project.source.manage"),
     ("POST", "/v1/projects/{project_id}/knowledge/refresh"): ("project", "project.source.manage"),
@@ -231,7 +234,10 @@ ACCEPTED = {
 CREATED = {
     ("POST", "/v1/projects/{project_id}/documents"),
     ("POST", "/v1/projects/{project_id}/graph/edges"),
+    ("POST", "/v1/projects/{project_id}/memory/snapshots"),
 }
+# Idempotent creates (INPROOM-225): once created, an identical repeat returns 200 with the existing resource.
+IDEMPOTENT_CREATE = {("POST", "/v1/projects/{project_id}/memory/snapshots")}
 # Authorized callers reach a business rule instead of success: adopt needs a REVOKED same-site connection,
 # which the shared world does not have, so 409 ADOPT_NOT_ALLOWED is the authorized outcome (INPROOM-146).
 BUSINESS_RULE = {
@@ -422,6 +428,10 @@ def _build_world(db_client, tokens) -> World:
             conn.execute(select(graph_edges.c.id).where(graph_edges.c.kind == "duplicates")).scalars().first()
         )
     assert edge_id, "the world's twin documents state a duplicates edge"
+    snapshot = db_client.post(
+        f"/v1/projects/{project['id']}/memory/snapshots", json={"reason": "world"}, headers=owner
+    )
+    assert snapshot.status_code == 201, snapshot.text  # version 1, for the read routes (INPROOM-225)
     return World(
         tenant,
         ws,
@@ -577,6 +587,8 @@ def _call(client, method, path, world: World, headers):
         }
     elif method == "POST" and path.endswith("/review"):
         kwargs["json"] = {"action": "confirm", "reason": "matrix"}
+    elif method == "POST" and path.endswith("/memory/snapshots"):
+        kwargs["json"] = {"reason": "matrix"}
     elif method == "POST" and path.endswith("/knowledge/refresh"):
         kwargs["json"] = {"reason": "matrix"}
     elif method == "PUT" and path.endswith("/security"):  # the default policy: idempotent for every actor
@@ -631,6 +643,8 @@ def test_route_x_role(db_client, tokens, world, owner_engine, method, path, acto
     if business:
         expected = BUSINESS_RULE[(method, path)]
     r = _call(db_client, method, path, world, headers)
+    if expected == "201" and (method, path) in IDEMPOTENT_CREATE and r.status_code == 200:
+        expected = "200"  # an earlier authorized actor created it; the repeat is the same success
     record_rbac(f"{method} {path}", actor, expected, str(r.status_code))
     assert str(r.status_code) == expected, (actor, r.text)
 

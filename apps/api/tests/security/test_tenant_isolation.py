@@ -115,6 +115,9 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/v1/projects/{project_id}/graph/status"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/graph/edges"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/graph/edges/{edge_id}/review"): "project_scoped",
+    ("POST", "/v1/projects/{project_id}/memory/snapshots"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/memory/snapshots"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/memory/snapshots/{version}"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/knowledge/index/failures"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/knowledge/reindex"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/knowledge/refresh"): "project_scoped",
@@ -396,6 +399,8 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         kwargs["json"] = {"from_key": doc, "kind": "x_link", "to_key": "doc:other", "reason": "cross-tenant"}
     elif method == "POST" and path_template.endswith("/review"):
         kwargs["json"] = {"action": "reject", "reason": "cross-tenant"}
+    elif method == "POST" and path_template.endswith("/memory/snapshots"):
+        kwargs["json"] = {"reason": "cross-tenant"}
     elif method == "POST" and path_template.endswith("/knowledge/refresh"):
         kwargs["json"] = {"reason": "cross-tenant"}
     elif method == "PUT" and path_template.endswith("/security"):

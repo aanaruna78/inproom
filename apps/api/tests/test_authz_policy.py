@@ -22,6 +22,7 @@ EXPECTED: dict[str, set[str]] = {
     "project.source.manage": {ADMIN},
     "project.content.upload": {ADMIN, PO, TL, QL},  # INPROOM-28 plan (agreed in Jira)
     "project.graph.curate": {ADMIN, PO, TL, QL},  # INPROOM-34 plan (agreed in Jira)
+    "project.memory.publish": {ADMIN, PO, TL, QL},  # INPROOM-35 plan (agreed in Jira)
     "audit.read": {ADMIN},
     "artifact.propose": {ADMIN, PO, TL, DEV, QL, TS},
     "artifact.review": {ADMIN, PO, TL, DEV, REV, QL, TS, RM},
@@ -160,6 +161,7 @@ def test_auditor_stays_read_only_whatever_project_role_they_hold(role):
         "artifact.propose",
         "project.content.upload",
         "project.graph.curate",
+        "project.memory.publish",
         "process.execute",
     ):
         assert policy.decide(auditor, frozenset({role}), permission).code == policy.FORBIDDEN

@@ -1000,6 +1000,92 @@
         "title": "Count",
         "type": "object"
       },
+      "CreateRequest": {
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "CreateRequest",
+        "type": "object"
+      },
+      "CreateResult": {
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "created": {
+            "title": "Created",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "feed_head": {
+            "title": "Feed Head",
+            "type": "integer"
+          },
+          "generator": {
+            "title": "Generator",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "redactions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Redactions",
+            "type": "object"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "created_at",
+          "created_by",
+          "reason",
+          "generator",
+          "feed_head",
+          "sha256",
+          "counts",
+          "redactions",
+          "metadata",
+          "created"
+        ],
+        "title": "CreateResult",
+        "type": "object"
+      },
       "CredentialRotate": {
         "properties": {
           "token": {
@@ -6109,6 +6195,177 @@
         "title": "SettingsVersionDetail",
         "type": "object"
       },
+      "SnapshotDetail": {
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/app__modules__memory__Citation"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "feed_head": {
+            "title": "Feed Head",
+            "type": "integer"
+          },
+          "generator": {
+            "title": "Generator",
+            "type": "string"
+          },
+          "markdown": {
+            "title": "Markdown",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "redactions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Redactions",
+            "type": "object"
+          },
+          "served_sha256": {
+            "title": "Served Sha256",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "withheld": {
+            "title": "Withheld",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "created_at",
+          "created_by",
+          "reason",
+          "generator",
+          "feed_head",
+          "sha256",
+          "counts",
+          "redactions",
+          "metadata",
+          "markdown",
+          "served_sha256",
+          "withheld",
+          "citations"
+        ],
+        "title": "SnapshotDetail",
+        "type": "object"
+      },
+      "SnapshotInfo": {
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "feed_head": {
+            "title": "Feed Head",
+            "type": "integer"
+          },
+          "generator": {
+            "title": "Generator",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "redactions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Redactions",
+            "type": "object"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "created_at",
+          "created_by",
+          "reason",
+          "generator",
+          "feed_head",
+          "sha256",
+          "counts",
+          "redactions",
+          "metadata"
+        ],
+        "title": "SnapshotInfo",
+        "type": "object"
+      },
+      "SnapshotList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotInfo"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SnapshotList",
+        "type": "object"
+      },
       "SourceConnection": {
         "properties": {
           "account_login": {
@@ -7462,6 +7719,40 @@
           "external_id",
           "seq",
           "anchor"
+        ],
+        "title": "Citation",
+        "type": "object"
+      },
+      "app__modules__memory__Citation": {
+        "properties": {
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "source_id",
+          "external_id",
+          "seq",
+          "label"
         ],
         "title": "Citation",
         "type": "object"
@@ -11375,6 +11666,209 @@
         "summary": "Set a member's project roles (replaces the set; idempotent)",
         "tags": [
           "members"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/memory/snapshots": {
+      "get": {
+        "operationId": "list_snapshots_v1_projects__project_id__memory_snapshots_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Memory snapshot versions, newest first",
+        "tags": [
+          "memory"
+        ]
+      },
+      "post": {
+        "operationId": "create_snapshot_v1_projects__project_id__memory_snapshots_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "identical to the latest version"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "409": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Generate a Markdown memory snapshot; identical bytes return the latest version (no duplicate)",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/memory/snapshots/{version}": {
+      "get": {
+        "operationId": "get_snapshot_v1_projects__project_id__memory_snapshots__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "enum": [
+                "json",
+                "markdown"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotDetail"
+                }
+              },
+              "text/markdown": {}
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "A memory snapshot as JSON, or as text/markdown with ?format=markdown; hidden items withheld",
+        "tags": [
+          "memory"
         ]
       }
     },

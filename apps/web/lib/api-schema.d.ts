@@ -872,6 +872,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/memory/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Memory snapshot versions, newest first */
+        get: operations["list_snapshots_v1_projects__project_id__memory_snapshots_get"];
+        put?: never;
+        /** Generate a Markdown memory snapshot; identical bytes return the latest version (no duplicate) */
+        post: operations["create_snapshot_v1_projects__project_id__memory_snapshots_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/memory/snapshots/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A memory snapshot as JSON, or as text/markdown with ?format=markdown; hidden items withheld */
+        get: operations["get_snapshot_v1_projects__project_id__memory_snapshots__version__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/migration": {
         parameters: {
             query?: never;
@@ -1876,6 +1911,45 @@ export interface components {
             count: number;
             /** Name */
             name: string;
+        };
+        /** CreateRequest */
+        CreateRequest: {
+            /** Reason */
+            reason: string;
+        };
+        /** CreateResult */
+        CreateResult: {
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Created */
+            created: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Feed Head */
+            feed_head: number;
+            /** Generator */
+            generator: string;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Reason */
+            reason: string;
+            /** Redactions */
+            redactions: {
+                [key: string]: number;
+            };
+            /** Sha256 */
+            sha256: string;
+            /** Version */
+            version: number;
         };
         /** CredentialRotate */
         CredentialRotate: {
@@ -3768,6 +3842,83 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** SnapshotDetail */
+        SnapshotDetail: {
+            /** Citations */
+            citations: components["schemas"]["app__modules__memory__Citation"][];
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Feed Head */
+            feed_head: number;
+            /** Generator */
+            generator: string;
+            /** Markdown */
+            markdown: string;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Reason */
+            reason: string;
+            /** Redactions */
+            redactions: {
+                [key: string]: number;
+            };
+            /** Served Sha256 */
+            served_sha256: string;
+            /** Sha256 */
+            sha256: string;
+            /** Version */
+            version: number;
+            /** Withheld */
+            withheld: number;
+        };
+        /** SnapshotInfo */
+        SnapshotInfo: {
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Feed Head */
+            feed_head: number;
+            /** Generator */
+            generator: string;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Reason */
+            reason: string;
+            /** Redactions */
+            redactions: {
+                [key: string]: number;
+            };
+            /** Sha256 */
+            sha256: string;
+            /** Version */
+            version: number;
+        };
+        /** SnapshotList */
+        SnapshotList: {
+            /** Items */
+            items: components["schemas"]["SnapshotInfo"][];
+        };
         /** SourceConnection */
         SourceConnection: {
             /** Account Login */
@@ -4261,6 +4412,22 @@ export interface components {
             external_id: string;
             /** Kind */
             kind: string;
+            /** Seq */
+            seq: number;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+        };
+        /** Citation */
+        app__modules__memory__Citation: {
+            /** External Id */
+            external_id: string;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
             /** Seq */
             seq: number;
             /**
@@ -6870,6 +7037,144 @@ export interface operations {
             };
             /** @description problem+json */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_snapshots_v1_projects__project_id__memory_snapshots_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotList"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_snapshot_v1_projects__project_id__memory_snapshots_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRequest"];
+            };
+        };
+        responses: {
+            /** @description identical to the latest version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateResult"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_snapshot_v1_projects__project_id__memory_snapshots__version__get: {
+        parameters: {
+            query?: {
+                format?: "json" | "markdown";
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotDetail"];
+                    "text/markdown": unknown;
+                };
+            };
+            /** @description problem+json */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

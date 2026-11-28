@@ -61,6 +61,7 @@ PROJECT_PERMISSIONS: dict[str, Kind] = {
     "project.source.manage": Kind.ADMIN,
     "project.content.upload": Kind.PROPOSE,  # INPROOM-165: add, replace and delete uploaded documents
     "project.graph.curate": Kind.PROPOSE,  # INPROOM-218: confirm, reject, correct and add graph edges
+    "project.memory.publish": Kind.PROPOSE,  # INPROOM-225: generate Markdown memory snapshots
     "audit.read": Kind.READ,
     "artifact.propose": Kind.PROPOSE,
     "artifact.review": Kind.PROPOSE,
@@ -78,6 +79,7 @@ PROJECT_MATRIX: dict[str, frozenset[str]] = {
     "project.source.manage": frozenset({PROJECT_ADMIN}),
     "project.content.upload": frozenset({PROJECT_ADMIN, "product_owner", "tech_lead", "qa_lead"}),
     "project.graph.curate": frozenset({PROJECT_ADMIN, "product_owner", "tech_lead", "qa_lead"}),
+    "project.memory.publish": frozenset({PROJECT_ADMIN, "product_owner", "tech_lead", "qa_lead"}),
     "audit.read": frozenset({PROJECT_ADMIN}),
     "artifact.propose": frozenset(
         {PROJECT_ADMIN, "product_owner", "tech_lead", "developer", "qa_lead", "tester"}
