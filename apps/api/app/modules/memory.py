@@ -254,7 +254,7 @@ def list_snapshots(
     "/v1/projects/{project_id}/memory/snapshots/{version}",
     response_model=SnapshotDetail,
     summary="A memory snapshot as JSON, or as text/markdown with ?format=markdown; hidden items withheld",
-    responses={200: {"content": {"text/markdown": {}}}, 404: PROBLEM},
+    responses={200: {"content": {"text/markdown": {"schema": {"type": "string"}}}}, 404: PROBLEM},
 )
 def get_snapshot(
     request: Request,

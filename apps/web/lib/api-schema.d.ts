@@ -421,7 +421,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Stored source items (pages, issues) with their current revision; filter by kind, source, status */
+        /**
+         * Stored source items (pages, issues) with their current revision; filter by kind, source, status
+         * @description `visible=true` lists only what may be served to the project now (the visibility rule, INPROOM-187):
+         *     the Knowledge Explorer uses it, so withheld items never appear there, not even by title (INPROOM-228).
+         */
         get: operations["list_objects_v1_projects__project_id__content_get"];
         put?: never;
         post?: never;
@@ -5800,6 +5804,7 @@ export interface operations {
                 status?: string | null;
                 limit?: number;
                 cursor?: string | null;
+                visible?: boolean;
             };
             header?: never;
             path: {
@@ -7252,7 +7257,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SnapshotDetail"];
-                    "text/markdown": unknown;
+                    "text/markdown": string;
                 };
             };
             /** @description problem+json */

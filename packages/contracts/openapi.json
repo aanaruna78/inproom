@@ -9554,6 +9554,7 @@
     },
     "/v1/projects/{project_id}/content": {
       "get": {
+        "description": "`visible=true` lists only what may be served to the project now (the visibility rule, INPROOM-187):\nthe Knowledge Explorer uses it, so withheld items never appear there, not even by title (INPROOM-228).",
         "operationId": "list_objects_v1_projects__project_id__content_get",
         "parameters": [
           {
@@ -9649,6 +9650,16 @@
                 }
               ],
               "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "visible",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Visible",
+              "type": "boolean"
             }
           }
         ],
@@ -11955,7 +11966,11 @@
                   "$ref": "#/components/schemas/SnapshotDetail"
                 }
               },
-              "text/markdown": {}
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
             },
             "description": "Successful Response"
           },

@@ -116,3 +116,51 @@ li.excluded { color: var(--muted); }
 .tabs { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
 .tabs a[aria-current="page"] { font-weight: 700; text-decoration: none; }
 .page-text { white-space: pre-wrap; word-break: break-word; max-height: 480px; overflow: auto; }
+
+/* INPROOM-228: Knowledge Explorer (UX-04). Semantic tokens scoped to the explorer; the V2 design system
+   (INPROOM-106) replaces them. Three panes on desktop; Browse and Inspector collapse to drawers when narrow. */
+main.explorer {
+  --x-canvas: var(--canvas);
+  --x-surface: var(--surface);
+  --x-text: var(--text);
+  --x-muted: var(--muted);
+  --x-border: var(--border);
+  --x-accent: var(--blue);
+  --x-pad: 16px;
+  --x-gap: 16px;
+  max-width: 1880px;
+  color: var(--x-text);
+}
+main.explorer.compact { --x-pad: 10px; --x-gap: 10px; font-size: 13px; }
+@media (prefers-color-scheme: dark) {
+  main.explorer {
+    --x-canvas: #0f1722;
+    --x-surface: #172232;
+    --x-text: #e3e9f2;
+    --x-muted: #9aa8bb;
+    --x-border: #2a3a50;
+    --x-accent: #7ea6ff;
+  }
+  body:has(main.explorer) { background: #0f1722; }
+  main.explorer h1, main.explorer h2, main.explorer h3 { color: #f1f5fb; }
+  main.explorer a { color: var(--x-accent); }
+  main.explorer code { background: #22324a; color: #e3e9f2; }
+  main.explorer .alert.warning { background: #3a2f14; color: #f4dca7; }
+  main.explorer .alert.error { background: #3d1c1c; color: #f6c4c4; }
+}
+.explorer .panes { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(300px, 380px); gap: var(--x-gap); align-items: start; }
+.explorer .pane { background: var(--x-surface); border: 1px solid var(--x-border); border-radius: var(--radius); padding: var(--x-pad); min-width: 0; }
+.explorer details.pane > summary { display: none; }
+.explorer .pane h2 { font-size: 15px; margin: 12px 0 8px; }
+.explorer .pane section:first-child h2, .explorer .pane > h2:first-child { margin-top: 0; }
+.explorer ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.explorer ul.items a { word-break: break-word; }
+.explorer a[aria-current="true"] { font-weight: 700; }
+.explorer .kind { text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; color: var(--x-muted); }
+.explorer .hint, .explorer .empty, .explorer .crumbs { color: var(--x-muted); }
+.explorer .pager { margin-top: 8px; }
+@media (max-width: 1100px) {
+  .explorer .panes { grid-template-columns: 1fr; }
+  .explorer details.pane > summary { display: list-item; cursor: pointer; font-weight: 700; padding: 4px 0; }
+  .explorer .work { order: -1; }
+}

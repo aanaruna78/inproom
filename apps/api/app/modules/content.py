@@ -165,7 +165,10 @@ def list_objects(
     status: Annotated[str | None, Query(pattern="^(CURRENT|RESTRICTED|EXCLUDED|DELETED|TOO_LARGE)$")] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
     cursor: Annotated[str | None, Query(max_length=400)] = None,
+    visible: bool = False,
 ) -> SourceObjectPage:
+    """`visible=true` lists only what may be served to the project now (the visibility rule, INPROOM-187):
+    the Knowledge Explorer uses it, so withheld items never appear there, not even by title (INPROOM-228)."""
     o, r = source_objects, source_revisions
     stmt = (
         select(o, r.c.seq, r.c.provider_version, r.c.content_sha256, r.c.size_bytes, r.c.media_type)
@@ -185,6 +188,10 @@ def list_objects(
     stmt = stmt.order_by(*order).limit(limit + 1)
     with tenant_session(principal.tenant_id) as conn:
         authorize(conn, principal, request, "project.read", project_id)
+        if visible:
+            from app.content.visibility import visible as visible_rule
+
+            stmt = stmt.where(visible_rule(conn, project_id))
         rows = [dict(x) for x in conn.execute(stmt).mappings()]
     more = len(rows) > limit
     rows = rows[:limit]
