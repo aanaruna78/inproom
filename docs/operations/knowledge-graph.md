@@ -121,4 +121,6 @@ Another tenant's or project's graph is a 404, as for every project route.
 
 **Telemetry:** each job run logs `knowledge graph project=<id> {"items", "nodes", "edges", "dropped", "more"}`.
 
+Project memory snapshots render approved graph links: [project-memory.md](project-memory.md).
+
 Related: [retrieval.md](retrieval.md), [vector-index.md](vector-index.md), [provenance.md](provenance.md), [knowledge-propagation.md](knowledge-propagation.md), [code-index.md](code-index.md).

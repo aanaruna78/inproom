@@ -100,3 +100,18 @@ def test_an_old_snapshot_never_shows_what_became_hidden(selected):
     drain(e)
     restored = read(e, v).json()
     assert restored["withheld"] == 0 and restored["served_sha256"] == restored["sha256"]
+
+
+def test_telemetry_counts_without_content(selected, caplog):
+    """INPROOM-227: one log line per create with sizes and counts - never the document's content."""
+    import json
+
+    e = selected
+    drain(e)
+    with caplog.at_level("INFO", logger="app.modules.memory"):
+        create(e, "telemetry", 201)
+    [line] = [r.getMessage() for r in caplog.records if r.getMessage().startswith("memory snapshot project=")]
+    logged = json.loads(line.split(" ", 3)[3])
+    assert logged["version"] == 1 and logged["created"] is True and logged["bytes"] > 0 and logged["ms"] >= 0
+    assert logged["counts"]["facts"] >= 1 and logged["redactions"] == {}
+    assert "Architecture" not in line and "Runbooks" not in line
