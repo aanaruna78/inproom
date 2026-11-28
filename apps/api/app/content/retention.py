@@ -123,6 +123,21 @@ def _orphan_vectors(conn: Connection) -> int:
     ).rowcount
 
 
+def _purge_memory(conn: Connection, revision_ids: list, object_ids: list) -> int:
+    """Delete memory snapshot lines that cite a purged revision, or name an item whose current revision was
+    purged (the item is gone). Snapshot headers and other lines stay; the snapshot's stored sha256 keeps
+    describing what was generated, while reads serve what remains."""
+    from sqlalchemy import cast, delete, or_
+    from sqlalchemy.dialects.postgresql import ARRAY, UUID
+
+    from app.db_schema import memory_snapshot_entries as m
+
+    clauses = [m.c.revision_id.in_(revision_ids)]
+    if object_ids:
+        clauses.append(m.c.depends_on.overlap(cast(list(object_ids), ARRAY(UUID(as_uuid=True)))))
+    return conn.execute(delete(m).where(or_(*clauses))).rowcount
+
+
 def purge_project(tenant: uuid.UUID, project_id: uuid.UUID, store: blobs.BlobStore, now: datetime) -> dict:
     """Mark what the policy releases, then delete the blobs nobody references any more."""
     from app.modules import settings as settings_module
@@ -188,11 +203,16 @@ def purge_project(tenant: uuid.UUID, project_id: uuid.UUID, store: blobs.BlobSto
             from app.content import graph  # INPROOM-215: purged revisions leave the knowledge graph
 
             graph.drop_revisions(conn, ids)
+            gone = [o.id for o in objects.values() if o.current_revision_id in set(ids)]
+            snapshot_lines = _purge_memory(conn, ids, gone)  # INPROOM-226: deletion reaches memory snapshots
+        else:
+            snapshot_lines = 0
         keys.discard(None)
         counts = {
             "items_marked_deleted": marked_deleted,
             "revisions_purged": len(ids),
             "vectors_deleted": _orphan_vectors(conn),
+            "memory_lines_deleted": snapshot_lines,
         }
     # Released blobs: deleted under the exclusive tenant blob lock, re-checking references at that moment.
     deleted = 0

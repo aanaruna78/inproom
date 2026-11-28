@@ -181,6 +181,8 @@ ROUTE_RULES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("POST", "/v1/projects/{project_id}/memory/snapshots"): ("project", "project.memory.publish"),
     ("GET", "/v1/projects/{project_id}/memory/snapshots"): ("project", "project.read"),
     ("GET", "/v1/projects/{project_id}/memory/snapshots/{version}"): ("project", "project.read"),
+    ("GET", "/v1/projects/{project_id}/memory/snapshots/{version}/diff"): ("project", "project.read"),
+    ("POST", "/v1/projects/{project_id}/memory/snapshots/{version}/verify"): ("project", "project.read"),
     ("GET", "/v1/projects/{project_id}/knowledge/index/failures"): ("project", "project.read"),
     ("POST", "/v1/projects/{project_id}/knowledge/reindex"): ("project", "project.source.manage"),
     ("POST", "/v1/projects/{project_id}/knowledge/refresh"): ("project", "project.source.manage"),
@@ -524,6 +526,8 @@ def _call(client, method, path, world: World, headers):
         url += f"?project_id={world.project['id']}"
     if path.endswith("/code/search"):
         url += "?q=handler"
+    if path.endswith("/memory/snapshots/{version}/diff"):
+        url += "?against=1"
     if path.endswith("/code/files"):
         url += "?repository=acme/api&branch=main&path=src/app.py"
     kwargs: dict = {"headers": dict(headers)}

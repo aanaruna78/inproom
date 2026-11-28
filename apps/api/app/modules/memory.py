@@ -270,3 +270,126 @@ def get_snapshot(
         headers = {"X-Memory-Withheld": str(detail.withheld), "ETag": f'"{detail.served_sha256}"'}
         return PlainTextResponse(detail.markdown, media_type="text/markdown; charset=utf-8", headers=headers)
     return detail
+
+
+# ---------------------------------------------------------------- diff and verify (INPROOM-226)
+
+
+class SectionChange(BaseModel):
+    section: str
+    added: int
+    removed: int
+
+
+class DiffResult(BaseModel):
+    from_version: int  # `against`
+    to_version: int
+    added: int
+    removed: int
+    sections: list[SectionChange]  # sections with changes, in document order
+    unified: str  # a unified diff of the served Markdown (from -> to)
+
+
+class VerifyResult(BaseModel):
+    version: int
+    reproducible: bool  # regenerating now gives exactly this version's bytes (same generator)
+    sha256: str  # the version's, as generated
+    current_sha256: str  # regenerated now
+    generator: str
+    current_generator: str
+    withheld: int  # lines of this version now withheld (items no longer visible)
+    drift: str  # unified diff from this version (as served) to the regenerated document; empty when equal
+
+
+def diff_lines(old: list[dict], new: list[dict], old_name: str, new_name: str) -> dict[str, Any]:
+    """Unified diff and per-section counts between two line lists. Pure (unit-tested)."""
+    import difflib
+
+    from app.content.memory import SECTIONS
+
+    a = [(x["section"], x["line"]) for x in old]
+    b = [(x["section"], x["line"]) for x in new]
+    added: dict[str, int] = {}
+    removed: dict[str, int] = {}
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(a=a, b=b, autojunk=False).get_opcodes():
+        if tag in ("replace", "delete"):
+            for section, _ in a[i1:i2]:
+                removed[section] = removed.get(section, 0) + 1
+        if tag in ("replace", "insert"):
+            for section, _ in b[j1:j2]:
+                added[section] = added.get(section, 0) + 1
+    order = ["header", *(key for key, _, _ in SECTIONS)]
+    changed = [s for s in order if added.get(s) or removed.get(s)]
+    unified = "".join(
+        difflib.unified_diff(
+            [line + "\n" for _, line in a], [line + "\n" for _, line in b], fromfile=old_name, tofile=new_name
+        )
+    )
+    return {
+        "added": sum(added.values()),
+        "removed": sum(removed.values()),
+        "sections": [
+            SectionChange(section=s, added=added.get(s, 0), removed=removed.get(s, 0)) for s in changed
+        ],
+        "unified": unified,
+    }
+
+
+@router.get(
+    "/v1/projects/{project_id}/memory/snapshots/{version}/diff",
+    response_model=DiffResult,
+    summary="What changed between two memory snapshot versions (as served: hidden items withheld)",
+    responses={404: PROBLEM, 422: PROBLEM},
+)
+def diff_snapshots(
+    request: Request,
+    principal: CurrentPrincipal,
+    project_id: uuid.UUID,
+    version: int,
+    against: Annotated[int, Query(ge=1)],
+) -> DiffResult:
+    with tenant_session(principal.tenant_id) as conn:
+        authorize(conn, principal, request, "project.read", project_id)
+        old = _get(conn, project_id, against)
+        new = _get(conn, project_id, version)
+        old_lines, _ = served_lines(conn, project_id, old["id"])
+        new_lines, _ = served_lines(conn, project_id, new["id"])
+    result = diff_lines(old_lines, new_lines, f"memory v{against}", f"memory v{version}")
+    return DiffResult(from_version=against, to_version=version, **result)
+
+
+@router.post(
+    "/v1/projects/{project_id}/memory/snapshots/{version}/verify",
+    response_model=VerifyResult,
+    summary="Regenerate from current knowledge and compare with a version: reproducible, or the drift",
+    responses={404: PROBLEM},
+)
+def verify_snapshot(
+    request: Request, principal: CurrentPrincipal, project_id: uuid.UUID, version: int
+) -> VerifyResult:
+    """Read-only: nothing is stored. A version is reproducible when today's knowledge renders exactly its
+    bytes with the same generator; otherwise `drift` shows what changed since (content, visibility, or a
+    newer generator)."""
+    from app.content.memory import GENERATOR, generate
+
+    with tenant_session(principal.tenant_id) as conn:
+        authorize(conn, principal, request, "project.read", project_id)
+        row = _get(conn, project_id, version)
+        stored, withheld = served_lines(conn, project_id, row["id"])
+        current = generate(conn, project_id)
+    reproducible = current.sha256 == row["sha256"] and row["generator"] == GENERATOR
+    drift = (
+        ""
+        if reproducible
+        else diff_lines(stored, current.lines, f"memory v{version}", "regenerated")["unified"]
+    )
+    return VerifyResult(
+        version=version,
+        reproducible=reproducible,
+        sha256=row["sha256"],
+        current_sha256=current.sha256,
+        generator=row["generator"],
+        current_generator=GENERATOR,
+        withheld=withheld,
+        drift=drift,
+    )

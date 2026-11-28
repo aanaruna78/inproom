@@ -907,6 +907,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/memory/snapshots/{version}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What changed between two memory snapshot versions (as served: hidden items withheld) */
+        get: operations["diff_snapshots_v1_projects__project_id__memory_snapshots__version__diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/memory/snapshots/{version}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Regenerate from current knowledge and compare with a version: reproducible, or the drift
+         * @description Read-only: nothing is stored. A version is reproducible when today's knowledge renders exactly its
+         *     bytes with the same generator; otherwise `drift` shows what changed since (content, visibility, or a
+         *     newer generator).
+         */
+        post: operations["verify_snapshot_v1_projects__project_id__memory_snapshots__version__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/migration": {
         parameters: {
             query?: never;
@@ -2002,6 +2041,21 @@ export interface components {
             items: components["schemas"]["Derivative"][];
             /** Revision Seq */
             revision_seq: number;
+        };
+        /** DiffResult */
+        DiffResult: {
+            /** Added */
+            added: number;
+            /** From Version */
+            from_version: number;
+            /** Removed */
+            removed: number;
+            /** Sections */
+            sections: components["schemas"]["SectionChange"][];
+            /** To Version */
+            to_version: number;
+            /** Unified */
+            unified: string;
         };
         /** DirectoryUser */
         DirectoryUser: {
@@ -3725,6 +3779,15 @@ export interface components {
             /** Model Version */
             model_version: string;
         };
+        /** SectionChange */
+        SectionChange: {
+            /** Added */
+            added: number;
+            /** Removed */
+            removed: number;
+            /** Section */
+            section: string;
+        };
         /**
          * SecurityPolicy
          * @description INPROOM-188: which Jira security levels may be served. Secured issues are withheld by default.
@@ -4335,6 +4398,25 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VerifyResult */
+        VerifyResult: {
+            /** Current Generator */
+            current_generator: string;
+            /** Current Sha256 */
+            current_sha256: string;
+            /** Drift */
+            drift: string;
+            /** Generator */
+            generator: string;
+            /** Reproducible */
+            reproducible: boolean;
+            /** Sha256 */
+            sha256: string;
+            /** Version */
+            version: number;
+            /** Withheld */
+            withheld: number;
         };
         /**
          * WebhookSecret
@@ -7171,6 +7253,84 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SnapshotDetail"];
                     "text/markdown": unknown;
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    diff_snapshots_v1_projects__project_id__memory_snapshots__version__diff_get: {
+        parameters: {
+            query: {
+                against: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiffResult"];
+                };
+            };
+            /** @description problem+json */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description problem+json */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    verify_snapshot_v1_projects__project_id__memory_snapshots__version__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyResult"];
                 };
             };
             /** @description problem+json */

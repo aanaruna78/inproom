@@ -1244,6 +1244,47 @@
         "title": "Derivatives",
         "type": "object"
       },
+      "DiffResult": {
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "from_version": {
+            "title": "From Version",
+            "type": "integer"
+          },
+          "removed": {
+            "title": "Removed",
+            "type": "integer"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/SectionChange"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "to_version": {
+            "title": "To Version",
+            "type": "integer"
+          },
+          "unified": {
+            "title": "Unified",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_version",
+          "to_version",
+          "added",
+          "removed",
+          "sections",
+          "unified"
+        ],
+        "title": "DiffResult",
+        "type": "object"
+      },
       "DirectoryUser": {
         "properties": {
           "display_name": {
@@ -5938,6 +5979,29 @@
         "title": "SearchResult",
         "type": "object"
       },
+      "SectionChange": {
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "removed": {
+            "title": "Removed",
+            "type": "integer"
+          },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section",
+          "added",
+          "removed"
+        ],
+        "title": "SectionChange",
+        "type": "object"
+      },
       "SecurityPolicy": {
         "description": "INPROOM-188: which Jira security levels may be served. Secured issues are withheld by default.",
         "properties": {
@@ -7532,6 +7596,54 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VerifyResult": {
+        "properties": {
+          "current_generator": {
+            "title": "Current Generator",
+            "type": "string"
+          },
+          "current_sha256": {
+            "title": "Current Sha256",
+            "type": "string"
+          },
+          "drift": {
+            "title": "Drift",
+            "type": "string"
+          },
+          "generator": {
+            "title": "Generator",
+            "type": "string"
+          },
+          "reproducible": {
+            "title": "Reproducible",
+            "type": "boolean"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "withheld": {
+            "title": "Withheld",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "reproducible",
+          "sha256",
+          "current_sha256",
+          "generator",
+          "current_generator",
+          "withheld",
+          "drift"
+        ],
+        "title": "VerifyResult",
         "type": "object"
       },
       "WebhookSecret": {
@@ -11867,6 +11979,130 @@
           }
         ],
         "summary": "A memory snapshot as JSON, or as text/markdown with ?format=markdown; hidden items withheld",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/memory/snapshots/{version}/diff": {
+      "get": {
+        "operationId": "diff_snapshots_v1_projects__project_id__memory_snapshots__version__diff_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "against",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Against",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiffResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "description": "problem+json"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "What changed between two memory snapshot versions (as served: hidden items withheld)",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/memory/snapshots/{version}/verify": {
+      "post": {
+        "description": "Read-only: nothing is stored. A version is reproducible when today's knowledge renders exactly its\nbytes with the same generator; otherwise `drift` shows what changed since (content, visibility, or a\nnewer generator).",
+        "operationId": "verify_snapshot_v1_projects__project_id__memory_snapshots__version__verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "problem+json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Regenerate from current knowledge and compare with a version: reproducible, or the drift",
         "tags": [
           "memory"
         ]

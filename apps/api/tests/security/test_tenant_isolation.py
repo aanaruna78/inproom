@@ -118,6 +118,8 @@ ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/v1/projects/{project_id}/memory/snapshots"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/memory/snapshots"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/memory/snapshots/{version}"): "project_scoped",
+    ("GET", "/v1/projects/{project_id}/memory/snapshots/{version}/diff"): "project_scoped",
+    ("POST", "/v1/projects/{project_id}/memory/snapshots/{version}/verify"): "project_scoped",
     ("GET", "/v1/projects/{project_id}/knowledge/index/failures"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/knowledge/reindex"): "project_scoped",
     ("POST", "/v1/projects/{project_id}/knowledge/refresh"): "project_scoped",
@@ -348,6 +350,8 @@ def _request(client, method, path_template, tenant_ids: Tenant, headers):
         path += f"?project_id={tenant_ids.project['id']}"
     if path_template.endswith("/code/search"):
         path += "?q=handler"
+    if path_template.endswith("/memory/snapshots/{version}/diff"):
+        path += "?against=1"
     if path_template.endswith("/code/files"):
         path += "?repository=acme/api&branch=main&path=src/app.py"
     kwargs: dict = {"headers": dict(headers)}
