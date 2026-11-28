@@ -73,6 +73,8 @@ TENANT_SCOPED_TABLES = (
     "graph_edges",
     "graph_sources",
     "graph_reviews",
+    "memory_snapshots",
+    "memory_snapshot_entries",
 )
 
 # Project roles allowed in project_members (mirrors app.authz.policy.PROJECT_ROLES; checked by a unit test).
@@ -1070,6 +1072,56 @@ graph_reviews = Table(
     CheckConstraint("action IN ('confirm','reject','manual')", name="ck_graph_reviews_action"),
     _graph_fk("graph_reviews"),
 )
+
+# INPROOM-224: Markdown project memory snapshots (a projection; entries name the item each line cites).
+memory_snapshots = Table(
+    "memory_snapshots",
+    metadata,
+    Column("id", BigInteger, Identity(), primary_key=True),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("version", Integer, nullable=False),
+    Column("feed_head", BigInteger, nullable=False),
+    Column("generator", Text, nullable=False),
+    Column("sha256", Text, nullable=False),
+    Column("counts", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("redactions", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("reason", Text, nullable=False),
+    Column("created_by", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("project_id", "version", name="uq_memory_snapshots_version"),
+    ForeignKeyConstraint(
+        ["tenant_id", "project_id"], ["projects.tenant_id", "projects.id"], name="fk_memory_snapshots_project"
+    ),
+)
+
+memory_snapshot_entries = Table(
+    "memory_snapshot_entries",
+    metadata,
+    Column("id", BigInteger, Identity(), primary_key=True),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("snapshot_id", BigInteger, nullable=False),
+    Column("section", Text, nullable=False),
+    Column("ordinal", Integer, nullable=False),
+    Column("line", Text, nullable=False),
+    Column("citation", JSONB),
+    Column("object_id", UUID(as_uuid=True)),  # null: header and section lines
+    Column("revision_id", UUID(as_uuid=True)),
+    Column(
+        "depends_on", ARRAY(UUID(as_uuid=True)), nullable=False, server_default="{}"
+    ),  # every item it names
+    UniqueConstraint("snapshot_id", "ordinal", name="uq_memory_snapshot_entries_ordinal"),
+    ForeignKeyConstraint(
+        ["snapshot_id"],
+        ["memory_snapshots.id"],
+        name="fk_memory_snapshot_entries_snapshot",
+        ondelete="CASCADE",
+    ),
+)
+Index("ix_memory_snapshot_entries_object", memory_snapshot_entries.c.object_id)
+Index("ix_memory_snapshot_entries_depends_on", memory_snapshot_entries.c.depends_on, postgresql_using="gin")
 
 Index("ix_audit_events_tenant_time", audit_events.c.tenant_id, audit_events.c.occurred_at)
 Index("ix_outbox_unpublished", outbox_events.c.created_at, postgresql_where=text("published_at IS NULL"))

@@ -1,0 +1,440 @@
+"""Markdown project memory snapshots: the generator (INPROOM-224 / story INPROOM-35).
+
+`generate(conn, project_id)` renders one Markdown document from the project's VISIBLE CURRENT knowledge:
+sources and freshness, decisions, facts, approved links and freshness warnings. It is a projection, never a
+store: every line cites the item it came from, and records every item it depends on (`depends_on`), so a
+read can withhold lines whose items became hidden and a purge can delete them.
+
+**Reproducible by construction:** the body holds no clock and no sync timestamps (those vary with every
+sync; they go to metadata), ordering is total, the generator version is pinned, and every rendered string
+passes the secret scrubber first. Same knowledge, same bytes, same sha256.
+
+**What each section asserts** is stated in the document itself (its `_Rule:_` line). "Approved" means: from
+an authoritative or trusted source (source policies, INPROOM-30), or a graph edge a source system states,
+or a curator confirmed (INPROOM-34). Approval records of E06 will plug into the same sections.
+"""
+
+import hashlib
+import re
+import uuid
+from dataclasses import dataclass, field
+from typing import Any
+
+from sqlalchemy import Connection, and_, select
+
+from app.content.secrets import RULES_VERSION, scrub
+from app.db_schema import (
+    code_snapshots,
+    confluence_pages,
+    graph_nodes,
+    knowledge_chunks,
+    knowledge_heads,
+    projects,
+    source_objects,
+    source_revisions,
+)
+
+GENERATOR = f"memory@1+secrets@{RULES_VERSION}"  # bump when output changes: verify reports drift otherwise
+APPROVED_TIERS = ("authoritative", "trusted")
+SUMMARY_CHARS = 200
+# Structural edges that the Facts section already shows, or that would list every file.
+LINK_KINDS_SHOWN_ELSEWHERE = frozenset({"child_of", "in_component", "fix_version", "affects_version"})
+LINK_KINDS_SKIPPED = frozenset({"owned_by", "at_commit", "attached_to"})
+_DECISION_TITLE = re.compile(r"^(?:ADR[-_ ]?\d+\b|Decision\b)", re.IGNORECASE)
+_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+
+SECTIONS: tuple[tuple[str, str, str], ...] = (
+    ("sources", "Sources and freshness", "every source of the project, its trust tier and sync health."),
+    (
+        "decisions",
+        "Decisions",
+        "**approved** when from an authoritative or trusted source; **proposed** when from a reference or "
+        "untrusted source.",
+    ),
+    (
+        "facts",
+        "Facts",
+        "authoritative and trusted sources only; reference and untrusted material is counted, not asserted.",
+    ),
+    (
+        "links",
+        "Links",
+        "approved links only: stated by a source system, confirmed or added by a curator. Unconfirmed "
+        "inferred links are counted, not listed.",
+    ),
+    (
+        "warnings",
+        "Freshness warnings",
+        "sources whose sync is stale or failing, and pending graph extraction.",
+    ),
+)
+
+
+@dataclass
+class Entry:
+    section: str
+    sort_key: tuple
+    text: str
+    citation: dict[str, Any] | None = None  # resolves through POST /provenance/resolve
+    object_id: uuid.UUID | None = None  # the cited item
+    revision_id: uuid.UUID | None = None
+    depends_on: list[uuid.UUID] = field(default_factory=list)  # every item the line names
+
+
+@dataclass
+class Snapshot:
+    lines: list[dict[str, Any]]  # {section, line, citation, object_id, revision_id, depends_on}, in order
+    markdown: str
+    sha256: str
+    counts: dict[str, int]
+    redactions: dict[str, int]
+    feed_head: int
+    metadata: dict[str, Any]
+
+
+# ---------------------------------------------------------------- rendering (pure)
+
+
+def cite_label(c: dict[str, Any]) -> str:
+    return f"[{c['label']}@{c['seq']}]"
+
+
+def render(project: str, entries: list[Entry], notes: dict[str, list[str]]) -> tuple[list[dict], dict]:
+    """The document's lines, in order, with every string scrubbed. Pure (unit-tested): the same entries
+    always give the same lines. `notes` adds uncited summary lines (counts) at the end of a section."""
+    redactions: dict[str, int] = {}
+
+    def clean(text: str) -> str:
+        out, found = scrub(text)
+        for k, v in found.items():
+            redactions[k] = redactions.get(k, 0) + v
+        return out
+
+    lines: list[dict[str, Any]] = []
+
+    def add(section: str, line: str, entry: Entry | None = None) -> None:
+        lines.append(
+            {
+                "section": section,
+                "line": line,
+                "citation": entry.citation if entry else None,
+                "object_id": entry.object_id if entry else None,
+                "revision_id": entry.revision_id if entry else None,
+                "depends_on": sorted(set(entry.depends_on), key=str) if entry else [],
+            }
+        )
+
+    add("header", f"# Project memory: {clean(project)}")
+    add("header", "")
+    add(
+        "header",
+        f"_Generated by {GENERATOR}. A projection of INPROOM's knowledge: every line cites the item it comes "
+        "from (resolve citations with POST /provenance/resolve). This document is never a source itself._",
+    )
+    by_section: dict[str, list[Entry]] = {}
+    for e in entries:
+        by_section.setdefault(e.section, []).append(e)
+    for key, title, rule in SECTIONS:
+        add(key, "")
+        add(key, f"## {title}")
+        add(key, "")
+        add(key, f"_Rule: {rule}_")
+        add(key, "")
+        items = sorted(by_section.get(key, []), key=lambda e: (e.sort_key, e.text, str(e.object_id)))
+        for e in items:
+            suffix = f" {cite_label(e.citation)}" if e.citation else ""
+            add(key, clean(e.text) + suffix, e)
+        if not items and not notes.get(key):
+            add(key, "_None._")
+        for note in notes.get(key, []):
+            add(key, f"_{clean(note)}_")
+    return lines, redactions
+
+
+def markdown_of(lines: list[dict[str, Any]]) -> str:
+    return "\n".join(x["line"] for x in lines) + "\n"
+
+
+def sha256_of(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def first_sentence(text: str) -> str:
+    sentence = _SENTENCE.split(" ".join(text.split()), 1)[0]
+    return sentence if len(sentence) <= SUMMARY_CHARS else sentence[: SUMMARY_CHARS - 1].rstrip() + "…"
+
+
+def is_decision(title: str, labels: list[str]) -> bool:
+    summary = title.split(": ", 1)[1] if re.match(r"^[A-Z][A-Z0-9_]+-\d+: ", title) else title
+    return bool(_DECISION_TITLE.match(summary.strip())) or any(
+        x.lower() in ("decision", "adr") for x in labels
+    )
+
+
+# ---------------------------------------------------------------- reading the project (visible current)
+
+
+def _items(conn: Connection, project_id: uuid.UUID) -> list[dict[str, Any]]:
+    from app.content.visibility import visible
+
+    o, r = source_objects, source_revisions
+    rows = conn.execute(
+        select(
+            o.c.id,
+            o.c.source_kind,
+            o.c.source_id,
+            o.c.external_id,
+            o.c.title,
+            r.c.id.label("revision_id"),
+            r.c.seq,
+        )
+        .join(r, r.c.id == o.c.current_revision_id)
+        .where(visible(conn, project_id), r.c.purged_at.is_(None))
+    ).mappings()
+    return [dict(x) for x in rows]
+
+
+def _label(item: dict[str, Any], repos: dict) -> str:
+    from app.content.graph import node_key
+
+    jira_key = (item["title"] or "").split(":", 1)[0] if item["source_kind"] == "jira" else None
+    return node_key(
+        item["source_kind"], item["external_id"], jira_key=jira_key, repo=repos.get(item["source_id"])
+    )
+
+
+def _citation(item: dict[str, Any], label: str) -> dict[str, Any]:
+    return {
+        "kind": item["source_kind"],
+        "source_id": str(item["source_id"]),
+        "external_id": item["external_id"],
+        "seq": item["seq"],
+        "label": label,
+    }
+
+
+def _entry(section, sort_key, text, item, label) -> Entry:
+    return Entry(
+        section, sort_key, text, _citation(item, label), item["id"], item["revision_id"], [item["id"]]
+    )
+
+
+def _summary(conn: Connection, item: dict[str, Any]) -> str:
+    """The first sentence of the item's Decision section, else of its first passage."""
+    k = knowledge_chunks
+    chunks = conn.execute(
+        select(k.c.path, k.c.text)
+        .where(k.c.object_id == item["id"], k.c.revision_id == item["revision_id"])
+        .order_by(k.c.ordinal)
+    ).all()
+    for path, text in chunks:
+        if any("decision" in (p or "").lower() for p in path or []):
+            return first_sentence(text)
+    return first_sentence(chunks[0][1]) if chunks else ""
+
+
+def generate(conn: Connection, project_id: uuid.UUID) -> Snapshot:
+    from app.content import policies, provenance
+    from app.modules.graph import edges as graph_edges_of
+    from app.modules.knowledge import _project_sources
+
+    project = conn.execute(select(projects.c.name).where(projects.c.id == project_id)).scalar_one()
+    head = conn.execute(
+        select(knowledge_heads.c.seq).where(knowledge_heads.c.project_id == project_id)
+    ).scalar()
+    sources = _project_sources(conn, project_id)
+    repos = {s["source_id"]: s["name"] for s in sources if s["kind"] == "git"}
+    items = _items(conn, project_id)
+    labels = {i["id"]: _label(i, repos) for i in items}
+    tiers: dict[tuple, str] = {}
+
+    def tier(kind: str, source_id) -> str:
+        if (kind, source_id) not in tiers:
+            tiers[(kind, source_id)] = policies.policy_of(conn, kind, source_id)["tier"]
+        return tiers[(kind, source_id)]
+
+    entries: list[Entry] = []
+    notes: dict[str, list[str]] = {}
+    metadata: dict[str, Any] = {"sources_as_of": {}}
+
+    # Sources and freshness (health categories in the body; timestamps vary with every sync: metadata)
+    stale_sources = []
+    for s in sources:
+        health, as_of, _ = provenance.source_health(conn, s["kind"], s["source_id"])
+        trust = tier(s["kind"], s["source_id"])
+        entries.append(
+            Entry(
+                "sources",
+                (s["kind"], s["name"] or ""),
+                f"- {s['kind']} {s['name']}: trust {trust}, sync {health}",
+            )
+        )
+        metadata["sources_as_of"][f"{s['kind']}:{s['name']}"] = as_of.isoformat() if as_of else None
+        if health in ("stale", "failing"):
+            stale_sources.append((s, health))
+    if any(i["source_kind"] == "upload" for i in items):
+        trust = tier("upload", project_id)
+        entries.append(Entry("sources", ("upload", ""), f"- upload documents: trust {trust}, sync n/a"))
+
+    # Decisions
+    page_labels = {
+        (r.source_id, r.page_id): list(r.labels or [])
+        for r in conn.execute(
+            select(confluence_pages.c.source_id, confluence_pages.c.page_id, confluence_pages.c.labels).where(
+                confluence_pages.c.source_id.in_(
+                    [s["source_id"] for s in sources if s["kind"] == "confluence"]
+                )
+            )
+        )
+    }
+    n = graph_nodes
+    node_attrs: dict[uuid.UUID, dict] = {
+        r.object_id: dict(r.attributes or {})
+        for r in conn.execute(
+            select(n.c.object_id, n.c.attributes).where(
+                n.c.project_id == project_id, n.c.role == "item", n.c.type == "jira_issue"
+            )
+        )
+    }
+    decided: set[uuid.UUID] = set()
+    for i in items:
+        item_labels = page_labels.get((i["source_id"], i["external_id"]), []) + list(
+            node_attrs.get(i["id"], {}).get("labels") or []
+        )
+        if i["source_kind"] == "git" or not is_decision(i["title"] or "", item_labels):
+            continue
+        decided.add(i["id"])
+        approved = tier(i["source_kind"], i["source_id"] if i["source_kind"] != "upload" else project_id)
+        approved = approved in APPROVED_TIERS
+        status = node_attrs.get(i["id"], {}).get("status")
+        summary = _summary(conn, i)
+        text = f"- **{'Approved' if approved else 'Proposed'}** {i['title']}"
+        text += f" ({status})" if status else ""
+        text += f": {summary}" if summary else ""
+        entries.append(
+            _entry("decisions", (0 if approved else 1, (i["title"] or "").lower()), text, i, labels[i["id"]])
+        )
+
+    # Facts (authoritative and trusted only)
+    asserted = [
+        i
+        for i in items
+        if tier(i["source_kind"], i["source_id"] if i["source_kind"] != "upload" else project_id)
+        in APPROVED_TIERS
+    ]
+    not_asserted = len(items) - len(asserted)
+    by_key = {labels[i["id"]]: i for i in items}
+    parents: dict[str, str] = {}
+    structure: dict[str, list[str]] = {}
+    for m in graph_edges_of(conn, project_id):
+        if m["kind"] in ("child_of", "in_epic") and m["origin"] in ("validated", "manual"):
+            parents.setdefault(m["from_key"], m["to_key"])
+        if m["kind"] in ("in_component", "fix_version", "affects_version") and m["status"] != "rejected":
+            word = {"in_component": "component", "fix_version": "fix", "affects_version": "affects"}[
+                m["kind"]
+            ]
+            structure.setdefault(m["from_key"], []).append(f"{word} {m['to_key'].rsplit(':', 1)[-1]}")
+    files_per_branch: dict[str, int] = {}
+    for i in asserted:
+        key = labels[i["id"]]
+        if i["source_kind"] == "jira":
+            attrs = node_attrs.get(i["id"], {})
+            parent = parents.get(key)
+            facts = [attrs.get("issue_type") or "issue", attrs.get("status") or "status unknown"]
+            facts += sorted(structure.get(key, []))
+            if parent:
+                facts.append(f"parent {parent.removeprefix('jira:')}")
+            nested = bool(parent and parent in by_key)  # listed under its parent, which this line names
+            top = parent if nested else key
+            text = f"{'  - ' if nested else '- '}{i['title']} ({'; '.join(facts)})"
+            entry = _entry("facts", ("jira", top, 1 if nested else 0, key), text, i, key)
+            if nested:
+                entry.depends_on.append(by_key[parent]["id"])
+            entries.append(entry)
+        elif i["source_kind"] == "git":
+            branch = i["external_id"].split(":", 1)[0]
+            where = f"{repos.get(i['source_id'], '')} {branch}"
+            files_per_branch[where] = files_per_branch.get(where, 0) + 1
+            if i["external_id"].endswith(":.github/CODEOWNERS") or i["external_id"].endswith(":CODEOWNERS"):
+                entries.append(_codeowners(conn, i, key, repos.get(i["source_id"], "")))
+        elif i["id"] not in decided:
+            kind = "Page" if i["source_kind"] == "confluence" else "Document"
+            entries.append(
+                _entry("facts", ("doc", (i["title"] or "").lower()), f"- {kind}: {i['title']}", i, key)
+            )
+    fact_notes = [f"{repo}: {count} source files indexed" for repo, count in sorted(files_per_branch.items())]
+    if not_asserted:
+        fact_notes.append(f"{not_asserted} items from reference or untrusted sources are not asserted here")
+    notes["facts"] = fact_notes
+
+    # Links (approved only)
+    unconfirmed = 0
+    for m in graph_edges_of(conn, project_id):
+        if m["kind"] in LINK_KINDS_SKIPPED or m["kind"] in LINK_KINDS_SHOWN_ELSEWHERE or m["unresolved"]:
+            continue
+        approved = m["origin"] in ("validated", "manual") or m["status"] == "confirmed"
+        if not approved:
+            unconfirmed += 1
+            continue
+        ends = [by_key.get(m["from_key"]), by_key.get(m["to_key"])]
+        if not all(ends):
+            continue
+        stating = next((ev["citation"] for ev in m["evidence"] if ev.get("citation")), None)
+        anchor_item = ends[0]
+        how = "confirmed" if m["status"] == "confirmed" and m["origin"] == "inferred" else m["origin"]
+        entry = _entry(
+            "links",
+            (m["kind"], m["from_key"], m["to_key"]),
+            f"- {m['from_key']} **{m['kind']}** {m['to_key']} ({how})",
+            anchor_item,
+            labels[anchor_item["id"]],
+        )
+        entry.depends_on.append(ends[1]["id"])
+        if stating and stating.get("external_id") != anchor_item["external_id"]:
+            for i in items:
+                if (i["source_kind"], i["external_id"]) == (stating["kind"], stating["external_id"]):
+                    entry.depends_on.append(i["id"])
+        entries.append(entry)
+    if unconfirmed:
+        notes["links"] = [
+            f"{unconfirmed} unconfirmed inferred links are not listed (review them in the graph)"
+        ]
+
+    # Freshness warnings
+    for s, health in stale_sources:
+        entries.append(
+            Entry("warnings", (s["kind"], s["name"] or ""), f"- {s['kind']} {s['name']}: sync {health}")
+        )
+    from app.content import graph
+
+    pending = graph.pending(conn, project_id)
+    if pending:
+        notes["warnings"] = [f"{pending} items await graph extraction: links may be incomplete"]
+
+    lines, redactions = render(project, entries, notes)
+    md = markdown_of(lines)
+    counts = {key: sum(1 for e in entries if e.section == key) for key, _, _ in SECTIONS}
+    counts |= {"not_asserted": not_asserted, "unconfirmed_links": unconfirmed, "lines": len(lines)}
+    return Snapshot(lines, md, sha256_of(md), counts, redactions, int(head or 0), metadata)
+
+
+def _codeowners(conn: Connection, item: dict, key: str, repo: str) -> Entry:
+    branch = item["external_id"].split(":", 1)[0]
+    s = code_snapshots.c
+    text = (
+        conn.execute(
+            select(s.codeowners)
+            .where(and_(s.source_id == item["source_id"], s.branch == branch, s.codeowners.is_not(None)))
+            .order_by(s.started_at.desc())
+            .limit(1)
+        ).scalar()
+        or {}
+    ).get("text") or ""
+    rules = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line and not line.startswith("#") and len(line.split()) > 1:
+            pattern, *owners = line.split()
+            rules.append(f"`{pattern}` → {' '.join(owners)}")
+    body = "; ".join(rules) if rules else "no rules"
+    return _entry("facts", ("owners", repo, branch), f"- Code owners ({repo} {branch}): {body}", item, key)

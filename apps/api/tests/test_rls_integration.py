@@ -209,6 +209,10 @@ SEED_SQL = [
     "VALUES (:t, :p, :o, :v, 'seed')",
     "INSERT INTO graph_reviews (tenant_id, project_id, from_key, kind, to_key, action, reason, actor) "
     "VALUES (:t, :p, 'doc:x', 'mentions', 'jira:X-1', 'reject', 'seed', 'seed')",
+    "INSERT INTO memory_snapshots (tenant_id, project_id, version, feed_head, generator, sha256, reason, "
+    "created_by) VALUES (:t, :p, 1, 0, 'seed', 'x', 'seed', 'seed')",
+    "INSERT INTO memory_snapshot_entries (tenant_id, project_id, snapshot_id, section, ordinal, line) "
+    "SELECT :t, :p, id, 'header', 0, '# seed' FROM memory_snapshots WHERE tenant_id = :t",
 ]
 
 
